@@ -1,7 +1,7 @@
 {
   "name": "billing-on-hand",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Billing On Hand - Offline Retail & GST ERP",
   "author": "Rupesh Gadkhe <rupeshgadkhe@gmail.com>",
   "repository": {
@@ -54,14 +54,11 @@
     "directories": {
       "output": "dist-desktop"
     },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "devrupeshgadkhe",
-        "repo": "Repo_billingOnHands",
-        "releaseType": "release"
-      }
-    ],
+    "publish": {
+      "provider": "github",
+      "owner": "devrupeshgadkhe",
+      "repo": "Repo_billingOnHands"
+    },
     "win": {
       "target": [
         {

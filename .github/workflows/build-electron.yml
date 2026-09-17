@@ -19,6 +19,9 @@ jobs:
     steps:
       - name: Check out repository code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v4
@@ -29,6 +32,33 @@ jobs:
       - name: Install Project Dependencies
         run: npm ci || npm install
 
+      - name: Ensure Git Tag Exists for Release
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          echo "Package version is $VERSION -> Release tag is $TAG"
+          git fetch --tags || true
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Git tag $TAG already exists."
+          else
+            echo "Creating and pushing Git tag $TAG..."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG" || true
+          fi
+
+      - name: Clean Stale GitHub Release If Corrupted
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          echo "Checking for any broken release for $TAG"
+          gh release delete "$TAG" --yes || true
+
       - name: Build Web Application and Express Backend
         run: npm run build
 
@@ -37,3 +67,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx electron-builder --win --x64 --publish always
+
+      - name: Ensure Release is Published
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          echo "Publishing release $TAG"
+          gh release edit "$TAG" --draft=false || true
