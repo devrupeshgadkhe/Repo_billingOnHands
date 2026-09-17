@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo } from "react";
 import { MiscTransaction, BusinessProfile } from "../types.js";
+import { useDialog } from "../context/DialogContext.js";
 import {
   Search,
   Plus,
@@ -64,6 +65,7 @@ export default function TransactionsView({
 }: TransactionsViewProps) {
   
   const perms = permissions || { view: true, create: true, update: true, delete: true };
+  const { showConfirm, showAlert } = useDialog();
   
   // Search and filter states
   const [searchText, setSearchText] = useState("");
@@ -150,13 +152,21 @@ export default function TransactionsView({
     e.preventDefault();
     const amountNum = Number(formAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
-      alert("Please specify a valid transaction amount greater than zero.");
+      await showAlert({
+        title: "अवैध रक्कम (Invalid Amount)",
+        message: "कृपया शून्यपेक्षा जास्त वैध रक्कम टाका (Amount must be greater than zero).",
+        variant: "warning"
+      });
       return;
     }
 
     const finalCategory = isCustomCategory ? customCategory.trim() : formCategory;
     if (!finalCategory.trim()) {
-      alert("Please select or enter a valid category.");
+      await showAlert({
+        title: "कॅटेगरी आवश्यक (Category Required)",
+        message: "कृपया योग्य कॅटेगरी निवडा किंवा टाका (Please select or enter category).",
+        variant: "warning"
+      });
       return;
     }
 
@@ -176,7 +186,13 @@ export default function TransactionsView({
 
   // Handle deletion
   const handleDelete = async (id: string) => {
-    if (confirm("Are you sure you want to permanently delete this transaction record?")) {
+    const confirmed = await showConfirm({
+      title: "व्यवहार नोंद हटवा (Delete Transaction)",
+      message: "तुम्हाला खात्री आहे का ही उत्पन्न/खर्च व्यवहार नोंद कायमची हटवायची आहे?",
+      confirmText: "नोंद हटवा",
+      variant: "danger"
+    });
+    if (confirmed) {
       await onDeleteTransaction(id);
     }
   };

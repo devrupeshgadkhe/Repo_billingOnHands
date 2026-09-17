@@ -5,6 +5,7 @@
 
 import { useState, useMemo } from "react";
 import { Invoice, BusinessProfile, Party, Item, MiscTransaction } from "../types.js";
+import { useDialog } from "../context/DialogContext.js";
 import {
   FileSpreadsheet,
   FileCheck2,
@@ -61,6 +62,7 @@ export default function ReportsView({
   
   const sPerms = salesPermissions || { view: true, create: true, update: true, delete: true };
   const pPerms = purchasesPermissions || { view: true, create: true, update: true, delete: true };
+  const { showConfirm } = useDialog();
 
   // Tab within Reports view
   const [reportSubTab, setReportSubTab] = useState<'daybook' | 'sales' | 'purchases' | 'items' | 'incomes_expenses' | 'pl_account' | 'gstr1' | 'gstr2'>('daybook');
@@ -96,7 +98,13 @@ export default function ReportsView({
   };
 
   const handleDeleteInvoice = async (id: string, invoiceNumber: string) => {
-    if (confirm(`CRITICAL WARNING: Deleting ${invoiceNumber} will automatically reverse all ledger changes. It will RESTORE item inventory stock lines and SUBTRACT party outstanding debts immediately. Continue?`)) {
+    const confirmed = await showConfirm({
+      title: "इनव्हॉइस डिलीट करा (Delete Invoice)",
+      message: `सावधान: ${invoiceNumber} डिलीट केल्याने सर्व लेजर नोंदी आपोआप उलट (Reverse) होतील. आयटम्सचा स्टॉक पुन्हा वाढवला जाईल आणि पार्टीचे बाकी खाते अपडेट होईल. तुम्हाला खात्री आहे का?`,
+      confirmText: "इनव्हॉइस डिलीट करा",
+      variant: "danger"
+    });
+    if (confirmed) {
       await onDeleteInvoice(id);
     }
   };

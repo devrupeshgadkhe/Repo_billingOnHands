@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo } from "react";
 import { Party, Invoice, INDIAN_STATES } from "../types.js";
+import { useDialog } from "../context/DialogContext.js";
 import {
   Search,
   Plus,
@@ -52,6 +53,7 @@ export default function PartiesView({
 }: PartiesViewProps) {
   
   const perms = permissions || { view: true, create: true, update: true, delete: true };
+  const { showConfirm, showAlert } = useDialog();
 
   // Tab/Screen state
   const [selectedLedgerParty, setSelectedLedgerParty] = useState<Party | null>(null);
@@ -163,7 +165,13 @@ export default function PartiesView({
 
   const handleDelete = async (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Avoid triggering row click selection
-    if (confirm(`Are you sure you want to delete ${name}? All transaction relationships with this contact will be severed.`)) {
+    const confirmed = await showConfirm({
+      title: "पार्टी हटवा (Delete Party)",
+      message: `तुम्हाला खात्री आहे का "${name}" ही पार्टी हटवायची आहे? या पार्टीशी संबंधित सर्व व्यवहार नोंदी सुरक्षित राहतील परंतु संपर्क यादीतून काढला जाईल.`,
+      confirmText: "पार्टी हटवा",
+      variant: "danger"
+    });
+    if (confirmed) {
       await onDeleteParty(id);
     }
   };
@@ -334,7 +342,11 @@ export default function PartiesView({
     
     const amountVal = parseFloat(payAmount);
     if (!amountVal || amountVal <= 0) {
-      alert("Please provide a valid cash payment value.");
+      await showAlert({
+        title: "अवैध रक्कम (Invalid Amount)",
+        message: "कृपया योग्य रक्कम टाका (Valid payment amount required).",
+        variant: "warning"
+      });
       return;
     }
 
@@ -379,9 +391,13 @@ export default function PartiesView({
         setPaySuccessMsg(false);
       }, 4000);
 
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert("Ledger could not register transaction.");
+      await showAlert({
+        title: "नोंद अयशस्वी (Transaction Error)",
+        message: err?.message || "लेजर खात्यामध्ये पेमेंट नोंद होऊ शकली नाही.",
+        variant: "danger"
+      });
     } finally {
       setRecordingPayment(false);
     }

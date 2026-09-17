@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo } from "react";
 import { Item, TAX_RATES, UNITS } from "../types.js";
+import { useDialog } from "../context/DialogContext.js";
 import {
   Search,
   Plus,
@@ -32,6 +33,7 @@ export default function ItemsView({
 }: ItemsViewProps) {
   
   const perms = permissions || { view: true, create: true, update: true, delete: true };
+  const { showConfirm } = useDialog();
 
   // State managers
   const [searchQuery, setSearchQuery] = useState("");
@@ -132,7 +134,13 @@ export default function ItemsView({
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (confirm(`Are you sure you want to delete ${name} from inventory?`)) {
+    const confirmed = await showConfirm({
+      title: "वस्तू हटवा (Delete Item)",
+      message: `तुम्हाला खात्री आहे का "${name}" ही वस्तू इन्व्हेंटरीमधून हटवायची आहे?`,
+      confirmText: "वस्तू हटवा",
+      variant: "danger"
+    });
+    if (confirmed) {
       await onDeleteItem(id);
     }
   };

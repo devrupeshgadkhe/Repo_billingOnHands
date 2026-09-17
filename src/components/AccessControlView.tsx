@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from "react";
 import { UserAccount, UserPermissions } from "../types.js";
+import { useDialog } from "../context/DialogContext.js";
 import {
   ShieldCheck,
   UserPlus,
@@ -42,6 +43,7 @@ const MODULE_KEYS = [
 
 export default function AccessControlView({ activeSession, onUpdateSession }: AccessControlViewProps) {
   const [users, setUsers] = useState<UserAccount[]>([]);
+  const { showConfirm } = useDialog();
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -224,7 +226,14 @@ export default function AccessControlView({ activeSession, onUpdateSession }: Ac
       return;
     }
 
-    if (!confirm(`Are you sure you want to permanently revoke all ledger billing access for user "${targetUsername}"?`)) {
+    const confirmed = await showConfirm({
+      title: "वापरकर्ता खाते हटवा (Revoke User Access)",
+      message: `तुम्हाला खात्री आहे का "${targetUsername}" या युजरचे बिलिंग सॉफ्टवेअर ॲक्सेस कायमचे रद्द करायचे आहे?`,
+      confirmText: "खाते रद्द करा",
+      variant: "danger"
+    });
+
+    if (!confirmed) {
       return;
     }
 

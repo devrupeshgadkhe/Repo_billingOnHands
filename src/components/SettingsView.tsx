@@ -5,6 +5,8 @@
 
 import React, { useState, useEffect } from "react";
 import { BusinessProfile, INDIAN_STATES } from "../types.js";
+import { useDialog } from "../context/DialogContext.js";
+import { APP_VERSION, APP_BUILD_DATE, GITHUB_REPO, GITHUB_RELEASES_URL } from "../version.js";
 import {
   Settings,
   Building2,
@@ -19,7 +21,10 @@ import {
   RefreshCw,
   Info,
   Download,
-  Upload
+  Upload,
+  Laptop,
+  ArrowUpCircle,
+  ExternalLink
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -39,8 +44,69 @@ export default function SettingsView({
 }: SettingsViewProps) {
   
   // State managers
+  const { showConfirm, showAlert } = useDialog();
   const [formData, setFormData] = useState<BusinessProfile>({ ...business });
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [updaterMsg, setUpdaterMsg] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.onUpdateStatus) {
+      const cleanup = electronAPI.onUpdateStatus((status: any) => {
+        if (status.state === "checking") {
+          setCheckingUpdate(true);
+          setUpdaterMsg("नवीन अपडेट शोधत आहे (Checking for updates on GitHub)...");
+        } else if (status.state === "available") {
+          setCheckingUpdate(false);
+          setUpdateAvailable(status.version);
+          setUpdaterMsg(`नवीन व्हर्जन v${status.version} उपलब्ध आहे! ऑटो डाऊनलोड सुरू आहे...`);
+        } else if (status.state === "downloading") {
+          setCheckingUpdate(false);
+          setDownloadProgress(status.percent);
+          setUpdaterMsg(`अपडेट डाऊनलोड होत आहे: ${status.percent}%`);
+        } else if (status.state === "downloaded") {
+          setCheckingUpdate(false);
+          setDownloadProgress(100);
+          setUpdaterMsg(`अपडेट डाऊनलोड पूर्ण झाले! ॲप्लिकेशन रीस्टार्ट होत आहे...`);
+        } else if (status.state === "up-to-date") {
+          setCheckingUpdate(false);
+          setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${status.currentVersion || APP_VERSION} is the latest version).`);
+        } else if (status.state === "error") {
+          setCheckingUpdate(false);
+          setUpdaterMsg(`अपडेट तपासताना त्रुटी: ${status.message || "Failed"}`);
+        }
+      });
+      return cleanup;
+    }
+  }, []);
+
+  const handleManualCheckUpdate = async () => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.checkForUpdates) {
+      setCheckingUpdate(true);
+      setUpdaterMsg("गिटहब रिलीज तपासत आहे...");
+      try {
+        const res = await electronAPI.checkForUpdates();
+        if (!res.success) {
+          setUpdaterMsg(`अपडेट माहिती: ${res.error || "Package is current"}`);
+        }
+      } catch (err: any) {
+        setUpdaterMsg(`अपडेट तपासताना अडचण: ${err.message}`);
+      } finally {
+        setCheckingUpdate(false);
+      }
+    } else {
+      // In web browser preview mode
+      await showAlert({
+        title: "डेस्कटॉप ऑटो-अपडेटर (Desktop Auto-Updater)",
+        message: `हे फीचर विंडोज डेस्कटॉप ॲप्लिकेशन (.exe) मध्ये आपोआप काम करते. गिटहबवरून नवीन रिलीज आल्यावर आपोआप डाऊनलोड आणि रीस्टार्ट होईल.\n\nसध्याचे व्हर्जन: v${APP_VERSION}\nGitHub Repo: ${GITHUB_REPO}`,
+        variant: "info"
+      });
+    }
+  };
 
   // Administrative Credentials States
   const [secUsername, setSecUsername] = useState(session?.username || "");
@@ -152,7 +218,14 @@ export default function SettingsView({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!confirm("Caution: Restoring will overwrite all existing invoices, party accounts, items catalog and transactions. Do you want to proceed?")) {
+    const confirmed = await showConfirm({
+      title: "डेटाबेस रिस्टोअर करा (Restore Database)",
+      message: "सावधान: बॅकअप रिस्टोअर केल्याने सध्याचे सर्व इनव्हॉइसेस, पार्टी खाती, आयटम्स कॅटलॉग आणि व्यवहार ओव्हरराईट होतील. तुम्हाला खात्री आहे का पुढे जायचे आहे?",
+      confirmText: "रिस्टोअर करा (Overwrite & Restore)",
+      variant: "danger"
+    });
+
+    if (!confirmed) {
       e.target.value = ""; // clear
       return;
     }
@@ -264,7 +337,11 @@ export default function SettingsView({
                       const file = e.target.files?.[0];
                       if (file) {
                         if (file.size > 1.5 * 1024 * 1024) {
-                          alert("Logo file is too large! Please choose an image smaller than 1.5 MB.");
+                          showAlert({
+                            title: "लोगो साईझ मोठी आहे (File Too Large)",
+                            message: "कृपया 1.5 MB पेक्षा लहान साईझचा फोटो निवडा (Please choose an image smaller than 1.5 MB).",
+                            variant: "warning"
+                          });
                           return;
                         }
                         const reader = new FileReader();
@@ -567,6 +644,82 @@ export default function SettingsView({
                   <span>{isRestoring ? "Restoring Workspace..." : "Upload & Restore"}</span>
                 </button>
               </div>
+            </div>
+          </div>
+          
+          {/* Desktop Application & Auto-Update Card */}
+          <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center space-x-2">
+                <Laptop className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-slate-900 text-sm">Desktop App & Auto-Update</h3>
+              </div>
+              <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full font-mono text-[10px] font-bold">
+                v{APP_VERSION}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 leading-normal">
+              विंडोज डेस्कटॉप ॲप्लिकेशन (.exe) ऑटो-अपडेट सुविधेसह सुसज्ज आहे. गिटहबवर नवीन व्हर्जन येताच सॉफ्टवेअर बॅकग्राऊंडमध्ये डाऊनलोड करून आपोआप रीस्टार्ट होते.
+            </p>
+
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 space-y-2 text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="text-[11px]">सध्याचे व्हर्जन:</span>
+                <span className="font-mono font-bold text-slate-900">v{APP_VERSION}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="text-[11px]">बिल्ड दिनांक:</span>
+                <span className="font-mono text-slate-700">{APP_BUILD_DATE}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="text-[11px]">GitHub Repo:</span>
+                <span className="font-mono text-[10px] text-indigo-700 truncate max-w-[150px]">{GITHUB_REPO}</span>
+              </div>
+            </div>
+
+            {updaterMsg && (
+              <div className="p-3 bg-indigo-50 border border-indigo-150 rounded-lg text-xs font-semibold text-indigo-900 leading-relaxed flex items-start space-x-2">
+                <ArrowUpCircle className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0 animate-pulse" />
+                <span className="flex-1">{updaterMsg}</span>
+              </div>
+            )}
+
+            {downloadProgress !== null && downloadProgress < 100 && (
+              <div className="space-y-1.5">
+                <div className="flex justify-between text-[11px] font-semibold text-slate-700">
+                  <span>Downloading update...</span>
+                  <span>{downloadProgress}%</span>
+                </div>
+                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={handleManualCheckUpdate}
+                disabled={checkingUpdate}
+                className="w-full bg-slate-900 hover:bg-black text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-400"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? "animate-spin" : ""}`} />
+                <span>{checkingUpdate ? "तपासत आहे..." : "नवीन अपडेट तपासा (Check for Update)"}</span>
+              </button>
+
+              <a
+                href={GITHUB_RELEASES_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full bg-white hover:bg-slate-50 border border-slate-250 text-slate-700 font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>GitHub Releases Page</span>
+              </a>
             </div>
           </div>
           

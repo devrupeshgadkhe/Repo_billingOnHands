@@ -1,9 +1,13 @@
 {
-  "name": "react-example",
+  "name": "billing-on-hand",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Billing On Hand - Offline Retail & GST ERP",
   "author": "Rupesh Gadkhe <rupeshgadkhe@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devrupeshgadkhe/Repo_billingOnHands.git"
+  },
   "type": "module",
   "main": "main.cjs",
   "scripts": {
@@ -12,6 +16,7 @@
     "start": "node dist/server.cjs",
     "clean": "node clean.cjs",
     "lint": "tsc --noEmit",
+    "version:bump": "node scripts/bump-version.cjs",
     "electron:dev": "npm run build && electron .",
     "postinstall": "node patch-electron-builder.cjs",
     "electron:pack": "npm run clean && npm run build && node pack.cjs",
@@ -22,6 +27,7 @@
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
+    "electron-updater": "^6.8.9",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
@@ -48,6 +54,14 @@
     "directories": {
       "output": "dist-desktop"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "devrupeshgadkhe",
+        "repo": "Repo_billingOnHands",
+        "releaseType": "release"
+      }
+    ],
     "win": {
       "target": [
         {
@@ -74,6 +88,7 @@
     "files": [
       "dist/**/*",
       "main.cjs",
+      "preload.cjs",
       "package.json"
     ],
     "asar": true

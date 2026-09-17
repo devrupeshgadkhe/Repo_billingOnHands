@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import { DeliveryChallan, DeliveryChallanItem, Party, Item, BusinessProfile, ChallanPurpose } from "../types.js";
+import { useDialog } from "../context/DialogContext.js";
 import {
   Truck,
   Plus,
@@ -54,6 +55,7 @@ export default function DeliveryChallansView({
   permissions
 }: DeliveryChallansViewProps) {
   const perms = permissions || { view: true, create: true, update: true, delete: true };
+  const { showConfirm, showAlert } = useDialog();
 
   // View mode: 'list' vs 'create' vs 'edit'
   const [viewMode, setViewMode] = useState<'list' | 'create' | 'edit'>('list');
@@ -297,9 +299,12 @@ export default function DeliveryChallansView({
       const dbItem = items.find(i => i.id === item.itemId);
       if (dbItem && !challanToEdit) {
         if (dbItem.stockQuantity < item.quantity) {
-          const proceed = confirm(
-            `Stock Alert: "${item.itemName}" only has ${dbItem.stockQuantity} ${item.unit} in stock, but challan specifies ${item.quantity}. Do you want to continue dispatching?`
-          );
+          const proceed = await showConfirm({
+            title: "कमी स्टॉक सूचना (Stock Alert)",
+            message: `"${item.itemName}" चा गोडाऊनमधील स्टॉक फक्त ${dbItem.stockQuantity} ${item.unit} आहे, परंतु या चलानमध्ये ${item.quantity} नमूद केले आहे. तरीही चलन जारी करून माल पाठवायचा आहे का?`,
+            confirmText: "होय, पुढे चला (Proceed)",
+            variant: "warning"
+          });
           if (!proceed) return;
         }
       }
@@ -358,21 +363,43 @@ export default function DeliveryChallansView({
   };
 
   const handleRollback = async (challan: DeliveryChallan) => {
-    if (confirm(`Rollback Delivery Challan ${challan.challanNumber}?\n\nThis will mark the challan as CANCELLED and RESTORE all item quantities back to available stock immediately.`)) {
+    const confirmed = await showConfirm({
+      title: "डिलिव्हरी चलन रद्द करा (Rollback Challan)",
+      message: `डिलिव्हरी चलन ${challan.challanNumber} रद्द करायचे आहे का?\n\nयामुळे चलन रद्द (CANCELLED) होईल आणि सर्व वस्तूंचा साठा पुन्हा उपलब्ध गोडाऊन शिल्लकमध्ये जमा होईल.`,
+      confirmText: "चलन रद्द करा व स्टॉक परत घ्या",
+      variant: "danger"
+    });
+
+    if (confirmed) {
       try {
         await onCancelChallan(challan.id);
       } catch (err: any) {
-        alert(err.message || "Failed to rollback delivery challan.");
+        await showAlert({
+          title: "त्रुटी (Error)",
+          message: err?.message || "डिलिव्हरी चलन रद्द होऊ शकले नाही.",
+          variant: "danger"
+        });
       }
     }
   };
 
   const handleDelete = async (challan: DeliveryChallan) => {
-    if (confirm(`Delete Delivery Challan ${challan.challanNumber}?\n\nIf the challan is still open/pending, inventory stock will be restored to your godown. Continue?`)) {
+    const confirmed = await showConfirm({
+      title: "डिलिव्हरी चलन डिलीट करा (Delete Challan)",
+      message: `डिलिव्हरी चलन ${challan.challanNumber} कायमचे डिलीट करायचे आहे का?\n\nजर हे चलन पेंडिंग असेल, तर त्यातील वस्तूंचा साठा आपोआप गोडाऊनमध्ये परत जमा केला जाईल.`,
+      confirmText: "चलन डिलीट करा",
+      variant: "danger"
+    });
+
+    if (confirmed) {
       try {
         await onDeleteChallan(challan.id);
       } catch (err: any) {
-        alert(err.message || "Failed to delete delivery challan.");
+        await showAlert({
+          title: "त्रुटी (Error)",
+          message: err?.message || "डिलिव्हरी चलन डिलीट होऊ शकले नाही.",
+          variant: "danger"
+        });
       }
     }
   };

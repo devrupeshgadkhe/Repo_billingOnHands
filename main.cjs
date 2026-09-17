@@ -1,11 +1,18 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ * Electron Main Process for Billing On Hand
  */
 
-const { app, BrowserWindow, Menu } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, shell } = require("electron");
 const path = require("path");
 const net = require("net");
+const { autoUpdater } = require("electron-updater");
+
+// Configure Auto-Updater
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.allowPrerelease = false;
 
 // Dynamic free port resolution to allow multiple instances or handle blocked ports gracefully
 function getFreePort(startPort, callback) {
@@ -21,20 +28,88 @@ function getFreePort(startPort, callback) {
 }
 
 let mainWindow = null;
+let updateDownloadedInfo = null;
+
+function sendToWindow(channel, data) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, data);
+  }
+}
+
+function setupAutoUpdater() {
+  autoUpdater.on("checking-for-update", () => {
+    console.log("[AutoUpdater] Checking for updates...");
+    sendToWindow("updater:status", { state: "checking" });
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    console.log(`[AutoUpdater] Update available: v${info.version}`);
+    sendToWindow("updater:status", {
+      state: "available",
+      version: info.version,
+      releaseDate: info.releaseDate
+    });
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    console.log("[AutoUpdater] Application is up to date.");
+    sendToWindow("updater:status", {
+      state: "up-to-date",
+      currentVersion: app.getVersion()
+    });
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("[AutoUpdater] Error in auto-updater:", err == null ? "unknown" : (err.stack || err).toString());
+    sendToWindow("updater:status", {
+      state: "error",
+      message: err?.message || "Check failed"
+    });
+  });
+
+  autoUpdater.on("download-progress", (progressObj) => {
+    const percent = Math.round(progressObj.percent || 0);
+    console.log(`[AutoUpdater] Download progress: ${percent}%`);
+    sendToWindow("updater:status", {
+      state: "downloading",
+      percent,
+      bytesPerSecond: progressObj.bytesPerSecond,
+      transferred: progressObj.transferred,
+      total: progressObj.total
+    });
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    console.log(`[AutoUpdater] Update v${info.version} downloaded successfully!`);
+    updateDownloadedInfo = info;
+    sendToWindow("updater:status", {
+      state: "downloaded",
+      version: info.version
+    });
+
+    // Auto install and restart after 4 seconds (as requested:
+    // "नवीन व्हर्जनची ईएक्सई आली असेल, तर आपल्या सॉफ्टवेअरने ऑटो अपडेट करायला पाहिजे आणि नंतर ॲप्लिकेशन रीस्टार्ट करायला पाहिजे")
+    setTimeout(() => {
+      console.log("[AutoUpdater] Triggering quit and install update...");
+      autoUpdater.quitAndInstall(false, true);
+    }, 4000);
+  });
+}
 
 function createWindow(port) {
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 800,
-    minHeight: 600,
+    width: 1360,
+    height: 860,
+    minWidth: 900,
+    minHeight: 650,
     title: "Billing On Hand - Offline Retail & GST ERP",
-    icon: path.join(__dirname, "public", "favicon.ico"), // standard icon fallback
-    autoHideMenuBar: true, // keeps the interface ultra-sleek, clean, and app-like
+    icon: path.join(__dirname, "public", "favicon.ico"),
+    autoHideMenuBar: true,
     webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: false
     }
   });
 
@@ -60,13 +135,53 @@ function createWindow(port) {
       mainWindow.reload();
     }
   });
+
+  // Trigger auto-updater check after window finishes initial load
+  mainWindow.webContents.once("did-finish-load", () => {
+    setTimeout(() => {
+      if (app.isPackaged) {
+        autoUpdater.checkForUpdates().catch((err) => {
+          console.warn("[AutoUpdater] Background check error:", err.message);
+        });
+      }
+    }, 5000);
+  });
 }
+
+// IPC Handlers
+ipcMain.handle("app:get-version", () => {
+  return app.getVersion();
+});
+
+ipcMain.handle("app:check-for-updates", async () => {
+  if (!app.isPackaged) {
+    return { success: false, error: "Auto-updater operates in packaged desktop production mode." };
+  }
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { success: true, result };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle("app:restart-and-install", () => {
+  autoUpdater.quitAndInstall(false, true);
+});
+
+ipcMain.handle("app:open-external", (_event, url) => {
+  if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
+    shell.openExternal(url);
+  }
+});
 
 // Ensure the app boots successfully
 app.whenReady().then(() => {
   // Set production and data directories before booting server
   process.env.NODE_ENV = "production";
   process.env.ELECTRON_USER_DATA = app.getPath("userData");
+
+  setupAutoUpdater();
 
   getFreePort(3000, (assignedPort) => {
     process.env.PORT = assignedPort.toString();
@@ -95,7 +210,6 @@ app.on("window-all-closed", () => {
 
 app.on("activate", () => {
   if (mainWindow === null) {
-    // If running port is already set, restore window
     const activePort = process.env.PORT || "3000";
     createWindow(parseInt(activePort, 10));
   }
