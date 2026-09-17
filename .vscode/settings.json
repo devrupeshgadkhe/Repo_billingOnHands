@@ -1,0 +1,14 @@
+{
+  "files.exclude": {
+    "**/dist-desktop": true,
+    "**/dist": true
+  },
+  "files.watcherExclude": {
+    "**/dist-desktop/**": true,
+    "**/dist/**": true
+  },
+  "search.exclude": {
+    "**/dist-desktop": true,
+    "**/dist": true
+  }
+}

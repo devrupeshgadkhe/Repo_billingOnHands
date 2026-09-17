@@ -1,0 +1,6 @@
+{
+  "name": "Billing On Hand",
+  "description": "An optimized full-slate inventory management, billing, and accounting suite with GST compliance, custom invoicing tables, and real-time ledger accounting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

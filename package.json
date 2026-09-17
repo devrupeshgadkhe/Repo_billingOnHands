@@ -1,0 +1,81 @@
+{
+  "name": "react-example",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Billing On Hand - Offline Retail & GST ERP",
+  "author": "Rupesh Gadkhe <rupeshgadkhe@gmail.com>",
+  "type": "module",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
+    "clean": "node clean.cjs",
+    "lint": "tsc --noEmit",
+    "electron:dev": "npm run build && electron .",
+    "postinstall": "node patch-electron-builder.cjs",
+    "electron:pack": "npm run clean && npm run build && node pack.cjs",
+    "electron:build": "npm run clean && npm run build && electron-builder --win --x64"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "recharts": "^3.8.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "autoprefixer": "^10.4.21",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  },
+  "build": {
+    "appId": "com.billingonhand.app",
+    "productName": "BillingOnHand",
+    "directories": {
+      "output": "dist-desktop"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "requestedExecutionLevel": "highestAvailable"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "BillingOnHand",
+      "deleteAppDataOnUninstall": false,
+      "uninstallDisplayName": "BillingOnHand"
+    },
+    "files": [
+      "dist/**/*",
+      "main.cjs",
+      "package.json"
+    ],
+    "asar": true
+  }
+}
