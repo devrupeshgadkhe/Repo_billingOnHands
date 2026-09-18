@@ -49,8 +49,8 @@ const initialDialogState: DialogState = {
   type: "confirm",
   title: "",
   message: "",
-  confirmText: "होय, पुढे जा",
-  cancelText: "रद्द करा",
+  confirmText: "Yes, Continue",
+  cancelText: "Cancel",
   variant: "warning",
   resolve: null
 };
@@ -64,10 +64,10 @@ export const DialogProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setDialog({
         isOpen: true,
         type: "confirm",
-        title: opts.title || "पुष्टीकरण (Confirm Action)",
+        title: opts.title || "Confirm Action",
         message: opts.message,
-        confirmText: opts.confirmText || "होय, खात्री आहे",
-        cancelText: opts.cancelText || "रद्द करा",
+        confirmText: opts.confirmText || "Yes, Confirm",
+        cancelText: opts.cancelText || "Cancel",
         variant: opts.variant || "danger",
         resolve: (confirmed: boolean) => {
           resolve(confirmed);
@@ -82,9 +82,9 @@ export const DialogProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       setDialog({
         isOpen: true,
         type: "alert",
-        title: opts.title || "सूचना (Notice)",
+        title: opts.title || "Notice",
         message: opts.message,
-        confirmText: opts.okText || "ठीक आहे",
+        confirmText: opts.okText || "OK",
         cancelText: "",
         variant: opts.variant || "info",
         resolve: () => {

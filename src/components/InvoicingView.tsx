@@ -23,7 +23,8 @@ import {
   HelpCircle,
   RotateCcw,
   Info,
-  Truck
+  Truck,
+  FileText
 } from "lucide-react";
 
 interface InvoicingViewProps {
@@ -89,6 +90,8 @@ export default function InvoicingView({
   const [errorText, setErrorText] = useState("");
   const [sourceChallanId, setSourceChallanId] = useState<string | undefined>(undefined);
   const [sourceChallanNumber, setSourceChallanNumber] = useState<string | undefined>(undefined);
+  const [sourceQuotationId, setSourceQuotationId] = useState<string | undefined>(undefined);
+  const [sourceQuotationNumber, setSourceQuotationNumber] = useState<string | undefined>(undefined);
 
   // Autocomplete state for Parties selection list
   const [partySearchText, setPartySearchText] = useState("");
@@ -123,6 +126,8 @@ export default function InvoicingView({
       setNotes(invoiceToEdit.notes || "");
       setSourceChallanId(invoiceToEdit.sourceChallanId);
       setSourceChallanNumber(invoiceToEdit.sourceChallanNumber);
+      setSourceQuotationId(invoiceToEdit.sourceQuotationId);
+      setSourceQuotationNumber(invoiceToEdit.sourceQuotationNumber);
       setPaymentType(invoiceToEdit.paymentType || (invoiceToEdit.type.includes("return") ? "unpaid" : "bank"));
       setPaidAmt(invoiceToEdit.paidAmount || 0);
       setCustomPaidAmount(true);
@@ -538,7 +543,9 @@ export default function InvoicingView({
       notes,
       originalInvoiceNumber: originalInvoiceNumber.trim() || undefined,
       sourceChallanId,
-      sourceChallanNumber
+      sourceChallanNumber,
+      sourceQuotationId,
+      sourceQuotationNumber
     };
 
     try {
@@ -551,6 +558,10 @@ export default function InvoicingView({
       setNotes("");
       setExtraCharges([]);
       setCustomPaidAmount(false);
+      setSourceChallanId(undefined);
+      setSourceChallanNumber(undefined);
+      setSourceQuotationId(undefined);
+      setSourceQuotationNumber(undefined);
       
       // Navigate users safely
       onNavigateTab("dashboard");
@@ -720,6 +731,32 @@ export default function InvoicingView({
             className="text-xs text-blue-700 hover:text-blue-900 font-semibold px-2.5 py-1 rounded bg-white border border-blue-200 shrink-0 ml-3"
           >
             Detach Challan
+          </button>
+        </div>
+      )}
+
+      {sourceQuotationNumber && (
+        <div className="p-3.5 bg-indigo-50 text-indigo-900 border border-indigo-200 rounded-xl text-xs flex items-center justify-between shadow-2xs">
+          <div className="flex items-center gap-2.5">
+            <FileText className="w-5 h-5 text-indigo-600 shrink-0" />
+            <div>
+              <p className="font-bold text-slate-900">
+                Converting Quotation: <span className="font-mono text-indigo-700">{sourceQuotationNumber}</span>
+              </p>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                Pre-filled from confirmed quotation. Saving this invoice will record tax/revenue, deduct inventory stock, and mark the quotation as converted.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSourceQuotationId(undefined);
+              setSourceQuotationNumber(undefined);
+            }}
+            className="text-xs text-indigo-700 hover:text-indigo-900 font-semibold px-2.5 py-1 rounded bg-white border border-indigo-200 shrink-0 ml-3"
+          >
+            Detach Quotation
           </button>
         </div>
       )}

@@ -6,7 +6,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { DatabaseState, Item, Party, Invoice, DeliveryChallan } from "./src/types.js";
+import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus } from "./src/types.js";
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
@@ -245,6 +245,7 @@ const initialData: DatabaseState = {
     }
   ],
   challans: [],
+  quotations: [],
   transactions: []
 };
 
@@ -285,6 +286,10 @@ function readDb(): DatabaseState {
 
     if (!parsed.challans) {
       parsed.challans = [];
+    }
+
+    if (!parsed.quotations) {
+      parsed.quotations = [];
     }
     
     return parsed;
@@ -342,6 +347,7 @@ function generateTemplateData(businessType: "kirana" | "garment" | "mall" | "ele
       ],
       invoices: [],
       challans: [],
+      quotations: [],
       transactions: []
     };
   }
@@ -371,6 +377,7 @@ function generateTemplateData(businessType: "kirana" | "garment" | "mall" | "ele
       ],
       invoices: [],
       challans: [],
+      quotations: [],
       transactions: []
     };
   }
@@ -400,6 +407,7 @@ function generateTemplateData(businessType: "kirana" | "garment" | "mall" | "ele
       ],
       invoices: [],
       challans: [],
+      quotations: [],
       transactions: []
     };
   }
@@ -428,6 +436,7 @@ function generateTemplateData(businessType: "kirana" | "garment" | "mall" | "ele
     ],
     invoices: [],
     challans: [],
+    quotations: [],
     transactions: []
   };
 }
@@ -439,6 +448,7 @@ function getDefaultPermissionsFor(role: string) {
     dashboard: { view: true, create: isElevated, update: isElevated, delete: isElevated },
     parties: { view: true, create: true, update: true, delete: isElevated },
     items: { view: true, create: true, update: true, delete: isElevated },
+    quotations: { view: true, create: true, update: true, delete: isElevated },
     sales: { view: true, create: true, update: true, delete: isElevated },
     purchases: { view: true, create: true, update: true, delete: isElevated },
     challans: { view: true, create: true, update: true, delete: isElevated },
@@ -842,6 +852,17 @@ app.post("/api/invoices", (req, res) => {
     }
   }
 
+  // If invoice is created from a quotation, mark quotation as converted
+  if (invoice.sourceQuotationId) {
+    if (!db.quotations) db.quotations = [];
+    const sourceQuotation = db.quotations.find(q => q.id === invoice.sourceQuotationId);
+    if (sourceQuotation) {
+      sourceQuotation.status = "converted";
+      sourceQuotation.convertedInvoiceId = invoice.id;
+      sourceQuotation.convertedInvoiceNumber = invoice.invoiceNumber;
+    }
+  }
+
   // Apply Party ledger adjustment
   const party = db.parties.find(p => p.id === invoice.partyId);
   if (party) {
@@ -891,6 +912,16 @@ app.delete("/api/invoices/:id", (req, res) => {
         sourceChallan.convertedInvoiceId = undefined;
         sourceChallan.convertedInvoiceNumber = undefined;
       }
+    }
+  }
+
+  // Unlink quotation and restore status if this invoice was sourced from a quotation
+  if (invoice.sourceQuotationId && db.quotations) {
+    const sourceQuotation = db.quotations.find(q => q.id === invoice.sourceQuotationId);
+    if (sourceQuotation && sourceQuotation.status === "converted") {
+      sourceQuotation.status = "accepted";
+      sourceQuotation.convertedInvoiceId = undefined;
+      sourceQuotation.convertedInvoiceNumber = undefined;
     }
   }
 
@@ -1024,6 +1055,94 @@ app.delete("/api/challans/:id", (req, res) => {
   db.challans.splice(challanIndex, 1);
   writeDb(db);
   res.json({ message: "Delivery Challan deleted successfully." });
+});
+
+// Quotations / Estimates API Endpoints
+
+// Get all Quotations
+app.get("/api/quotations", (req, res) => {
+  const db = readDb();
+  res.json(db.quotations || []);
+});
+
+// Create or Update Quotation
+app.post("/api/quotations", (req, res) => {
+  const db = readDb();
+  if (!db.quotations) db.quotations = [];
+  const incoming = req.body as Quotation;
+
+  if (!incoming.quotationNumber || !incoming.date || !incoming.partyId) {
+    return res.status(400).json({ error: "Quotation number, date, and customer party are required." });
+  }
+
+  if (!incoming.items || incoming.items.length === 0) {
+    return res.status(400).json({ error: "At least one line item is required in the quotation." });
+  }
+
+  // Ensure unique ID
+  if (!incoming.id) {
+    incoming.id = "quot_" + Date.now();
+  }
+
+  // Default status to 'draft' if not provided
+  if (!incoming.status) {
+    incoming.status = "draft";
+  }
+
+  const existingIndex = db.quotations.findIndex(q => q.id === incoming.id);
+  if (existingIndex > -1) {
+    db.quotations[existingIndex] = incoming;
+  } else {
+    db.quotations.push(incoming);
+  }
+
+  writeDb(db);
+  res.json({ message: "Quotation saved successfully.", quotation: incoming });
+});
+
+// Update Quotation Status
+app.patch("/api/quotations/:id/status", (req, res) => {
+  const db = readDb();
+  if (!db.quotations) db.quotations = [];
+  const id = req.params.id;
+  const { status } = req.body;
+
+  const validStatuses: QuotationStatus[] = ['draft', 'sent', 'accepted', 'converted', 'rejected', 'expired'];
+  if (!validStatuses.includes(status)) {
+    return res.status(400).json({ error: "Invalid quotation status." });
+  }
+
+  const quotation = db.quotations.find(q => q.id === id);
+  if (!quotation) {
+    return res.status(404).json({ error: "Quotation not found." });
+  }
+
+  quotation.status = status;
+  writeDb(db);
+  res.json({ message: `Quotation status updated to ${status}.`, quotation });
+});
+
+// Delete Quotation
+app.delete("/api/quotations/:id", (req, res) => {
+  const db = readDb();
+  if (!db.quotations) db.quotations = [];
+  const id = req.params.id;
+
+  const quotationIndex = db.quotations.findIndex(q => q.id === id);
+  if (quotationIndex === -1) {
+    return res.status(404).json({ error: "Quotation not found." });
+  }
+
+  const quotation = db.quotations[quotationIndex];
+  if (quotation.status === "converted") {
+    return res.status(400).json({ 
+      error: "Cannot delete a converted quotation while its Sales Invoice is active. Please delete the Sales Invoice first." 
+    });
+  }
+
+  db.quotations.splice(quotationIndex, 1);
+  writeDb(db);
+  res.json({ message: "Quotation deleted successfully." });
 });
 
 

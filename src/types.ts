@@ -80,6 +80,55 @@ export interface Invoice {
   originalInvoiceNumber?: string;
   sourceChallanId?: string;
   sourceChallanNumber?: string;
+  sourceQuotationId?: string;
+  sourceQuotationNumber?: string;
+}
+
+export type QuotationStatus = 'draft' | 'sent' | 'accepted' | 'converted' | 'rejected' | 'expired';
+
+export interface QuotationItem {
+  itemId: string;
+  itemName: string;
+  hsn: string;
+  quantity: number;
+  unit: string;
+  price: number;
+  discount?: number;
+  gstRate: number;
+  amountBeforeTax: number;
+  taxAmount: number;
+  cgst: number;
+  sgst: number;
+  igst: number;
+  totalAmount: number;
+}
+
+export interface Quotation {
+  id: string;
+  quotationNumber: string;
+  date: string; // YYYY-MM-DD
+  validUntil: string; // YYYY-MM-DD
+  partyId: string;
+  partyName: string;
+  partyGstin: string;
+  partyPhone?: string;
+  partyEmail?: string;
+  partyAddress?: string;
+  partyState?: string;
+  items: QuotationItem[];
+  subtotal: number;
+  taxAmount: number;
+  cgstTotal: number;
+  sgstTotal: number;
+  igstTotal: number;
+  extraCharges?: { title: string; amount: number }[];
+  discountAmount?: number;
+  totalAmount: number;
+  status: QuotationStatus;
+  convertedInvoiceId?: string;
+  convertedInvoiceNumber?: string;
+  termsAndConditions?: string;
+  notes?: string;
 }
 
 export type ChallanPurpose =
@@ -156,6 +205,7 @@ export interface UserPermissions {
   dashboard: ModulePermissions;
   parties: ModulePermissions;
   items: ModulePermissions;
+  quotations?: ModulePermissions;
   sales: ModulePermissions;
   purchases: ModulePermissions;
   challans?: ModulePermissions;
@@ -189,6 +239,7 @@ export interface DatabaseState {
   parties: Party[];
   invoices: Invoice[];
   challans?: DeliveryChallan[];
+  quotations?: Quotation[];
   users?: UserAccount[];
   transactions: MiscTransaction[];
 }

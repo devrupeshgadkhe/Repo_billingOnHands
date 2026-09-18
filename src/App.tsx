@@ -16,7 +16,8 @@ import LoginView from "./components/LoginView";
 import TransactionsView from "./components/TransactionsView";
 import AccessControlView from "./components/AccessControlView";
 import DeliveryChallansView from "./components/DeliveryChallansView";
-import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan } from "./types";
+import QuotationsView from "./components/QuotationsView";
+import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus } from "./types";
 import { RefreshCw, LayoutGrid, CheckCircle, LogOut, Menu } from "lucide-react";
 
 export default function App() {
@@ -257,6 +258,109 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // Convert Quotation into Sales Invoice
+  const handleConvertQuotationToInvoice = (quotation: Quotation) => {
+    const extraCharges: { title: string; amount: number }[] = quotation.extraCharges || [];
+
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const draftInvoice: Invoice = {
+      id: "",
+      invoiceNumber: `INV-${new Date().getFullYear()}-${randomSuffix}`,
+      date: new Date().toISOString().split("T")[0],
+      partyId: quotation.partyId,
+      partyName: quotation.partyName,
+      partyGstin: quotation.partyGstin,
+      type: "sale",
+      items: quotation.items.map(qi => ({
+        itemId: qi.itemId,
+        itemName: qi.itemName,
+        hsn: qi.hsn,
+        quantity: qi.quantity,
+        price: qi.price,
+        discount: qi.discount,
+        gstRate: qi.gstRate,
+        amountBeforeTax: qi.amountBeforeTax,
+        taxAmount: qi.taxAmount,
+        cgst: qi.cgst,
+        sgst: qi.sgst,
+        igst: qi.igst,
+        totalAmount: qi.totalAmount
+      })),
+      subtotal: quotation.subtotal,
+      taxAmount: quotation.taxAmount,
+      cgstTotal: quotation.cgstTotal,
+      sgstTotal: quotation.sgstTotal,
+      igstTotal: quotation.igstTotal,
+      extraCharges,
+      totalAmount: quotation.totalAmount,
+      paymentType: "unpaid",
+      paidAmount: 0,
+      remainingAmount: quotation.totalAmount,
+      notes: `Billed against Quotation: ${quotation.quotationNumber}` + (quotation.notes ? ` (${quotation.notes})` : ""),
+      sourceQuotationId: quotation.id,
+      sourceQuotationNumber: quotation.quotationNumber
+    };
+
+    setInvoiceToEdit(draftInvoice);
+    setIsReturnMode(false);
+    setActiveTab("sales");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Quotation CRUD handlers
+  const handleSaveQuotation = async (quotation: Quotation) => {
+    try {
+      const res = await fetch("/api/quotations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(quotation)
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save quotation");
+      }
+    } catch (err) {
+      console.error("Failed to save quotation", err);
+      throw err;
+    }
+  };
+
+  const handleDeleteQuotation = async (id: string) => {
+    try {
+      const res = await fetch(`/api/quotations/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete quotation");
+      }
+    } catch (err) {
+      console.error("Failed to delete quotation", err);
+      throw err;
+    }
+  };
+
+  const handleUpdateQuotationStatus = async (id: string, status: QuotationStatus) => {
+    try {
+      const res = await fetch(`/api/quotations/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to update quotation status");
+      }
+    } catch (err) {
+      console.error("Failed to update quotation status", err);
+      throw err;
+    }
+  };
+
   const handleEditInvoice = (invoice: Invoice) => {
     setInvoiceToEdit(invoice);
     setIsReturnMode(invoice.type === "sale_return" || invoice.type === "purchase_return");
@@ -347,6 +451,11 @@ export default function App() {
     return dbState.challans.filter(c => c.status === "pending").length;
   }, [dbState]);
 
+  const pendingQuotationsCount = useMemo(() => {
+    if (!dbState || !dbState.quotations) return 0;
+    return dbState.quotations.filter(q => q.status === "draft" || q.status === "sent").length;
+  }, [dbState]);
+
   // Loading phase rendering
   if (isLoading || !dbState) {
     return (
@@ -383,6 +492,7 @@ export default function App() {
         lowStockCount={lowStockCount}
         unpaidCount={unpaidCount}
         pendingChallansCount={pendingChallansCount}
+        pendingQuotationsCount={pendingQuotationsCount}
         onResetDb={handleResetDb}
         isOpen={mobileSidebarOpen}
         onClose={() => setMobileSidebarOpen(false)}
@@ -472,6 +582,20 @@ export default function App() {
               onSaveInvoice={handleSaveInvoice}
               onOpenInvoice={(inv) => setSelectedInvoice(inv)}
               permissions={session?.permissions?.parties}
+            />
+          )}
+
+          {activeTab === "quotations" && (
+            <QuotationsView
+              quotations={dbState.quotations || []}
+              parties={dbState.parties}
+              items={dbState.items}
+              business={dbState.business}
+              onSaveQuotation={handleSaveQuotation}
+              onDeleteQuotation={handleDeleteQuotation}
+              onUpdateQuotationStatus={handleUpdateQuotationStatus}
+              onConvertToInvoice={handleConvertQuotationToInvoice}
+              permissions={session?.permissions?.quotations || session?.permissions?.sales}
             />
           )}
 
