@@ -487,14 +487,14 @@ export default function PartiesView({
         {/* Ledger Statistics Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 print:grid-cols-3">
           
-          <div className="p-4 bg-white border border-slate-150 rounded-xl shadow-xs">
+          <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Opening Account balance</span>
             <span className="text-base font-black font-mono block mt-1 text-slate-700">
               ₹{(activePartyInLedger.initialBalance || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
             </span>
           </div>
 
-          <div className="p-4 bg-white border border-slate-150 rounded-xl shadow-xs">
+          <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Bilable Value Booked</span>
             <span className="text-base font-black font-mono block mt-1 text-slate-700">
               ₹{ledgerMetrics.totalDebited.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
@@ -504,7 +504,7 @@ export default function PartiesView({
             </span>
           </div>
 
-          <div className="p-4 bg-white border border-slate-150 rounded-xl shadow-xs">
+          <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Receipts / Settlements</span>
             <span className="text-base font-black font-mono block mt-1 text-emerald-700">
               ₹{ledgerMetrics.totalCredited.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
@@ -520,7 +520,7 @@ export default function PartiesView({
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
           
           {/* Main Statement Ledger Table Card */}
-          <div className="bg-white border border-slate-150 rounded-xl shadow-sm overflow-hidden lg:col-span-3">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden lg:col-span-3">
             
             <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-55 select-none print:hidden">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center space-x-1.5">
@@ -552,8 +552,8 @@ export default function PartiesView({
                     return (
                       <tr
                         key={entry.id}
-                        className={`border-b border-slate-100 hover:bg-slate-50/40 transition ${
-                          isOpening ? "bg-slate-50/70" : ""
+                        className={`border-b border-slate-100 hover:bg-slate-100 transition ${
+                          isOpening ? "bg-slate-50" : ""
                         }`}
                       >
                         {/* Transaction Date */}
@@ -637,7 +637,7 @@ export default function PartiesView({
           </div>
 
           {/* Quick Payment Cash/Bank Settle Form - Panel Right Side */}
-          <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-xs font-sans print:hidden">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs font-sans print:hidden">
             <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 mb-4 select-none">
               <Receipt className="w-4.5 h-4.5 text-indigo-600" />
               <h4 className="font-bold text-slate-900 text-sm">
@@ -783,7 +783,7 @@ export default function PartiesView({
       </div>
 
       {/* Filter panel */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-150 shadow-xs">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
         {/* Search */}
         <div className="relative w-full md:max-w-md">
           <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
@@ -817,7 +817,7 @@ export default function PartiesView({
       </div>
 
       {/* Parties Catalog Table */}
-      <div className="bg-white border border-slate-150 rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {filteredParties.length === 0 ? (
           <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center font-sans">
             <Contact2 className="w-16 h-16 text-slate-205 mb-2" />

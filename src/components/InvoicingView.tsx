@@ -765,7 +765,7 @@ export default function InvoicingView({
       <form onSubmit={handleInvoiceFormSubmit} className="space-y-6">
         
         {/* Step 1: Party and Core Invoice Metadata */}
-        <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-5">
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs grid grid-cols-1 md:grid-cols-4 gap-5">
           
           {/* Party Dropdown selection */}
           <div className="md:col-span-2 relative">
@@ -959,7 +959,7 @@ export default function InvoicingView({
         )}
 
         {/* Step 2: Line Items Grid Table */}
-        <div className="bg-white border border-slate-150 rounded-xl shadow-xs overflow-hidden p-5 space-y-4">
+        <div className="bg-white border border-slate-200 rounded-xl shadow-xs overflow-hidden p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between border-b border-slate-100 pb-3 gap-3">
             <div>
               <h3 className="font-bold text-slate-800 tracking-tight text-sm">
@@ -1137,7 +1137,7 @@ export default function InvoicingView({
                           required
                           value={line.quantity || ""}
                           onChange={(e) => handleLineValueChange(idx, 'quantity', parseInt(e.target.value) || 0)}
-                          className="w-full text-right px-2 py-1 bg-slate-50 border border-slate-150 focus:bg-white focus:border-emerald-500 rounded-lg text-xs outline-none font-bold"
+                          className="w-full text-right px-2 py-1 bg-slate-50 border border-slate-200 focus:bg-white focus:border-emerald-500 rounded-lg text-xs outline-none font-bold"
                         />
                         <span className="text-[10px] text-slate-400 font-sans block shrink-0">
                           {selectedItem?.unit || "PCS"}
@@ -1155,7 +1155,7 @@ export default function InvoicingView({
                         required
                         value={line.customPrice || ""}
                         onChange={(e) => handleLineValueChange(idx, 'customPrice', parseFloat(e.target.value) || 0)}
-                        className="w-full text-right px-2 py-1 bg-slate-50 border border-slate-150 focus:bg-white focus:border-emerald-500 rounded-lg text-xs outline-none font-bold"
+                        className="w-full text-right px-2 py-1 bg-slate-50 border border-slate-200 focus:bg-white focus:border-emerald-500 rounded-lg text-xs outline-none font-bold"
                       />
                     </td>
 
@@ -1173,7 +1173,7 @@ export default function InvoicingView({
                             const val = e.target.value === "" ? 0 : parseFloat(e.target.value);
                             handleLineValueChange(idx, 'discount', isNaN(val) ? 0 : val);
                           }}
-                          className="w-full text-right px-2 py-1 bg-slate-50 border border-slate-150 focus:bg-white focus:border-emerald-500 rounded-lg text-xs outline-none font-bold text-rose-600"
+                          className="w-full text-right px-2 py-1 bg-slate-50 border border-slate-200 focus:bg-white focus:border-emerald-500 rounded-lg text-xs outline-none font-bold text-rose-600"
                           placeholder="0"
                         />
                         <button
@@ -1194,7 +1194,7 @@ export default function InvoicingView({
                         id={`invoice-line-${idx}-gstrate`}
                         value={line.gstRate}
                         onChange={(e) => handleLineValueChange(idx, 'gstRate', parseInt(e.target.value) || 0)}
-                        className="w-full px-2 py-1 bg-slate-50 border border-slate-150 focus:bg-white focus:border-emerald-500 rounded-lg text-[11px] outline-none font-mono"
+                        className="w-full px-2 py-1 bg-slate-50 border border-slate-200 focus:bg-white focus:border-emerald-500 rounded-lg text-[11px] outline-none font-mono"
                       >
                         <option value="0">0% (Nil)</option>
                         <option value="5">5% GST</option>
@@ -1233,7 +1233,7 @@ export default function InvoicingView({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
           
           {/* Notes and financial status */}
-          <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-xs space-y-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-xs space-y-4">
             <h3 className="font-bold text-slate-800 tracking-tight text-sm pb-1.5 border-b border-slate-100">
               Payment & Notes
             </h3>
@@ -1327,7 +1327,7 @@ export default function InvoicingView({
               </div>
 
               {extraCharges.length > 0 && (
-                <div id="extra-charges-inputs-container" className="space-y-2 border border-slate-100 bg-slate-50/50 p-2.5 rounded-xl max-h-40 overflow-y-auto">
+                <div id="extra-charges-inputs-container" className="space-y-2 border border-slate-200 bg-slate-50 p-2.5 rounded-xl max-h-40 overflow-y-auto">
                   {extraCharges.map((charge, cIdx) => (
                     <div key={cIdx} className="flex items-center space-x-2">
                       <input

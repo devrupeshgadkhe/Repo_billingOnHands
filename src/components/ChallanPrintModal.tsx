@@ -49,7 +49,7 @@ export default function ChallanPrintModal({
       <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-h-none print:max-w-none print:w-full">
         
         {/* Modal Controls Header (Hidden in Print) */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 print:hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 print:hidden">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-50 text-blue-700 rounded-lg border border-blue-200">
               <Truck className="w-5 h-5" />
@@ -134,7 +134,7 @@ export default function ChallanPrintModal({
         </div>
 
         {/* Printable Document View */}
-        <div className="p-8 overflow-y-auto bg-slate-100/50 print:bg-white print:p-0 print:overflow-visible">
+        <div className="p-8 overflow-y-auto bg-slate-100 print:bg-white print:p-0 print:overflow-visible">
           <div className={`mx-auto bg-white border border-slate-300 shadow-xs p-8 text-slate-900 print:border-none print:shadow-none print:p-4 ${
             pageSize === 'a5' ? 'max-w-[148mm] text-xs' : 'max-w-[210mm] text-sm'
           }`}>
@@ -156,7 +156,7 @@ export default function ChallanPrintModal({
             </div>
 
             {/* Consignor (Our Business) & Challan Metadata Box */}
-            <div className="grid grid-cols-2 gap-4 border border-slate-300 rounded-sm p-4 mb-4 bg-slate-50/40">
+            <div className="grid grid-cols-2 gap-4 border border-slate-300 rounded-sm p-4 mb-4 bg-slate-50">
               {/* Left: Consignor Details */}
               <div>
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Consignor (Dispatched From)</p>
@@ -224,7 +224,7 @@ export default function ChallanPrintModal({
             </div>
 
             {/* Transport, Vehicle, Weight & Logistics Specs Box */}
-            <div className="grid grid-cols-3 gap-3 border border-slate-300 rounded-sm p-3.5 mb-4 bg-slate-50/70 text-xs">
+            <div className="grid grid-cols-3 gap-3 border border-slate-300 rounded-sm p-3.5 mb-4 bg-slate-50 text-xs">
               
               {/* Col 1: Vehicle & Transport */}
               <div className="space-y-1">
@@ -330,7 +330,7 @@ export default function ChallanPrintModal({
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {challan.items.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/60">
+                    <tr key={idx} className="hover:bg-slate-100">
                       <td className="py-2 px-3 text-center font-mono text-slate-500">{idx + 1}</td>
                       <td className="py-2 px-3 font-semibold text-slate-900">
                         {item.itemName}
@@ -368,7 +368,7 @@ export default function ChallanPrintModal({
 
             {/* Notes & Declarations */}
             {challan.notes && (
-              <div className="border border-slate-200 rounded-sm p-3 mb-4 bg-slate-50/50 text-xs text-slate-700">
+              <div className="border border-slate-200 rounded-sm p-3 mb-4 bg-slate-50 text-xs text-slate-700">
                 <span className="font-semibold text-slate-900">Notes / Remarks:</span> {challan.notes}
               </div>
             )}

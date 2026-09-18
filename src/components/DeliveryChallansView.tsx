@@ -692,7 +692,7 @@ export default function DeliveryChallansView({
                     </tr>
                   ) : (
                     filteredChallans.map(challan => (
-                      <tr key={challan.id} className="hover:bg-slate-50/70 transition-colors">
+                      <tr key={challan.id} className="hover:bg-slate-50 transition-colors">
                         
                         {/* Challan Info */}
                         <td className="py-3 px-4">
@@ -1058,7 +1058,7 @@ export default function DeliveryChallansView({
                     const lineTotal = taxable + tax;
 
                     return (
-                      <tr key={idx} className="hover:bg-slate-50/50">
+                      <tr key={idx} className="hover:bg-slate-50">
                         <td className="py-2 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
                         
                         {/* Item Select */}
@@ -1154,7 +1154,7 @@ export default function DeliveryChallansView({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             
             {/* 1. Vehicle & Transport Details */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
               <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
                 <Truck className="w-4 h-4 text-blue-600" />
                 <span>Transport & Vehicle (वाहतूक तपशील)</span>
@@ -1256,7 +1256,7 @@ export default function DeliveryChallansView({
             </div>
 
             {/* 2. Weight & Packaging Details */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
               <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
                 <Scale className="w-4 h-4 text-emerald-600" />
                 <span>Weight & Packaging (वजन व पॅकेजिंग)</span>
@@ -1342,7 +1342,7 @@ export default function DeliveryChallansView({
             </div>
 
             {/* 3. Hamali & Freight Details */}
-            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+            <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
               <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
                 <ShieldCheck className="w-4 h-4 text-amber-600" />
                 <span>Hamali & Freight (हमाली व भाडे)</span>
@@ -1424,7 +1424,7 @@ export default function DeliveryChallansView({
           </div>
 
           {/* Grand Totals & Submission Action Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200 bg-slate-50/50 -mx-6 -mb-6 p-6 rounded-b-xl">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-200 bg-slate-50 -mx-6 -mb-6 p-6 rounded-b-xl">
             
             <div className="text-xs text-slate-600 space-y-0.5">
               <p>Total Items: <strong className="text-slate-900">{calculatedItems.length}</strong> • Total Qty: <strong className="text-slate-900">{calculatedItems.reduce((s, i) => s + i.quantity, 0)}</strong></p>

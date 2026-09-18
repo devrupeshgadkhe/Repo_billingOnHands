@@ -498,7 +498,7 @@ export default function AccessControlView({ activeSession, onUpdateSession }: Ac
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 text-slate-400 font-bold border-b border-slate-150 select-none">
+                <tr className="bg-slate-50 text-slate-400 font-bold border-b border-slate-200 select-none">
                   <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wide">Operator Profile</th>
                   <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wide font-mono">Username</th>
                   <th className="py-2.5 px-4 font-bold text-[10px] uppercase tracking-wide font-mono">Password Hint</th>
@@ -515,7 +515,7 @@ export default function AccessControlView({ activeSession, onUpdateSession }: Ac
                     <tr 
                       key={u.username} 
                       className={`transition-colors duration-150 cursor-pointer ${
-                        isCurrentlyEdited ? "bg-emerald-50/80 hover:bg-emerald-50" : "hover:bg-slate-50/50"
+                        isCurrentlyEdited ? "bg-emerald-50/80 hover:bg-emerald-50" : "hover:bg-slate-50"
                       }`}
                       onClick={() => u.username.toLowerCase() !== "admin" && handleSelectUserForPermissions(u)}
                     >
@@ -536,7 +536,7 @@ export default function AccessControlView({ activeSession, onUpdateSession }: Ac
                       </td>
                       
                       <td className="py-3.5 px-4">
-                        <span className="font-mono font-bold text-slate-800 bg-slate-100/70 px-1.5 py-0.5 rounded-lg border border-slate-150 text-[11px]">{u.username}</span>
+                        <span className="font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded-lg border border-slate-200 text-[11px]">{u.username}</span>
                       </td>
 
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-500">
@@ -662,10 +662,10 @@ export default function AccessControlView({ activeSession, onUpdateSession }: Ac
           </div>
 
           {/* Granular Checkbox Matrix Row-by-Row Table */}
-          <div className="border border-slate-150 rounded-xl overflow-hidden shadow-xs">
+          <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-150 select-none">
+                <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 select-none">
                   <th className="py-3 px-4 font-bold text-[10px] uppercase tracking-wide w-1/3">Target Module Name</th>
                   <th className="py-3 px-4 font-bold text-[10px] uppercase tracking-wide text-center">View (Access Area)</th>
                   <th className="py-3 px-4 font-bold text-[10px] uppercase tracking-wide text-center">Create (Add/Draft)</th>
@@ -673,12 +673,12 @@ export default function AccessControlView({ activeSession, onUpdateSession }: Ac
                   <th className="py-3 px-4 font-bold text-[10px] uppercase tracking-wide text-center">Delete (Revoke/Wipe)</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-150">
+              <tbody className="divide-y divide-slate-200">
                 {MODULE_KEYS.map((m) => {
                   const modPerms = editingPermissions[m.id] || { view: false, create: false, update: false, delete: false };
                   
                   return (
-                    <tr key={m.id} className="hover:bg-slate-50/40 transition-colors">
+                    <tr key={m.id} className="hover:bg-slate-100 transition-colors">
                       <td className="py-4 px-4">
                         <span className="font-bold text-slate-800 block text-xs">{m.label}</span>
                         <span className="text-[10px] text-slate-400 mt-0.5 block leading-normal">{m.desc}</span>
@@ -764,7 +764,7 @@ export default function AccessControlView({ activeSession, onUpdateSession }: Ac
 
         </div>
       ) : (
-        <div className="p-10 border-2 border-dashed border-slate-200 rounded-2xl text-center space-y-2 select-none bg-slate-50/50">
+        <div className="p-10 border-2 border-dashed border-slate-200 rounded-2xl text-center space-y-2 select-none bg-slate-50">
           <Sliders className="w-8 h-8 text-slate-300 mx-auto" />
           <h4 className="font-bold text-slate-700 text-xs uppercase tracking-wider">Detailed Matrix Blueprint Closed</h4>
           <p className="text-[10.5px] text-slate-450 max-w-xs mx-auto">

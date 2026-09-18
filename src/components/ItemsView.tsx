@@ -168,7 +168,7 @@ export default function ItemsView({
       </div>
 
       {/* Filter and search deck */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-150 shadow-xs">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
         {/* Search input */}
         <div className="relative w-full sm:max-w-md">
           <Search className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
@@ -199,7 +199,7 @@ export default function ItemsView({
       </div>
 
       {/* Main Catalog inventory table */}
-      <div className="bg-white border border-slate-150 rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {filteredItems.length === 0 ? (
           <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center">
             <Boxes className="w-16 h-16 text-slate-200 mb-2" />
@@ -223,7 +223,7 @@ export default function ItemsView({
               {filteredItems.map(item => {
                 const isShortage = item.stockQuantity <= item.minStockAlert;
                 return (
-                  <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                  <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
                     {/* Item Name */}
                     <td className="py-3.5 px-4">
                       <div className="flex items-center space-x-3">

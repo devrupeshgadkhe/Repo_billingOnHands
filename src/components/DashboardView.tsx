@@ -440,7 +440,7 @@ export default function DashboardView({
                 <div
                   key={inv.id}
                   onClick={() => onOpenInvoice(inv)}
-                  className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/40 hover:bg-slate-50 hover:border-slate-200 transition cursor-pointer group"
+                  className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50 hover:bg-slate-50 hover:border-slate-200 transition cursor-pointer group"
                 >
                   <div className="min-w-0">
                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold tracking-wide ${inv.type === "sale" ? "bg-emerald-50 text-emerald-700" : "bg-purple-50 text-purple-700"}`}>

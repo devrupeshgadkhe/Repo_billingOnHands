@@ -698,7 +698,7 @@ export default function QuotationsView({
             </div>
 
             {/* Customer Party Selection */}
-            <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
               <label className="block text-xs font-semibold text-slate-800 mb-2">
                 Select Customer / Client <span className="text-rose-500">*</span>
               </label>
@@ -781,7 +781,7 @@ export default function QuotationsView({
                       const currentItem = items.find(i => i.id === item.itemId);
 
                       return (
-                        <tr key={idx} className="hover:bg-slate-50/50">
+                        <tr key={idx} className="hover:bg-slate-50">
                           <td className="py-2 px-3 text-center text-slate-400 font-mono">{idx + 1}</td>
                           <td className="py-2 px-3">
                             <select
@@ -1125,7 +1125,7 @@ export default function QuotationsView({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-slate-50/80 text-slate-600 font-semibold border-b border-slate-200">
+                <tr className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
                   <th className="py-3 px-4">Quotation No. & Date</th>
                   <th className="py-3 px-4">Customer</th>
                   <th className="py-3 px-4">Validity</th>
@@ -1151,7 +1151,7 @@ export default function QuotationsView({
                     const isExpired = q.validUntil && new Date(q.date) < new Date() && q.validUntil < new Date().toISOString().split("T")[0];
 
                     return (
-                      <tr key={q.id} className="hover:bg-slate-50/60 transition">
+                      <tr key={q.id} className="hover:bg-slate-100 transition">
                         <td className="py-3 px-4">
                           <div className="font-mono font-bold text-slate-800">{q.quotationNumber}</div>
                           <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
@@ -1285,7 +1285,7 @@ export default function QuotationsView({
 
           {/* Table Footer */}
           {filteredQuotations.length > 0 && (
-            <div className="p-3 bg-slate-50/60 border-t border-slate-100 text-xs text-slate-500 flex justify-between items-center">
+            <div className="p-3 bg-slate-50 border-t border-slate-100 text-xs text-slate-500 flex justify-between items-center">
               <span>Showing {filteredQuotations.length} of {quotations.length} quotation(s)</span>
               <span className="font-mono font-medium text-slate-700">
                 Filtered Total: {formatINR(filteredQuotations.reduce((s, q) => s + q.totalAmount, 0))}

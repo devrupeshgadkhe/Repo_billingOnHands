@@ -291,7 +291,7 @@ export default function SettingsView({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
         {/* Core Settings Form */}
-        <div className="bg-white border border-slate-150 rounded-xl p-6 shadow-sm lg:col-span-2">
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm lg:col-span-2">
           
           <div className="flex items-center space-x-2 mb-6 pb-3 border-b border-slate-100">
             <Building2 className="w-5 h-5 text-emerald-600" />
@@ -519,7 +519,7 @@ export default function SettingsView({
 
           {/* User security access update form */}
           {session && (
-            <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-sm space-y-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
               <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
                 <Database className="w-5 h-5 text-emerald-600" />
                 <h3 className="font-bold text-slate-900 text-sm">Security & Access Credentials</h3>
@@ -591,7 +591,7 @@ export default function SettingsView({
           )}
 
           {/* Backup & Restore Panel */}
-          <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
             <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
               <RefreshCw className="w-5 h-5 text-indigo-600" />
               <h3 className="font-bold text-slate-900 text-sm">Database Backup & Restore</h3>
@@ -648,7 +648,7 @@ export default function SettingsView({
           </div>
           
           {/* Desktop Application & Auto-Update Card */}
-          <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center space-x-2">
                 <Laptop className="w-5 h-5 text-indigo-600" />
@@ -723,7 +723,7 @@ export default function SettingsView({
             </div>
           </div>
           
-          <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-sm">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
             <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 mb-4">
               <Database className="w-5 h-5 text-indigo-600" />
               <h3 className="font-bold text-slate-900 text-sm">Workspace Status</h3>

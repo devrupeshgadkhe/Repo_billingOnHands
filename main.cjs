@@ -105,7 +105,7 @@ function createWindow(port) {
     title: "Billing On Hand - Offline Retail & GST ERP",
     icon: path.join(__dirname, "public", "favicon.ico"),
     autoHideMenuBar: true,
-    backgroundColor: "#0f172a", // Dark theme background prevents white screen flash
+    backgroundColor: "#f8fafc", // Light crisp canvas background matches the app theme perfectly
     show: false, // Prevent white screen flash while painting initial frames
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),

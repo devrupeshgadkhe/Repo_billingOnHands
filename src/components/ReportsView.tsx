@@ -766,7 +766,7 @@ export default function ReportsView({
 
       {/* FILTER PANEL: Displayed on tabs that supports custom parameters */}
       {reportSubTab !== "pl_account" && (
-        <div id="filter-controls-panel" className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs space-y-3.5">
+        <div id="filter-controls-panel" className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs space-y-3.5">
           <div className="flex items-center space-x-1.5 text-xs font-bold text-slate-700 uppercase tracking-wide">
             <Filter className="w-4 h-4 text-emerald-600" />
             <span>Customize Report Criteria</span>
@@ -782,7 +782,7 @@ export default function ReportsView({
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
                   />
                 </div>
                 <div>
@@ -791,7 +791,7 @@ export default function ReportsView({
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-2.5 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
+                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
                   />
                 </div>
               </>
@@ -804,7 +804,7 @@ export default function ReportsView({
                 <select
                   value={partyFilter}
                   onChange={(e) => setPartyFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-medium"
+                  className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-medium"
                 >
                   <option value="">-- All Parties --</option>
                   {parties.map(p => (
@@ -821,7 +821,7 @@ export default function ReportsView({
                 <select
                   value={paymentFilter}
                   onChange={(e) => setPaymentFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-medium"
+                  className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-medium"
                 >
                   <option value="">-- All Payments --</option>
                   <option value="cash">Cash Mode</option>
@@ -838,7 +838,7 @@ export default function ReportsView({
                 <select
                   value={gstRateFilter}
                   onChange={(e) => setGstRateFilter(e.target.value)}
-                  className="w-full px-2 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
+                  className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
                 >
                   <option value="">-- All Tax Slabs --</option>
                   <option value="0">0% Excluded</option>
@@ -858,7 +858,7 @@ export default function ReportsView({
                   <select
                     value={stockLevelFilter}
                     onChange={(e) => setStockLevelFilter(e.target.value)}
-                    className="w-full px-2 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
                   >
                     <option value="">-- All Stocks --</option>
                     <option value="instock">In Stock Only</option>
@@ -871,7 +871,7 @@ export default function ReportsView({
                   <select
                     value={itemSortFilter}
                     onChange={(e) => setItemSortFilter(e.target.value)}
-                    className="w-full px-2 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-bold"
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-bold"
                   >
                     <option value="bestselling">Best Selling Units</option>
                     <option value="revenue">Gross Income Value</option>
@@ -890,7 +890,7 @@ export default function ReportsView({
                   <select
                     value={miscCategoryFilter}
                     onChange={(e) => setMiscCategoryFilter(e.target.value)}
-                    className="w-full px-2 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-medium"
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-medium"
                   >
                     <option value="">-- All Categories --</option>
                     {miscCategories.map(cat => (
@@ -903,7 +903,7 @@ export default function ReportsView({
                   <select
                     value={miscTypeFilter}
                     onChange={(e) => setMiscTypeFilter(e.target.value)}
-                    className="w-full px-2 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
+                    className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
                   >
                     <option value="">-- Income & Expense --</option>
                     <option value="income">Incoming Profit Assets</option>
@@ -926,7 +926,7 @@ export default function ReportsView({
                     placeholder="Search query..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-8 pr-2.5 py-1.5 bg-slate-55 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
+                    className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
                   />
                 </div>
               </div>
@@ -940,7 +940,7 @@ export default function ReportsView({
       {/* ======================================================== */}
       {reportSubTab === "daybook" && (
         <div id="re-daybook" className="space-y-4">
-          <div className="bg-white border border-slate-150 rounded-xl p-4 shadow-xs flex items-center justify-between">
+          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-xs flex items-center justify-between">
             <div className="flex items-center space-x-2.5">
               <ListTodo className="w-5 h-5 text-indigo-600" />
               <div>
@@ -954,7 +954,7 @@ export default function ReportsView({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-150 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             {invoices.length === 0 ? (
               <div className="p-8 text-center text-slate-400">
                 <Receipt className="w-12 h-12 text-slate-200 mx-auto mb-1.5" />
@@ -981,8 +981,8 @@ export default function ReportsView({
                     const isPurchaseReturn = inv.type === "purchase_return";
 
                     return (
-                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/50 hover:border-slate-200 font-sans transition">
-                        <td className="py-3 px-4 font-mono text-slate-550">{inv.date}</td>
+                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50 hover:border-slate-200 font-sans transition">
+                        <td className="py-3 px-4 font-mono text-slate-600">{inv.date}</td>
                         <td className="py-3 px-3 font-mono font-bold text-slate-850">{inv.invoiceNumber}</td>
                         <td className="py-3 px-3 font-medium text-slate-700">{inv.partyName}</td>
                         <td className="py-3 px-3 text-center">
@@ -1055,7 +1055,7 @@ export default function ReportsView({
       {reportSubTab === "sales" && (
         <div id="re-sales-report" className="space-y-4 font-sans block">
           {/* Quick Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border border-slate-200 p-4 rounded-xl shadow-xs">
             <div className="border-r border-slate-100 pr-2">
               <span className="text-[10px] text-slate-400 font-bold block uppercase">Net Sales Turnover</span>
               <span className="block font-bold text-base text-slate-900 mt-1 font-mono">{formatINR(salesReportStats.netTaxable)}</span>
@@ -1075,12 +1075,12 @@ export default function ReportsView({
           </div>
 
           <div className="bg-slate-900 text-white rounded-xl p-3 flex justify-between items-center px-4 font-mono">
-            <span className="text-xs font-bold text-slate-350">Aggregate Gross Sales Sum (Taxes and Surcharges inclusive):</span>
+            <span className="text-xs font-bold text-slate-600">Aggregate Gross Sales Sum (Taxes and Surcharges inclusive):</span>
             <span className="text-sm font-black text-emerald-400">{formatINR(salesReportStats.grossValue)}</span>
           </div>
 
           {/* Details list */}
-          <div className="bg-white border border-slate-150 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
@@ -1102,7 +1102,7 @@ export default function ReportsView({
 
                   return (
                     <>
-                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
                         <td className="py-3 px-4 text-center">
                           <button
                             onClick={() => toggleInvoiceExpanded(inv.id)}
@@ -1111,7 +1111,7 @@ export default function ReportsView({
                             {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                           </button>
                         </td>
-                        <td className="py-3 px-3 font-mono text-slate-550">{inv.date}</td>
+                        <td className="py-3 px-3 font-mono text-slate-600">{inv.date}</td>
                         <td className="py-3 px-3 font-mono font-bold text-slate-900 group-hover:underline">
                           <span className={isReturn ? "text-rose-600 font-semibold" : ""}>{inv.invoiceNumber}</span>
                         </td>
@@ -1119,13 +1119,13 @@ export default function ReportsView({
                           {inv.partyName}
                           {isReturn && <span className="text-[9px] font-bold text-rose-500 ml-1.5 uppercase bg-rose-50 px-1 py-0.5 rounded">Return</span>}
                         </td>
-                        <td className="py-3 px-3 text-center uppercase text-[10px] font-bold text-slate-550">{inv.paymentType}</td>
+                        <td className="py-3 px-3 text-center uppercase text-[10px] font-bold text-slate-600">{inv.paymentType}</td>
                         <td className="py-3 px-3 text-right font-mono text-slate-500">{formatINR(inv.taxAmount)}</td>
                         <td className="py-3 px-3 text-right font-mono text-rose-550">-{formatINR(invoiceLineDiscounts)}</td>
                         <td className={`py-3 px-4 text-right font-bold font-mono ${isReturn ? "text-rose-600" : "text-slate-950"}`}>{formatINR(inv.totalAmount * (isReturn ? -1 : 1))}</td>
                       </tr>
                       {isExpanded && (
-                        <tr className="bg-slate-50/70 border-b border-slate-100">
+                        <tr className="bg-slate-50 border-b border-slate-100">
                           <td colSpan={8} className="p-4 pl-12">
                             <div className="space-y-2 border-l-2 border-emerald-500 pl-4 py-1">
                               <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Line Item Specifications</h5>
@@ -1184,7 +1184,7 @@ export default function ReportsView({
       {reportSubTab === "purchases" && (
         <div id="re-purchase-report" className="space-y-4 font-sans block">
           {/* Quick Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white border border-slate-200 p-4 rounded-xl shadow-xs">
             <div className="border-r border-slate-100 pr-2">
               <span className="text-[10px] text-slate-400 font-bold block uppercase">Procurement Cost</span>
               <span className="block font-bold text-base text-slate-900 mt-1 font-mono">{formatINR(purchaseReportStats.netTaxable)}</span>
@@ -1209,10 +1209,10 @@ export default function ReportsView({
           </div>
 
           {/* Details list */}
-          <div className="bg-white border border-slate-150 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-55 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
                   <th className="py-2.5 px-4 w-8"></th>
                   <th className="py-2.5 px-3">Date</th>
                   <th className="py-2.5 px-3">Bill Number</th>
@@ -1231,7 +1231,7 @@ export default function ReportsView({
 
                   return (
                     <>
-                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
                         <td className="py-3 px-4 text-center">
                           <button
                             onClick={() => toggleInvoiceExpanded(inv.id)}
@@ -1240,7 +1240,7 @@ export default function ReportsView({
                             {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                           </button>
                         </td>
-                        <td className="py-3 px-3 font-mono text-slate-550">{inv.date}</td>
+                        <td className="py-3 px-3 font-mono text-slate-600">{inv.date}</td>
                         <td className="py-3 px-3 font-mono font-bold text-slate-900">
                           <span className={isReturn ? "text-rose-600 font-semibold" : ""}>{inv.invoiceNumber}</span>
                         </td>
@@ -1248,13 +1248,13 @@ export default function ReportsView({
                           {inv.partyName}
                           {isReturn && <span className="text-[9px] font-bold text-rose-500 ml-1.5 uppercase bg-rose-50 px-1 py-0.5 rounded">Return</span>}
                         </td>
-                        <td className="py-3 px-3 text-center uppercase text-[10px] font-bold text-slate-550">{inv.paymentType}</td>
+                        <td className="py-3 px-3 text-center uppercase text-[10px] font-bold text-slate-600">{inv.paymentType}</td>
                         <td className="py-3 px-3 text-right font-mono text-purple-700 font-bold">{formatINR(inv.taxAmount)}</td>
                         <td className="py-3 px-3 text-right font-mono text-emerald-600 font-semibold">-{formatINR(invoiceLineDiscounts)}</td>
                         <td className={`py-3 px-4 text-right font-bold font-mono ${isReturn ? "text-rose-600" : "text-slate-950"}`}>{formatINR(inv.totalAmount * (isReturn ? -1 : 1))}</td>
                       </tr>
                       {isExpanded && (
-                        <tr className="bg-slate-50/70 border-b border-slate-100">
+                        <tr className="bg-slate-50 border-b border-slate-100">
                           <td colSpan={8} className="p-4 pl-12 font-sans">
                             <div className="space-y-2 border-l-2 border-purple-500 pl-4 py-1">
                               <h5 className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Purchased Line Items</h5>
@@ -1314,7 +1314,7 @@ export default function ReportsView({
         <div id="re-items-report" className="space-y-4">
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs flex items-center justify-between">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase">Inventory Assests Value</span>
                 <span className="block font-bold text-xl text-slate-950 mt-1 font-mono">{formatINR(itemsInventoryTotals)}</span>
@@ -1322,7 +1322,7 @@ export default function ReportsView({
               <Package className="w-10 h-10 text-emerald-200" />
             </div>
             
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs flex items-center justify-between">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs flex items-center justify-between">
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase">Catalog Records</span>
                 <span className="block font-bold text-xl text-slate-950 mt-1 font-mono">{items.length} items logged</span>
@@ -1331,7 +1331,7 @@ export default function ReportsView({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-150 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
@@ -1346,7 +1346,7 @@ export default function ReportsView({
               <tbody>
                 {itemsReportPerformance.map(row => {
                   return (
-                    <tr key={row.item.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition">
+                    <tr key={row.item.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
                       <td className="py-3 px-4 font-semibold text-slate-800">
                         <div>{row.item.name}</div>
                         <span className="text-[9px] text-slate-400 block font-normal font-sans">S: {formatINR(row.item.salePrice)} | P: {formatINR(row.item.purchasePrice)}</span>
@@ -1381,7 +1381,7 @@ export default function ReportsView({
         <div id="re-misctransactions" className="space-y-4">
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs">
               <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Independent Misc Revenue</span>
               <span className="block font-black text-xl text-emerald-600 mt-1 font-mono flex items-center space-x-1">
                 <ArrowUpRight className="w-5 h-5" />
@@ -1389,7 +1389,7 @@ export default function ReportsView({
               </span>
             </div>
             
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs">
               <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Expenditures / Surcharges</span>
               <span className="block font-black text-xl text-rose-600 mt-1 font-mono flex items-center space-x-1">
                 <ArrowDownLeft className="w-5 h-5" />
@@ -1397,7 +1397,7 @@ export default function ReportsView({
               </span>
             </div>
 
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs font-mono bg-slate-50/50">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs font-mono bg-slate-50">
               <span className="text-[10px] font-bold text-slate-400 uppercase block tracking-wider">Net Cash flow / Misc Ledger Balance</span>
               <span className={`block font-black text-xl mt-1 ${transactionSummary.balance >= 0 ? "text-slate-900" : "text-rose-700"}`}>
                 {formatINR(transactionSummary.balance)}
@@ -1405,7 +1405,7 @@ export default function ReportsView({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-150 rounded-xl overflow-hidden shadow-xs">
+          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
             {filteredTransactions.length === 0 ? (
               <div className="p-8 text-center text-slate-400">
                 <Coins className="w-12 h-12 text-slate-200 mx-auto mb-1.5" />
@@ -1425,8 +1425,8 @@ export default function ReportsView({
                 </thead>
                 <tbody>
                   {filteredTransactions.map(tx => (
-                    <tr key={tx.id} className="border-b border-slate-100 hover:bg-slate-50/50 transition font-sans">
-                      <td className="py-3 px-4 font-mono text-slate-550">{tx.date}</td>
+                    <tr key={tx.id} className="border-b border-slate-100 hover:bg-slate-50 transition font-sans">
+                      <td className="py-3 px-4 font-mono text-slate-600">{tx.date}</td>
                       <td className="py-3 px-3 font-semibold text-slate-800 uppercase tracking-wide text-[10px]">{tx.category}</td>
                       <td className="py-3 px-3 text-slate-600 max-w-sm truncate">{tx.notes || "-"}</td>
                       <td className="py-3 px-3 text-center capitalize text-slate-500 font-mono text-[10px]">{tx.paymentType}</td>
@@ -1456,7 +1456,7 @@ export default function ReportsView({
         <div id="re-profitandloss-sheet" className="space-y-6 animate-fadeIn">
           
           {/* Section Summary Panel */}
-          <div className="bg-white border border-slate-205 rounded-xl p-5 shadow-sm space-y-4">
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center space-x-2.5">
                 <TrendingUp className="w-5.5 h-5.5 text-emerald-600 animate-pulse" />
@@ -1484,7 +1484,7 @@ export default function ReportsView({
               </div>
 
               {/* Group 1: Revenue from operations */}
-              <div className="bg-slate-50/50 p-2.5 font-bold text-slate-800 uppercase tracking-wider text-[10px] border-b border-slate-200">
+              <div className="bg-slate-50 p-2.5 font-bold text-slate-800 uppercase tracking-wider text-[10px] border-b border-slate-200">
                 1. Earnings & Surcharges from Operations
               </div>
               <div className="flex p-3 border-b border-slate-100 font-sans">
@@ -1509,7 +1509,7 @@ export default function ReportsView({
               </div>
 
               {/* Group 2: Sourcing expenditure */}
-              <div className="bg-slate-50/50 p-2.5 font-bold text-slate-800 uppercase tracking-wider text-[10px] border-b border-slate-200">
+              <div className="bg-slate-50 p-2.5 font-bold text-slate-800 uppercase tracking-wider text-[10px] border-b border-slate-200">
                 2. Wholesale Product Sourcing Expenditures
               </div>
               <div className="flex p-3 border-b border-slate-100 font-sans">
@@ -1541,7 +1541,7 @@ export default function ReportsView({
               </div>
 
               {/* Group 3: Surcharges & Misc other gains */}
-              <div className="bg-slate-50/50 p-2.5 font-bold text-slate-800 uppercase tracking-wider text-[10px] border-b border-slate-200">
+              <div className="bg-slate-50 p-2.5 font-bold text-slate-800 uppercase tracking-wider text-[10px] border-b border-slate-200">
                 3. Subsidiary Incomes & Dynamic Surcharges
               </div>
               <div className="flex p-3 border-b border-slate-100 font-sans">
@@ -1563,7 +1563,7 @@ export default function ReportsView({
               {/* Group 4: Indirect overhead expenditures */}
               {plReportData.totalMiscExpenses > 0 && (
                 <>
-                  <div className="bg-slate-55 p-2.5 font-bold text-slate-800 uppercase tracking-wider text-[10px] border-b border-slate-200">
+                  <div className="bg-slate-50 p-2.5 font-bold text-slate-800 uppercase tracking-wider text-[10px] border-b border-slate-200">
                     4. General Indirect Operating Expenditures (Overheads)
                   </div>
                   {Object.entries(plReportData.expenseBreakdown).map(([category, amount]) => (
@@ -1627,19 +1627,19 @@ export default function ReportsView({
       {reportSubTab === "gstr1" && (
         <div id="re-gstr1" className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs">
               <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider">Gross Booked Sales</span>
               <span className="font-sans font-black text-xl mt-1 block text-slate-800 font-mono">{formatINR(gstr1Details.totalSalesTurnover)}</span>
               <p className="text-[10px] text-slate-500 mt-2 font-mono">{gstr1Details.salesCount} sale invoices recorded</p>
             </div>
             
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs">
               <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider">Net Taxable Value</span>
               <span className="font-sans font-black text-xl mt-1 block text-slate-800 font-mono">{formatINR(gstr1Details.totalTaxableTurnover)}</span>
               <p className="text-[10px] text-slate-500 mt-2 font-mono">Excludes all aggregate levies</p>
             </div>
 
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs bg-emerald-50/10">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs bg-emerald-50/10">
               <span className="text-[10px] text-emerald-600 font-bold uppercase block tracking-wider">Aggregate GST liability</span>
               <span className="font-sans font-black text-xl mt-1 block text-emerald-800 font-mono">{formatINR(gstr1Details.totalTaxLiability)}</span>
               <div className="text-[10px] text-slate-500 mt-2 font-mono flex items-center justify-between">
@@ -1649,7 +1649,7 @@ export default function ReportsView({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-150 rounded-xl shadow-sm p-5 space-y-6">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-6">
             <div>
               <div className="border-b border-indigo-100 pb-2 mb-3 flex items-center justify-between">
                 <div>
@@ -1679,7 +1679,7 @@ export default function ReportsView({
                   </thead>
                   <tbody>
                     {gstr1Details.b2bSales.map(inv => (
-                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/20">
+                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-100">
                         <td className="py-2 px-3 font-bold">{inv.invoiceNumber}</td>
                         <td className="py-2 px-2 font-sans">{inv.partyName}</td>
                         <td className="py-2 px-2 text-center font-bold text-slate-800">{inv.partyGstin}</td>
@@ -1711,7 +1711,7 @@ export default function ReportsView({
               ) : (
                 <table className="w-full text-left text-[11px] font-mono border-collapse">
                   <thead>
-                    <tr className="bg-amber-55 text-amber-900 font-bold border-b border-amber-100">
+                    <tr className="bg-amber-50 text-amber-900 font-bold border-b border-amber-100">
                       <th className="py-2 px-3">Inv Number</th>
                       <th className="py-2 px-2">Consumer</th>
                       <th className="py-2 px-2 text-right">Taxable Val</th>
@@ -1723,7 +1723,7 @@ export default function ReportsView({
                   </thead>
                   <tbody>
                     {gstr1Details.b2cSales.map(inv => (
-                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/20">
+                      <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-100">
                         <td className="py-2 px-3 font-bold">{inv.invoiceNumber}</td>
                         <td className="py-2 px-2 font-sans text-slate-500 italic">Walk-in retail buyer</td>
                         <td className="py-2 px-2 text-right">{inv.subtotal.toFixed(2)}</td>
@@ -1747,19 +1747,19 @@ export default function ReportsView({
       {reportSubTab === "gstr2" && (
         <div id="re-gstr2" className="space-y-6 animate-fadeIn">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs">
               <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider">Gross purchases value</span>
               <span className="font-sans font-black text-xl mt-1 block text-slate-800 font-mono">{formatINR(gstr2Details.totalProcurement)}</span>
               <p className="text-[10px] text-slate-500 mt-2 font-mono">{gstr2Details.purchasesCount} wholesale purchase bills logged</p>
             </div>
             
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs">
               <span className="text-[10px] text-slate-400 font-bold uppercase block tracking-wider">Taxable supplies</span>
               <span className="font-sans font-black text-xl mt-1 block text-slate-800 font-mono">{formatINR(gstr2Details.totalTaxableValue)}</span>
               <p className="text-[10px] text-slate-500 mt-2 font-mono">Excludes ITC credits</p>
             </div>
 
-            <div className="bg-white border border-slate-150 p-4 rounded-xl shadow-xs bg-purple-50/10">
+            <div className="bg-white border border-slate-200 p-4 rounded-xl shadow-xs bg-purple-50/10">
               <span className="text-[10px] text-purple-600 font-bold uppercase block tracking-wider">Input Tax Credit (ITC) Available</span>
               <span className="font-sans font-black text-xl mt-1 block text-purple-800 font-mono">{formatINR(gstr2Details.totalInputTaxCredit)}</span>
               <div className="text-[10px] text-slate-500 mt-2 font-mono flex items-center justify-between">
@@ -1769,7 +1769,7 @@ export default function ReportsView({
             </div>
           </div>
 
-          <div className="bg-white border border-slate-150 rounded-xl shadow-sm p-5">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
             <div className="border-b border-purple-100 pb-2 mb-3.5 flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-purple-900 text-sm font-sans">Schedule 3: Input Tax Credit (ITC) on Inward Supplies</h3>
@@ -1782,7 +1782,7 @@ export default function ReportsView({
 
             {gstr2Details.purchaseBills.length === 0 ? (
               <div className="py-8 text-center text-slate-400">
-                <FileCheck2 className="w-12 h-12 text-slate-120 mx-auto mb-1.5" />
+                <FileCheck2 className="w-12 h-12 text-slate-300 mx-auto mb-1.5" />
                 <p className="text-xs font-bold text-slate-600">No procurement invoice/bill recorded to claim Input Tax Credit.</p>
               </div>
             ) : (
@@ -1801,7 +1801,7 @@ export default function ReportsView({
                 </thead>
                 <tbody>
                   {gstr2Details.purchaseBills.map(inv => (
-                    <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-50/20">
+                    <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-100">
                       <td className="py-2.5 px-3 font-bold text-slate-800">{inv.invoiceNumber}</td>
                       <td className="py-2.5 px-2 font-sans">{inv.partyName}</td>
                       <td className="py-2.5 px-2 text-center text-slate-700">{inv.partyGstin || "Unregistered Supplier"}</td>

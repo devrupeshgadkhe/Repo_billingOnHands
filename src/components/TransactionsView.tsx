@@ -298,7 +298,7 @@ export default function TransactionsView({
         /* ==================== PRINT PREVIEW REPORT ==================== */
         <div id="tx-report-print-sheet" className="bg-white border border-slate-300 rounded-xl p-8 max-w-4xl mx-auto shadow-md">
           {/* Print/Back Action Header */}
-          <div className="print:hidden pb-4 mb-6 border-b border-slate-150 flex items-center justify-between bg-amber-50 p-4 rounded-lg text-xs text-amber-900">
+          <div className="print:hidden pb-4 mb-6 border-b border-slate-200 flex items-center justify-between bg-amber-50 p-4 rounded-lg text-xs text-amber-900">
             <span className="font-semibold">⚠️ Print margins will reflect perfectly on a standard A4 sheet portrait scale.</span>
             <div className="flex items-center space-x-2">
               <button
@@ -326,7 +326,7 @@ export default function TransactionsView({
                     src={business.logoUrl}
                     referrerPolicy="no-referrer"
                     alt="Store Logo"
-                    className="w-12 h-12 object-contain bg-white rounded border border-slate-150 p-0.5 inline-block mr-1"
+                    className="w-12 h-12 object-contain bg-white rounded border border-slate-200 p-0.5 inline-block mr-1"
                   />
                 )}
                 <h2 className="text-xl font-extrabold text-slate-900">{business.name}</h2>
@@ -358,7 +358,7 @@ export default function TransactionsView({
           </div>
 
           {/* Ledger Stats Summary metrics */}
-          <div className="grid grid-cols-3 gap-4 border-2 border-slate-200 rounded-lg p-3 bg-slate-50/50 mb-6 text-center">
+          <div className="grid grid-cols-3 gap-4 border-2 border-slate-200 rounded-lg p-3 bg-slate-50 mb-6 text-center">
             <div>
               <p className="text-[9px] font-bold text-slate-400 uppercase">Filtered Receipts (+)</p>
               <p className="text-sm font-extrabold text-emerald-600 font-mono">₹ {filteredStats.income.toLocaleString()}</p>
@@ -387,7 +387,7 @@ export default function TransactionsView({
                 <th className="py-2.5 px-3 text-right font-bold">Payment (OUT)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-150">
+            <tbody className="divide-y divide-slate-200">
               {filteredTransactions.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-6 text-center text-slate-400 font-mono">No matching journal cash entries found for current selection.</td>
@@ -430,7 +430,7 @@ export default function TransactionsView({
           {/* Top Aggregated Balance metrics */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {/* Total Incomes card */}
-            <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-sm hover:shadow-md transition">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition">
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Aux Incomes</span>
@@ -447,7 +447,7 @@ export default function TransactionsView({
             </div>
 
             {/* Total Expenses card */}
-            <div className="bg-white border border-slate-150 rounded-xl p-5 shadow-sm hover:shadow-md transition">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm hover:shadow-md transition">
               <div className="flex justify-between items-start">
                 <div className="space-y-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Total Cash Expenses</span>
@@ -495,7 +495,7 @@ export default function TransactionsView({
                   value={searchText}
                   onChange={(e) => setSearchText(e.target.value)}
                   placeholder="Search cash book categories, comments, descriptions..."
-                  className="w-full pl-9 pr-4 py-2 border border-slate-200 focus:border-emerald-550 rounded-lg text-xs outline-none bg-slate-50/50"
+                  className="w-full pl-9 pr-4 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none bg-slate-50"
                 />
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               </div>
@@ -616,7 +616,7 @@ export default function TransactionsView({
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-50 text-slate-500 border-b border-slate-150 py-2">
+                  <tr className="bg-slate-50 text-slate-500 border-b border-slate-200 py-2">
                     <th className="py-3 px-4 font-bold text-[10px] uppercase">Receipt Date</th>
                     <th className="py-3 px-4 font-bold text-[10px] uppercase">Record Type</th>
                     <th className="py-3 px-4 font-bold text-[10px] uppercase">Sub-Category</th>
@@ -644,7 +644,7 @@ export default function TransactionsView({
                     </tr>
                   ) : (
                     filteredTransactions.map(t => (
-                      <tr key={t.id} className="hover:bg-slate-50/55 transition items-center">
+                      <tr key={t.id} className="hover:bg-slate-100 transition items-center">
                         <td className="py-3 px-4 text-slate-650 font-mono font-semibold">{t.date}</td>
                         <td className="py-3 px-4">
                           {t.type === "income" ? (
@@ -851,7 +851,7 @@ export default function TransactionsView({
               {/* Payment Type Toggle */}
               <div>
                 <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Cash Type</label>
-                <div className="grid grid-cols-2 gap-2 border border-slate-200 p-1 bg-slate-50/50 rounded-lg text-xs">
+                <div className="grid grid-cols-2 gap-2 border border-slate-200 p-1 bg-slate-50 rounded-lg text-xs">
                   <button
                     type="button"
                     onClick={() => setFormPaymentType("cash")}

@@ -459,13 +459,13 @@ export default function App() {
   // Loading phase rendering
   if (isLoading || !dbState) {
     return (
-      <div id="v-app-loader" className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-slate-350">
+      <div id="v-app-loader" className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-slate-300">
         <div className="flex flex-col items-center space-y-4">
           <RefreshCw className="w-10 h-10 text-emerald-500 animate-spin" />
-          <h2 className="text-sm font-bold tracking-widest text-slate-205 uppercase font-mono animate-pulse">
+          <h2 className="text-sm font-bold tracking-widest text-slate-200 uppercase font-mono animate-pulse">
             Booting Billing On Hand Engine...
           </h2>
-          <p className="text-xs text-slate-500">Connecting file-based databases & tax compliance rules</p>
+          <p className="text-xs text-slate-400">Connecting file-based databases & tax compliance rules</p>
         </div>
       </div>
     );
@@ -482,7 +482,7 @@ export default function App() {
     : undefined;
 
   return (
-    <div id="v-app-grid" className="min-h-screen bg-slate-50/50 flex">
+    <div id="v-app-grid" className="min-h-screen bg-slate-50 text-slate-900 flex">
       
       {/* Sidebar - Fix position */}
       <Sidebar
@@ -504,7 +504,7 @@ export default function App() {
       <main id="v-app-main" className={`flex-1 min-w-0 pl-0 lg:pl-68 min-h-screen flex flex-col pb-10 print:hidden ${selectedInvoice ? "print:hidden" : ""}`}>
         
         {/* Global Toolbar Header - Hidden in printable invoices */}
-        <header id="v-app-toolbar" className="bg-white border-b border-slate-150 h-16 flex items-center justify-between px-4 sm:px-8 select-none print:hidden shadow-xs shrink-0 sticky top-0 z-10 font-sans">
+        <header id="v-app-toolbar" className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 sm:px-8 select-none print:hidden shadow-xs shrink-0 sticky top-0 z-10 font-sans">
           <div className="flex items-center space-x-2 sm:space-x-3.5">
             {/* Hamburger menu trigger */}
             <button

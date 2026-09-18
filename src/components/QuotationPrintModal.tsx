@@ -90,7 +90,7 @@ export default function QuotationPrintModal({
       <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-h-none print:max-w-none print:w-full">
         
         {/* Modal Controls Header (Hidden in Print) */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/80 print:hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 print:hidden">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200">
               <FileText className="w-5 h-5" />
@@ -257,7 +257,7 @@ export default function QuotationPrintModal({
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {quotation.items.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/50">
+                    <tr key={idx} className="hover:bg-slate-50">
                       <td className="py-2.5 px-3 text-center text-slate-500 font-mono">{idx + 1}</td>
                       <td className="py-2.5 px-3 font-medium text-slate-800">
                         {item.itemName}
@@ -311,7 +311,7 @@ export default function QuotationPrintModal({
 
                 {/* Terms and Conditions */}
                 {quotation.termsAndConditions && (
-                  <div className="text-[11px] text-slate-600 border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+                  <div className="text-[11px] text-slate-600 border border-slate-200 rounded-lg p-3 bg-slate-50">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                       TERMS & CONDITIONS
                     </span>
@@ -323,7 +323,7 @@ export default function QuotationPrintModal({
               {/* Right Column: Financial Totals */}
               <div className="col-span-5">
                 <div className="border border-slate-200 rounded-lg overflow-hidden text-xs">
-                  <div className="p-3 space-y-2 bg-slate-50/50">
+                  <div className="p-3 space-y-2 bg-slate-50">
                     <div className="flex justify-between text-slate-600">
                       <span>Taxable Value:</span>
                       <span className="font-mono font-medium text-slate-800">{formatINR(quotation.subtotal)}</span>

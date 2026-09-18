@@ -470,7 +470,7 @@ export default function InvoicePrintModal({
                   </thead>
                   <tbody className="divide-y divide-slate-200">
                     {invoice.items.map((item, index) => (
-                      <tr key={index} className="hover:bg-slate-50/60">
+                      <tr key={index} className="hover:bg-slate-100">
                         <td className="py-2 px-2 text-center text-slate-500 font-mono">{index + 1}</td>
                         <td className="py-2 px-2 font-medium text-slate-900">
                           <div>{item.itemName}</div>
@@ -512,7 +512,7 @@ export default function InvoicePrintModal({
               <div className="grid grid-cols-2 gap-6 pt-2">
                 
                 {/* Left Box: Payment Details */}
-                <div className="border border-slate-200 rounded-lg p-3 text-xs bg-slate-50/50 space-y-2">
+                <div className="border border-slate-200 rounded-lg p-3 text-xs bg-slate-50 space-y-2">
                   <h4 className="font-bold text-slate-800 uppercase text-[11px] pb-1 border-b border-slate-200">
                     {invoice.type.includes("return") ? "Settlement Details" : "Payment Details"}
                   </h4>
@@ -609,7 +609,7 @@ export default function InvoicePrintModal({
                         <th className="py-1.5 px-3 text-right">Total Tax</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-150 font-mono">
+                    <tbody className="divide-y divide-slate-200 font-mono">
                       {hsnSummary.map((sum, idx) => (
                         <tr key={idx} className="text-slate-700">
                           <td className="py-1.5 px-3 font-semibold text-slate-900">{sum.hsn}</td>
