@@ -6,7 +6,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
 import { DatabaseState, Item, Party, Invoice, DeliveryChallan } from "./src/types.js";
 
 const app = express();
@@ -1068,30 +1067,66 @@ app.delete("/api/transactions/:id", (req, res) => {
 });
 
 
-// Dev vs Production Setup
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    // Mount Vite in dev mode
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa"
-    });
-    app.use(vite.middlewares);
-    console.log("Vite middleware mounted on Express");
-  } else {
-    // Serve static files in production
-    const distPath = fs.existsSync(path.join(__dirname, "index.html")) 
-      ? __dirname 
-      : path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
+// System Health & Ready Check
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    app: "BillingOnHand",
+    version: "1.0.3",
+    timestamp: new Date().toISOString()
+  });
+});
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Billing On Hand Server operating at: http://localhost:${PORT}`);
+// Server Initialization & Export
+export function startServer(portToUse?: number): Promise<{ app: typeof app; port: number }> {
+  const listenPort = portToUse ?? PORT;
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (process.env.NODE_ENV !== "production") {
+        // Mount Vite in dev mode with dynamic import
+        const { createServer: createViteServer } = await import("vite");
+        const vite = await createViteServer({
+          server: { middlewareMode: true },
+          appType: "spa"
+        });
+        app.use(vite.middlewares);
+        console.log("Vite middleware mounted on Express");
+      } else {
+        // Serve static files in production
+        const distCandidates = [
+          __dirname,
+          path.join(__dirname, "dist"),
+          path.join(process.cwd(), "dist")
+        ];
+        const distPath = distCandidates.find(p => fs.existsSync(path.join(p, "index.html"))) || path.join(process.cwd(), "dist");
+        app.use(express.static(distPath));
+        app.get("*", (req, res) => {
+          res.sendFile(path.join(distPath, "index.html"));
+        });
+      }
+
+      // In Electron desktop environment, bind loopback (127.0.0.1) for zero firewall prompts
+      const host = process.env.ELECTRON_ENV ? "127.0.0.1" : "0.0.0.0";
+      const server = app.listen(listenPort, host, () => {
+        console.log(`Billing On Hand Server operating at: http://${host}:${listenPort}`);
+        resolve({ app, port: listenPort });
+      });
+
+      server.on("error", (err) => {
+        console.error("Server listen failed:", err);
+        reject(err);
+      });
+    } catch (err) {
+      console.error("Failed to initialize server:", err);
+      reject(err);
+    }
   });
 }
 
-startServer();
+// Auto-start if not running inside Electron's controlled startup
+if (!process.env.ELECTRON_ENV) {
+  startServer().catch((err) => {
+    console.error("Auto start server failed:", err);
+  });
+}
+

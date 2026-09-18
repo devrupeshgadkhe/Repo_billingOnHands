@@ -105,6 +105,8 @@ function createWindow(port) {
     title: "Billing On Hand - Offline Retail & GST ERP",
     icon: path.join(__dirname, "public", "favicon.ico"),
     autoHideMenuBar: true,
+    backgroundColor: "#0f172a", // Dark theme background prevents white screen flash
+    show: false, // Prevent white screen flash while painting initial frames
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
@@ -113,9 +115,42 @@ function createWindow(port) {
     }
   });
 
+  // Gracefully show window once ready or on fallback timer
+  let isShown = false;
+  const showSafely = () => {
+    if (!isShown && mainWindow && !mainWindow.isDestroyed()) {
+      isShown = true;
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  };
+
+  mainWindow.once("ready-to-show", showSafely);
+  setTimeout(showSafely, 1500); // Safety fallback so window always reveals
+
   // Load the running server URL
   const appUrl = `http://127.0.0.1:${port}`;
+  console.log(`[Electron] Loading application URL: ${appUrl}`);
   mainWindow.loadURL(appUrl);
+
+  // Automatic retry if loading fails before server is ready
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
+    console.warn(`[Electron] Failed to load ${validatedURL} (${errorCode}: ${errorDescription}). Retrying in 400ms...`);
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.loadURL(validatedURL);
+      }
+    }, 400);
+  });
+
+  // F12 or Ctrl+Shift+I to toggle DevTools if user or support needs to inspect
+  mainWindow.webContents.on("before-input-event", (_event, input) => {
+    if (input.key === "F12" || (input.control && input.shift && input.key.toLowerCase() === "i")) {
+      if (mainWindow) {
+        mainWindow.webContents.toggleDevTools();
+      }
+    }
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -175,29 +210,74 @@ ipcMain.handle("app:open-external", (_event, url) => {
   }
 });
 
+// Helper to poll the local health endpoint
+function pollServerReady(port, maxRetries = 25) {
+  const http = require("http");
+  return new Promise((resolve) => {
+    let attempts = 0;
+    const check = () => {
+      attempts++;
+      const req = http.get(`http://127.0.0.1:${port}/api/health`, (res) => {
+        if (res.statusCode === 200) {
+          resolve(true);
+        } else if (attempts < maxRetries) {
+          setTimeout(check, 100);
+        } else {
+          resolve(false);
+        }
+      });
+      req.on("error", () => {
+        if (attempts < maxRetries) {
+          setTimeout(check, 100);
+        } else {
+          resolve(false);
+        }
+      });
+      req.setTimeout(300, () => {
+        req.destroy();
+        if (attempts < maxRetries) {
+          setTimeout(check, 100);
+        } else {
+          resolve(false);
+        }
+      });
+    };
+    check();
+  });
+}
+
 // Ensure the app boots successfully
 app.whenReady().then(() => {
   // Set production and data directories before booting server
   process.env.NODE_ENV = "production";
+  process.env.ELECTRON_ENV = "true";
   process.env.ELECTRON_USER_DATA = app.getPath("userData");
 
   setupAutoUpdater();
 
-  getFreePort(3000, (assignedPort) => {
+  getFreePort(3000, async (assignedPort) => {
     process.env.PORT = assignedPort.toString();
-    console.log(`Electron environment starting Express on 127.0.0.1:${assignedPort}`);
+    console.log(`[Electron] Starting Express on 127.0.0.1:${assignedPort}`);
 
     // Boot the packaged Express backend server
     try {
-      require(path.join(__dirname, "dist", "server.cjs"));
+      const serverModule = require(path.join(__dirname, "dist", "server.cjs"));
+      if (serverModule && typeof serverModule.startServer === "function") {
+        await serverModule.startServer(assignedPort);
+      }
     } catch (err) {
-      console.error("Failed to require packaged server module:", err);
+      console.error("[Electron] Failed to require packaged server module:", err);
     }
 
-    // Give express a brief instant to start listening
-    setTimeout(() => {
-      createWindow(assignedPort);
-    }, 250);
+    // Wait until Express server responds to health check
+    const isReady = await pollServerReady(assignedPort);
+    if (isReady) {
+      console.log(`[Electron] Express server verified active and healthy on port ${assignedPort}`);
+    } else {
+      console.warn(`[Electron] Health check timed out, launching window anyway with retry listener...`);
+    }
+
+    createWindow(assignedPort);
   });
 });
 
