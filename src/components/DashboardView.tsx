@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { Item, Party, Invoice } from "../types.js";
 import {
   TrendingUp,
@@ -120,6 +120,36 @@ export default function DashboardView({
   const totalPurchases = invoices.filter(i => i.type === "purchase").reduce((s, i) => s + i.totalAmount, 0);
   const estProfit = totalSales - totalPurchases;
 
+  // Interactive update status state for desktop & web
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [updateStatusText, setUpdateStatusText] = useState<string | null>(null);
+
+  const handleCheckUpdateClick = async () => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.checkForUpdates) {
+      setIsCheckingUpdate(true);
+      setUpdateStatusText("तपासत आहे...");
+      try {
+        const res = await electronAPI.checkForUpdates();
+        if (res?.success) {
+          setUpdateStatusText("तपासणी पूर्ण");
+        } else {
+          setUpdateStatusText(res?.error || "अद्ययावत आहे");
+        }
+      } catch (err: any) {
+        setUpdateStatusText("कनेक्ट झाले नाही");
+      } finally {
+        setTimeout(() => {
+          setIsCheckingUpdate(false);
+          setTimeout(() => setUpdateStatusText(null), 3000);
+        }, 1200);
+      }
+    } else {
+      // In Web preview, navigate to Settings
+      onNavigateTab("settings");
+    }
+  };
+
   return (
     <div id="v-dashboard-container" className="space-y-6">
       
@@ -146,12 +176,13 @@ export default function DashboardView({
           <button
             type="button"
             id="dashboard-open-settings-update"
-            onClick={() => onNavigateTab("settings")}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer"
-            title="Auto-Update व प्रणाली सेटिंग्ज उघडा"
+            onClick={handleCheckUpdateClick}
+            disabled={isCheckingUpdate}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer disabled:opacity-60"
+            title="Auto-Update व प्रणाली सेटिंग्ज उघडा किंवा तपासा"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>v{APP_VERSION} Updates</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+            <span>{updateStatusText || `v${APP_VERSION} Updates`}</span>
           </button>
           <div className="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700 text-xs font-semibold">
             <CalendarDays className="w-4 h-4 text-slate-500" />
