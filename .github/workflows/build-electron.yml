@@ -58,14 +58,6 @@ jobs:
           git tag -f -a "$APP_TAG" -m "Release $APP_TAG"
           git push origin "$APP_TAG" --force || true
 
-      - name: Clean Stale GitHub Release If Corrupted
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "Checking for any broken release draft for $APP_TAG"
-          gh release delete "$APP_TAG" --yes || true
-
       - name: Build Web Application and Express Backend
         run: npm run build
 
@@ -74,16 +66,46 @@ jobs:
         run: |
           node scripts/ensure-icons.cjs
 
-      - name: Build and Publish Windows Executable (.exe) to GitHub Releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build Windows Executable (.exe) and Release Artifacts
         run: |
-          npx electron-builder --win --x64 --publish always
+          npx electron-builder --win --x64 --publish never
 
-      - name: Ensure Release is Published
+      - name: Ensure latest.yml Metadata Exists
+        shell: bash
+        run: |
+          node scripts/ensure-latest-yml.cjs
+
+      - name: Publish Release and Upload Windows Setup to GitHub
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Publishing release $APP_TAG"
-          gh release edit "$APP_TAG" --draft=false || true
+          echo "Checking generated desktop files in dist-desktop/:"
+          ls -lh dist-desktop/
+
+          echo "Ensuring GitHub Release exists for $APP_TAG..."
+          gh release view "$APP_TAG" || gh release create "$APP_TAG" \
+            --title "Billing On Hand $APP_TAG" \
+            --notes "Billing On Hand $APP_TAG - Offline Retail & GST ERP Desktop Setup"
+
+          echo "Uploading installer (.exe), blockmap, and update metadata to GitHub..."
+          for file in dist-desktop/*.exe dist-desktop/*.blockmap dist-desktop/latest.yml; do
+            if [ -f "$file" ]; then
+              echo "Uploading $file..."
+              for attempt in 1 2 3; do
+                if gh release upload "$APP_TAG" "$file" --clobber; then
+                  echo "Successfully uploaded $file"
+                  break
+                else
+                  echo "Upload attempt $attempt failed for $file, retrying in 5 seconds..."
+                  sleep 5
+                fi
+              done
+            fi
+          done
+
+          echo "Setting release as official and public..."
+          gh release edit "$APP_TAG" --draft=false --latest || true
+
+          echo "Final GitHub Release Assets Verification:"
+          gh release view "$APP_TAG"
