@@ -60,11 +60,13 @@
     "publish": {
       "provider": "github",
       "owner": "devrupeshgadkhe",
-      "repo": "Repo_billingOnHands"
+      "repo": "Repo_billingOnHands",
+      "publisherName": [
+        "Rupesh Gadkhe"
+      ]
     },
     "win": {
       "icon": "build/icon.ico",
-      "publisherName": "Rupesh Gadkhe",
       "verifyUpdateCodeSignature": false,
       "requestedExecutionLevel": "asInvoker",
       "legalTrademarks": "Billing On Hand",
