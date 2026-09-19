@@ -29,6 +29,26 @@ export default function App() {
   const [isReturnMode, setIsReturnMode] = useState<boolean>(false);
   const [session, setSession] = useState<{ username: string; name: string; role: string; token: string } | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
+  const [updateBanner, setUpdateBanner] = useState<{
+    state: "available" | "downloading" | "downloaded";
+    version?: string;
+    percent?: number;
+  } | null>(null);
+
+  // Auto-updater desktop listener
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.onUpdateStatus) {
+      const cleanup = electronAPI.onUpdateStatus((status: any) => {
+        if (status.state === "available" || status.state === "downloading" || status.state === "downloaded") {
+          setUpdateBanner(status);
+        } else if (status.state === "up-to-date") {
+          setUpdateBanner(null);
+        }
+      });
+      return cleanup;
+    }
+  }, []);
 
   // Fetch full data state from Express JSON API
   const fetchState = async () => {
@@ -548,6 +568,29 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        {/* Global Auto-Update Notification Banner */}
+        {updateBanner && (
+          <div id="v-auto-update-banner" className="bg-emerald-700 text-white px-4 sm:px-8 py-2.5 flex items-center justify-between text-xs font-semibold shadow-md print:hidden transition-all duration-300">
+            <div className="flex items-center space-x-2.5">
+              <RefreshCw className={`w-4 h-4 shrink-0 ${updateBanner.state === 'downloading' ? 'animate-spin' : ''}`} />
+              <span>
+                {updateBanner.state === "available" && `नवीन अपडेट v${updateBanner.version || ''} उपलब्ध आहे. डाऊनलोड आपोआप सुरू होत आहे...`}
+                {updateBanner.state === "downloading" && `नवीन अपडेट डाऊनलोड होत आहे (${updateBanner.percent || 0}%)... कृपया थांबा.`}
+                {updateBanner.state === "downloaded" && `नवीन अपडेट v${updateBanner.version || ''} डाऊनलोड पूर्ण झाले! ॲप्लिकेशन रीस्टार्ट होत आहे...`}
+              </span>
+            </div>
+            {updateBanner.state === "downloaded" && (
+              <button
+                type="button"
+                onClick={() => (window as any).electronAPI?.restartAndInstall()}
+                className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold px-3 py-1 rounded-md text-xs transition cursor-pointer shadow-sm ml-3 shrink-0"
+              >
+                आत्ताच रीस्टार्ट करा (Restart Now)
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Core Screen Router */}
         <div id="v-active-canvas" className="p-4 sm:p-8 max-w-7xl w-full mx-auto flex-1 print:p-0">

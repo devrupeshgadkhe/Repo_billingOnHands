@@ -96,14 +96,35 @@ function setupAutoUpdater() {
   });
 }
 
+function resolveAppIcon() {
+  const fs = require("fs");
+  const candidates = [
+    path.join(__dirname, "build", "icon.ico"),
+    path.join(__dirname, "assets", "icon.ico"),
+    path.join(__dirname, "public", "favicon.ico"),
+    path.join(__dirname, "build", "icon.png"),
+    path.join(__dirname, "assets", "icon.png"),
+    path.join(__dirname, "public", "icon.png")
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  return path.join(__dirname, "build", "icon.ico");
+}
+
 function createWindow(port) {
+  const appIcon = resolveAppIcon();
+  console.log(`[Electron] Using application icon from: ${appIcon}`);
+
   mainWindow = new BrowserWindow({
     width: 1360,
     height: 860,
     minWidth: 900,
     minHeight: 650,
     title: "Billing On Hand - Offline Retail & GST ERP",
-    icon: path.join(__dirname, "public", "favicon.ico"),
+    icon: appIcon,
     autoHideMenuBar: true,
     backgroundColor: "#f8fafc", // Light crisp canvas background matches the app theme perfectly
     show: false, // Prevent white screen flash while painting initial frames
@@ -152,10 +173,6 @@ function createWindow(port) {
     }
   });
 
-  mainWindow.on("closed", () => {
-    mainWindow = null;
-  });
-
   // Handle crash recoveries elegantly
   mainWindow.webContents.on("render-process-gone", (event, detailed) => {
     console.error("App render process gone:", detailed.reason);
@@ -171,15 +188,29 @@ function createWindow(port) {
     }
   });
 
-  // Trigger auto-updater check after window finishes initial load
+  // Background auto-updater checking lifecycle
+  function checkForAppUpdates() {
+    if (!app.isPackaged) {
+      console.log("[AutoUpdater] Running in unpackaged dev environment; skipping background check.");
+      return;
+    }
+    console.log("[AutoUpdater] Checking for updates on GitHub...");
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.warn("[AutoUpdater] Update check notice (network/offline):", err.message);
+    });
+  }
+
+  // Initial check 4 seconds after window finishes loading
   mainWindow.webContents.once("did-finish-load", () => {
-    setTimeout(() => {
-      if (app.isPackaged) {
-        autoUpdater.checkForUpdates().catch((err) => {
-          console.warn("[AutoUpdater] Background check error:", err.message);
-        });
-      }
-    }, 5000);
+    setTimeout(checkForAppUpdates, 4000);
+  });
+
+  // Recurring check every 45 minutes while app is running if connected to internet
+  const autoUpdateInterval = setInterval(checkForAppUpdates, 45 * 60 * 1000);
+
+  mainWindow.on("closed", () => {
+    clearInterval(autoUpdateInterval);
+    mainWindow = null;
   });
 }
 

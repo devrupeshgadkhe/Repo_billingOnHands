@@ -679,7 +679,7 @@ export default function SettingsView({
             </div>
 
             {updaterMsg && (
-              <div className="p-3 bg-indigo-50 border border-indigo-150 rounded-lg text-xs font-semibold text-indigo-900 leading-relaxed flex items-start space-x-2">
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-semibold text-indigo-900 leading-relaxed flex items-start space-x-2">
                 <ArrowUpCircle className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0 animate-pulse" />
                 <span className="flex-1">{updaterMsg}</span>
               </div>
@@ -700,6 +700,17 @@ export default function SettingsView({
               </div>
             )}
 
+            {downloadProgress === 100 && (
+              <button
+                type="button"
+                onClick={() => (window as any).electronAPI?.restartAndInstall()}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 shadow-sm"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>सॉफ्टवेअर रीस्टार्ट करा (Restart & Apply Now)</span>
+              </button>
+            )}
+
             <div className="space-y-2 pt-1">
               <button
                 type="button"
@@ -715,7 +726,7 @@ export default function SettingsView({
                 href={GITHUB_RELEASES_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="w-full bg-white hover:bg-slate-50 border border-slate-250 text-slate-700 font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2"
+                className="w-full bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
                 <span>GitHub Releases Page</span>
@@ -730,7 +741,7 @@ export default function SettingsView({
             </div>
             
             <div className="space-y-3.5 text-xs">
-              <div className="p-3 rounded-lg bg-indigo-50/20 border border-indigo-100/50 flex items-start space-x-2.5 text-[11px] text-slate-650">
+              <div className="p-3 rounded-lg bg-indigo-50/50 border border-indigo-100 flex items-start space-x-2.5 text-[11px] text-slate-600">
                 <Info className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
                 <span>All invoices, payments, inventories, and business data are safely recorded and synced to your secure profile storage.</span>
               </div>

@@ -21,6 +21,7 @@ import {
   X
 } from "lucide-react";
 import { BusinessProfile } from "../types.js";
+import { APP_VERSION } from "../version";
 
 interface SidebarProps {
   activeTab: string;
@@ -192,7 +193,7 @@ export default function Sidebar({
 
         {/* Brand version info */}
         <div id="v-sidebar-footer" className="p-4 border-t border-emerald-900 bg-emerald-950/40 text-center">
-          <span className="text-[9px] text-emerald-400 font-mono tracking-wide">Billing On Hand v2.6</span>
+          <span className="text-[9px] text-emerald-400 font-mono tracking-wide">Billing On Hand v{APP_VERSION}</span>
         </div>
 
       </div>

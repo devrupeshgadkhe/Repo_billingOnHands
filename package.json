@@ -1,7 +1,7 @@
 {
   "name": "billing-on-hand",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Billing On Hand - Offline Retail & GST ERP",
   "author": "Rupesh Gadkhe <rupeshgadkhe@gmail.com>",
   "repository": {
@@ -17,6 +17,7 @@
     "clean": "node clean.cjs",
     "lint": "tsc --noEmit",
     "version:bump": "node scripts/bump-version.cjs",
+    "version:auto": "node scripts/auto-version.cjs",
     "electron:dev": "npm run build && electron .",
     "postinstall": "node patch-electron-builder.cjs",
     "electron:pack": "npm run clean && npm run build && node pack.cjs",
@@ -51,6 +52,7 @@
   "build": {
     "appId": "com.billingonhand.app",
     "productName": "BillingOnHand",
+    "icon": "build/icon.ico",
     "directories": {
       "output": "dist-desktop"
     },
@@ -60,6 +62,7 @@
       "repo": "Repo_billingOnHands"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -79,6 +82,9 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "BillingOnHand",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false,
       "uninstallDisplayName": "BillingOnHand"
     },
@@ -86,7 +92,10 @@
       "dist/**/*",
       "main.cjs",
       "preload.cjs",
-      "package.json"
+      "package.json",
+      "build/**/*",
+      "public/**/*",
+      "assets/**/*"
     ],
     "asar": true
   }
