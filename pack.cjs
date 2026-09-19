@@ -16,6 +16,13 @@ try {
   console.warn('Warning: postinstall patch script execution failed or returned warning:', patchErr.message);
 }
 
+console.log('Ensuring application icons exist...');
+try {
+  cp.execSync('node scripts/ensure-icons.cjs', { stdio: 'inherit' });
+} catch (iconErr) {
+  console.warn('Warning: icon verification failed:', iconErr.message);
+}
+
 const command = 'electron-builder';
 const args = ['--win'];
 

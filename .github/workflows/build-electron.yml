@@ -69,6 +69,11 @@ jobs:
       - name: Build Web Application and Express Backend
         run: npm run build
 
+      - name: Ensure Application Icons Exist
+        shell: bash
+        run: |
+          node scripts/ensure-icons.cjs
+
       - name: Build and Publish Windows Executable (.exe) to GitHub Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
