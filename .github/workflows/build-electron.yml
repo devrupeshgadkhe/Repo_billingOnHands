@@ -30,15 +30,27 @@ jobs:
       - name: Install Project Dependencies
         run: npm ci || npm install
 
-      - name: Determine Application Release Version
+      - name: Automatically Upgrade Application Version
         shell: bash
         run: |
+          echo "Executing automated version upgrade..."
+          node scripts/auto-version.cjs
           VERSION=$(node -p "require('./package.json').version")
           TAG="v$VERSION"
           echo "Target Release Version: $VERSION"
           echo "Target Release Tag: $TAG"
           echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
           echo "APP_TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Commit & Push Version Bump to Repository
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json src/version.ts
+          git commit -m "chore(release): auto-upgrade version to $APP_TAG [skip ci]" || echo "No changes to commit"
+          git pull --rebase origin ${{ github.ref_name }} || true
+          git push origin HEAD:${{ github.ref_name }} || echo "Direct push skipped; tag release will proceed"
 
       - name: Ensure Git Tag Exists for Release
         shell: bash

@@ -34,7 +34,7 @@ try {
 }
 
 // Compare baseVersion and highestTagVersion
-let targetVersion = baseVersion;
+let nextVersion = baseVersion;
 if (highestTagVersion) {
   const pBase = baseVersion.split('.').map(n => parseInt(n, 10) || 0);
   const pTag = highestTagVersion.split('.').map(n => parseInt(n, 10) || 0);
@@ -49,17 +49,19 @@ if (highestTagVersion) {
     }
   }
 
-  // If baseVersion is not strictly higher than highestTagVersion, bump from highestTagVersion
-  if (!baseHigher) {
-    targetVersion = highestTagVersion;
+  if (baseHigher) {
+    // If developer explicitly set a higher version in package.json, honor it
+    nextVersion = baseVersion;
+  } else {
+    // Otherwise automatically increment patch from the highest release tag
+    const parts = highestTagVersion.split('.').map(n => parseInt(n, 10) || 0);
+    while (parts.length < 3) parts.push(0);
+    parts[2] += 1;
+    nextVersion = parts.join('.');
   }
+} else {
+  nextVersion = baseVersion || '1.0.0';
 }
-
-// Increment patch of targetVersion
-const parts = targetVersion.split('.').map(n => parseInt(n, 10) || 0);
-while (parts.length < 3) parts.push(0);
-parts[2] += 1;
-const nextVersion = parts.join('.');
 
 pkg.version = nextVersion;
 fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
