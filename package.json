@@ -52,6 +52,7 @@
   "build": {
     "appId": "com.billingonhand.app",
     "productName": "BillingOnHand",
+    "copyright": "Copyright © 2026 Rupesh Gadkhe. All rights reserved.",
     "icon": "build/icon.ico",
     "directories": {
       "output": "dist-desktop"
@@ -63,6 +64,10 @@
     },
     "win": {
       "icon": "build/icon.ico",
+      "publisherName": "Rupesh Gadkhe",
+      "verifyUpdateCodeSignature": false,
+      "requestedExecutionLevel": "asInvoker",
+      "legalTrademarks": "Billing On Hand",
       "target": [
         {
           "target": "nsis",
@@ -71,12 +76,11 @@
           ]
         }
       ],
-      "artifactName": "${productName}-Setup-${version}.${ext}",
-      "requestedExecutionLevel": "highestAvailable"
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
-      "perMachine": true,
+      "perMachine": false,
       "allowElevation": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,

@@ -14,8 +14,10 @@ import {
   AlertOctagon,
   ArrowRight,
   TrendingDown,
-  CalendarDays
+  CalendarDays,
+  RefreshCw
 } from "lucide-react";
+import { APP_VERSION, APP_BUILD_DATE } from "../version.js";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -122,16 +124,39 @@ export default function DashboardView({
     <div id="v-dashboard-container" className="space-y-6">
       
       {/* Page Title Header */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-3 border-b border-slate-200 gap-3">
         <div>
-          <h1 className="text-2xl font-bold font-sans tracking-tight text-slate-900">
-            Dashboard
-          </h1>
+          <div className="flex items-center space-x-3">
+            <h1 className="text-2xl font-bold font-sans tracking-tight text-slate-900">
+              Dashboard
+            </h1>
+            <div 
+              id="dashboard-version-badge"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 select-none shadow-2xs"
+              title={`Billing On Hand Version: v${APP_VERSION} (Build: ${APP_BUILD_DATE})`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="font-mono font-bold">v{APP_VERSION}</span>
+              <span className="text-[10px] text-emerald-700/80 font-medium">| Active ERP</span>
+            </div>
+          </div>
           <p className="text-xs text-slate-500 mt-1">Overview of your sales, purchases, stock, and balances</p>
         </div>
-        <div className="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700 text-xs font-semibold">
-          <CalendarDays className="w-4 h-4 text-slate-500" />
-          <span>F.Y. 2026-27</span>
+        <div className="flex items-center space-x-2 self-start sm:self-auto">
+          <button
+            type="button"
+            id="dashboard-open-settings-update"
+            onClick={() => onNavigateTab("settings")}
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer"
+            title="Auto-Update व प्रणाली सेटिंग्ज उघडा"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>v{APP_VERSION} Updates</span>
+          </button>
+          <div className="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700 text-xs font-semibold">
+            <CalendarDays className="w-4 h-4 text-slate-500" />
+            <span>F.Y. 2026-27</span>
+          </div>
         </div>
       </div>
 

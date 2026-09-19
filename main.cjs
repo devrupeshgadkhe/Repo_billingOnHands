@@ -13,6 +13,8 @@ const { autoUpdater } = require("electron-updater");
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.allowPrerelease = false;
+autoUpdater.allowDowngrade = false;
+autoUpdater.logger = console;
 
 // Dynamic free port resolution to allow multiple instances or handle blocked ports gracefully
 function getFreePort(startPort, callback) {
