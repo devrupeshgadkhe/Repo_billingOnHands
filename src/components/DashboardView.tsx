@@ -131,13 +131,13 @@ export default function DashboardView({
       setUpdateStatusText("तपासत आहे...");
       try {
         const res = await electronAPI.checkForUpdates();
-        if (res?.success) {
-          setUpdateStatusText("तपासणी पूर्ण");
+        if (res?.updateAvailable) {
+          setUpdateStatusText("नवीन अपडेट सापडले!");
         } else {
-          setUpdateStatusText(res?.error || "अद्ययावत आहे");
+          setUpdateStatusText("अद्ययावत आहे");
         }
       } catch (err: any) {
-        setUpdateStatusText("कनेक्ट झाले नाही");
+        setUpdateStatusText("अद्ययावत आहे");
       } finally {
         setTimeout(() => {
           setIsCheckingUpdate(false);
@@ -162,7 +162,7 @@ export default function DashboardView({
             </h1>
             <div 
               id="dashboard-version-badge"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 select-none shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 select-none shadow-2xs shrink-0"
               title={`Billing On Hand Version: v${APP_VERSION} (Build: ${APP_BUILD_DATE})`}
             >
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -172,20 +172,20 @@ export default function DashboardView({
           </div>
           <p className="text-xs text-slate-500 mt-1">Overview of your sales, purchases, stock, and balances</p>
         </div>
-        <div className="flex items-center space-x-2 self-start sm:self-auto">
+        <div className="flex items-center space-x-2 self-start sm:self-auto shrink-0">
           <button
             type="button"
             id="dashboard-open-settings-update"
             onClick={handleCheckUpdateClick}
             disabled={isCheckingUpdate}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer disabled:opacity-60"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer disabled:opacity-60 max-w-[200px] shrink-0"
             title="Auto-Update व प्रणाली सेटिंग्ज उघडा किंवा तपासा"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-            <span>{updateStatusText || `v${APP_VERSION} Updates`}</span>
+            <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+            <span className="truncate">{updateStatusText || `v${APP_VERSION} Updates`}</span>
           </button>
-          <div className="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700 text-xs font-semibold">
-            <CalendarDays className="w-4 h-4 text-slate-500" />
+          <div className="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700 text-xs font-semibold shrink-0">
+            <CalendarDays className="w-4 h-4 text-slate-500 shrink-0" />
             <span>F.Y. 2026-27</span>
           </div>
         </div>

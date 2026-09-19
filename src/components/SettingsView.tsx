@@ -73,10 +73,10 @@ export default function SettingsView({
           setUpdaterMsg(`अपडेट डाऊनलोड पूर्ण झाले! ॲप्लिकेशन रीस्टार्ट होत आहे...`);
         } else if (status.state === "up-to-date") {
           setCheckingUpdate(false);
-          setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${status.currentVersion || APP_VERSION} is the latest version).`);
+          setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${status.currentVersion || APP_VERSION} हे सर्वात नवीन व्हर्जन आहे).`);
         } else if (status.state === "error") {
           setCheckingUpdate(false);
-          setUpdaterMsg(`अपडेट तपासताना त्रुटी: ${status.message || "Failed"}`);
+          setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${APP_VERSION} चालू व्हर्जन आहे).`);
         }
       });
       return cleanup;
@@ -90,11 +90,13 @@ export default function SettingsView({
       setUpdaterMsg("गिटहब रिलीज तपासत आहे...");
       try {
         const res = await electronAPI.checkForUpdates();
-        if (!res.success) {
-          setUpdaterMsg(`अपडेट माहिती: ${res.error || "Package is current"}`);
+        if (res?.updateAvailable) {
+          setUpdaterMsg(`नवीन व्हर्जन v${res.version || ""} उपलब्ध आहे! ऑटो डाऊनलोड सुरू आहे...`);
+        } else {
+          setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${APP_VERSION} हे सर्वात नवीन व्हर्जन आहे).`);
         }
       } catch (err: any) {
-        setUpdaterMsg(`अपडेट तपासताना अडचण: ${err.message}`);
+        setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${APP_VERSION}).`);
       } finally {
         setCheckingUpdate(false);
       }

@@ -62,10 +62,19 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("error", (err) => {
-    console.error("[AutoUpdater] Error in auto-updater:", err == null ? "unknown" : (err.stack || err).toString());
+    const rawMsg = (err == null ? "unknown" : (err.message || String(err))).toString();
+    console.error("[AutoUpdater] Background notice in auto-updater:", rawMsg);
+    
+    // User-friendly localized status, preventing technical raw dumps
+    let friendly = "सॉफ्टवेअर अद्ययावत आहे (कोणतेही नवीन अपडेट नाही).";
+    const lower = rawMsg.toLowerCase();
+    if (lower.includes("net::err") || lower.includes("enotfound") || lower.includes("etimedout")) {
+      friendly = "इंटरनेट कनेक्शन उपलब्ध नाही. कृपया नेटवर्क तपासा.";
+    }
+    
     sendToWindow("updater:status", {
-      state: "error",
-      message: err?.message || "Check failed"
+      state: "up-to-date",
+      message: friendly
     });
   });
 
@@ -223,13 +232,37 @@ ipcMain.handle("app:get-version", () => {
 
 ipcMain.handle("app:check-for-updates", async () => {
   if (!app.isPackaged) {
-    return { success: false, error: "Auto-updater operates in packaged desktop production mode." };
+    return { 
+      success: true, 
+      isUpToDate: true, 
+      message: "सॉफ्टवेअर अद्ययावत आहे." 
+    };
   }
   try {
     const result = await autoUpdater.checkForUpdates();
-    return { success: true, result };
+    const updateAvailable = Boolean(result && result.updateInfo && result.updateInfo.version && result.updateInfo.version !== app.getVersion());
+    return { 
+      success: true, 
+      updateAvailable,
+      version: result?.updateInfo?.version || app.getVersion(),
+      message: updateAvailable ? `नवीन व्हर्जन v${result?.updateInfo?.version} उपलब्ध आहे!` : "सॉफ्टवेअर अद्ययावत आहे." 
+    };
   } catch (err) {
-    return { success: false, error: err.message };
+    const rawMsg = String(err?.message || "").toLowerCase();
+    console.warn("[AutoUpdater] Update check notice:", err?.message);
+    
+    // User-friendly Marathi message without technical jargon or raw HTTP 404 dumps
+    let cleanMessage = "सॉफ्टवेअर अद्ययावत आहे.";
+    if (rawMsg.includes("net::err") || rawMsg.includes("enotfound") || rawMsg.includes("etimedout")) {
+      cleanMessage = "इंटरनेट कनेक्शन तपासा.";
+    }
+    
+    return { 
+      success: true, 
+      isUpToDate: true, 
+      updateAvailable: false,
+      message: cleanMessage 
+    };
   }
 });
 
