@@ -1,7 +1,7 @@
 {
   "name": "billing-on-hand",
   "private": true,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Billing On Hand - Offline Retail & GST ERP",
   "author": "Rupesh Gadkhe <rupeshgadkhe@gmail.com>",
   "repository": {
