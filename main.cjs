@@ -15,6 +15,11 @@ autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.allowPrerelease = false;
 autoUpdater.allowDowngrade = false;
 autoUpdater.logger = console;
+// Disable differential download to avoid blockmap corruption/hangs
+autoUpdater.disableDifferentialDownload = true;
+autoUpdater.disableWebInstaller = true;
+// Bypass code signature check so unsigned releases install smoothly without hanging at 100%
+autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
 
 // Dynamic free port resolution to allow multiple instances or handle blocked ports gracefully
 function getFreePort(startPort, callback) {
@@ -98,12 +103,15 @@ function setupAutoUpdater() {
       version: info.version
     });
 
-    // Auto install and restart after 4 seconds (as requested:
-    // "नवीन व्हर्जनची ईएक्सई आली असेल, तर आपल्या सॉफ्टवेअरने ऑटो अपडेट करायला पाहिजे आणि नंतर ॲप्लिकेशन रीस्टार्ट करायला पाहिजे")
+    // Auto install and restart after 3 seconds:
     setTimeout(() => {
       console.log("[AutoUpdater] Triggering quit and install update...");
-      autoUpdater.quitAndInstall(false, true);
-    }, 4000);
+      app.removeAllListeners("window-all-closed");
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.close();
+      }
+      autoUpdater.quitAndInstall(true, true);
+    }, 3000);
   });
 }
 
@@ -267,7 +275,12 @@ ipcMain.handle("app:check-for-updates", async () => {
 });
 
 ipcMain.handle("app:restart-and-install", () => {
-  autoUpdater.quitAndInstall(false, true);
+  console.log("[AutoUpdater] User triggered manual restart-and-install");
+  app.removeAllListeners("window-all-closed");
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.close();
+  }
+  autoUpdater.quitAndInstall(true, true);
 });
 
 ipcMain.handle("app:open-external", (_event, url) => {

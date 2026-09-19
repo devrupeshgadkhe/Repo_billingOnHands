@@ -42,7 +42,7 @@ export default function App() {
       const cleanup = electronAPI.onUpdateStatus((status: any) => {
         if (status.state === "available" || status.state === "downloading" || status.state === "downloaded") {
           setUpdateBanner(status);
-        } else if (status.state === "up-to-date") {
+        } else if (status.state === "up-to-date" || status.state === "error") {
           setUpdateBanner(null);
         }
       });
@@ -576,7 +576,11 @@ export default function App() {
               <RefreshCw className={`w-4 h-4 shrink-0 ${updateBanner.state === 'downloading' ? 'animate-spin' : ''}`} />
               <span>
                 {updateBanner.state === "available" && `नवीन अपडेट v${updateBanner.version || ''} उपलब्ध आहे. डाऊनलोड आपोआप सुरू होत आहे...`}
-                {updateBanner.state === "downloading" && `नवीन अपडेट डाऊनलोड होत आहे (${updateBanner.percent || 0}%)... कृपया थांबा.`}
+                {updateBanner.state === "downloading" && (
+                  (updateBanner.percent && updateBanner.percent >= 100)
+                    ? "डाऊनलोड १००% पूर्ण झाले. अपडेट इन्स्टॉल करण्याची तयारी करत आहे..."
+                    : `नवीन अपडेट डाऊनलोड होत आहे (${updateBanner.percent || 0}%)... कृपया थांबा.`
+                )}
                 {updateBanner.state === "downloaded" && `नवीन अपडेट v${updateBanner.version || ''} डाऊनलोड पूर्ण झाले! ॲप्लिकेशन रीस्टार्ट होत आहे...`}
               </span>
             </div>
