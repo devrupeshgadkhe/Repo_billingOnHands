@@ -51,16 +51,54 @@ export default function ChallanPrintModal({
         return `
           @media print {
             @page { size: A4 portrait; margin: 8mm; }
-            body { font-size: 11px !important; }
+            html, body { 
+              background: #ffffff !important; 
+              color: #000000 !important; 
+              margin: 0 !important; 
+              padding: 0 !important; 
+              height: auto !important; 
+              min-height: 0 !important; 
+              font-size: 11px !important; 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+            }
+            body > #root {
+              display: none !important;
+              height: 0 !important;
+              min-height: 0 !important;
+              overflow: hidden !important;
+            }
             #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
+            table { page-break-inside: auto !important; break-inside: auto !important; }
+            thead { display: table-header-group !important; }
+            tr { page-break-inside: avoid !important; break-inside: avoid !important; }
           }
         `;
       case "a5":
         return `
           @media print {
             @page { size: A5 landscape; margin: 6mm; }
-            body { font-size: 9.5px !important; }
+            html, body { 
+              background: #ffffff !important; 
+              color: #000000 !important; 
+              margin: 0 !important; 
+              padding: 0 !important; 
+              height: auto !important; 
+              min-height: 0 !important; 
+              font-size: 9.5px !important; 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+            }
+            body > #root {
+              display: none !important;
+              height: 0 !important;
+              min-height: 0 !important;
+              overflow: hidden !important;
+            }
             #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
+            table { page-break-inside: auto !important; break-inside: auto !important; }
+            thead { display: table-header-group !important; }
+            tr { page-break-inside: avoid !important; break-inside: avoid !important; }
           }
         `;
       default:
@@ -353,7 +391,7 @@ export default function ChallanPrintModal({
             </div>
 
             {/* Line Items Table */}
-            <div className="border border-slate-300 rounded-sm overflow-hidden mb-4">
+            <div className="border border-slate-300 rounded-sm overflow-hidden mb-4 print:overflow-visible">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-900 text-white font-semibold uppercase tracking-wider text-[11px]">

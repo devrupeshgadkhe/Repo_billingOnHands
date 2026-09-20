@@ -91,17 +91,240 @@ export default function QuotationPrintModal({
       case "a4":
         return `
           @media print {
-            @page { size: A4 portrait; margin: 8mm; }
-            body { font-size: 11px !important; }
-            #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
+            @page { 
+              size: A4 portrait; 
+              margin: 8mm 8mm; 
+            }
+            html, body { 
+              background: #ffffff !important; 
+              color: #000000 !important; 
+              margin: 0 !important; 
+              padding: 0 !important; 
+              height: auto !important; 
+              min-height: 0 !important; 
+              font-size: 11px !important; 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+            }
+            /* CRITICAL: Completely hide #root to prevent blank first page */
+            body > #root {
+              display: none !important;
+              height: 0 !important;
+              min-height: 0 !important;
+              overflow: hidden !important;
+            }
+            #print-modal-container {
+              position: static !important;
+              inset: auto !important;
+              background: transparent !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              width: 100% !important;
+              height: auto !important;
+              min-height: 0 !important;
+              display: block !important;
+              overflow: visible !important;
+            }
+            #print-modal-card {
+              position: static !important;
+              display: block !important;
+              box-shadow: none !important;
+              border: none !important;
+              max-height: none !important;
+              height: auto !important;
+              min-height: 0 !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              border-radius: 0 !important;
+              background: transparent !important;
+              overflow: visible !important;
+            }
+            #print-modal-toolbar {
+              display: none !important;
+            }
+            #print-area {
+              padding: 0 !important;
+              margin: 0 !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              height: auto !important;
+              min-height: 0 !important;
+              overflow: visible !important;
+              display: block !important;
+            }
+            .quotation-sheet {
+              border: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              box-shadow: none !important;
+            }
+            .quotation-header-block {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+            .quotation-client-block {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+              page-break-after: auto !important;
+              break-after: auto !important;
+            }
+            .quotation-table-container {
+              overflow: visible !important;
+              display: block !important;
+              width: 100% !important;
+              margin-bottom: 12px !important;
+            }
+            table.quotation-table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              page-break-inside: auto !important;
+              break-inside: auto !important;
+            }
+            table.quotation-table thead {
+              display: table-header-group !important;
+            }
+            table.quotation-table tbody {
+              display: table-row-group !important;
+            }
+            table.quotation-table tr {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            table.quotation-table td,
+            table.quotation-table th {
+              padding: 5px 8px !important;
+            }
+            .quotation-summary-block {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            .quotation-footer-block {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
           }
         `;
       case "a5":
         return `
           @media print {
-            @page { size: A5 landscape; margin: 6mm; }
-            body { font-size: 9.5px !important; }
-            #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
+            @page { 
+              size: A5 landscape; 
+              margin: 6mm 6mm; 
+            }
+            html, body { 
+              background: #ffffff !important; 
+              color: #000000 !important; 
+              margin: 0 !important; 
+              padding: 0 !important; 
+              height: auto !important; 
+              min-height: 0 !important; 
+              font-size: 9.5px !important; 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+            }
+            body > #root {
+              display: none !important;
+              height: 0 !important;
+              min-height: 0 !important;
+              overflow: hidden !important;
+            }
+            #print-modal-container {
+              position: static !important;
+              inset: auto !important;
+              background: transparent !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              width: 100% !important;
+              height: auto !important;
+              min-height: 0 !important;
+              display: block !important;
+              overflow: visible !important;
+            }
+            #print-modal-card {
+              position: static !important;
+              display: block !important;
+              box-shadow: none !important;
+              border: none !important;
+              max-height: none !important;
+              height: auto !important;
+              min-height: 0 !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              border-radius: 0 !important;
+              background: transparent !important;
+              overflow: visible !important;
+            }
+            #print-modal-toolbar {
+              display: none !important;
+            }
+            #print-area {
+              padding: 0 !important;
+              margin: 0 !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              height: auto !important;
+              min-height: 0 !important;
+              overflow: visible !important;
+              display: block !important;
+            }
+            .quotation-sheet {
+              border: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              width: 100% !important;
+              max-width: 100% !important;
+              box-shadow: none !important;
+            }
+            .quotation-header-block {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            .quotation-client-block {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            .quotation-table-container {
+              overflow: visible !important;
+              display: block !important;
+              width: 100% !important;
+              margin-bottom: 8px !important;
+            }
+            table.quotation-table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              page-break-inside: auto !important;
+              break-inside: auto !important;
+            }
+            table.quotation-table thead {
+              display: table-header-group !important;
+            }
+            table.quotation-table tbody {
+              display: table-row-group !important;
+            }
+            table.quotation-table tr {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            table.quotation-table td,
+            table.quotation-table th {
+              padding: 4px 6px !important;
+            }
+            .quotation-summary-block {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
+            .quotation-footer-block {
+              page-break-inside: avoid !important;
+              break-inside: avoid !important;
+            }
           }
         `;
       default:
@@ -112,12 +335,12 @@ export default function QuotationPrintModal({
   const modalContent = (
     <div
       id="print-modal-container"
-      className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static"
+      className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static print:block"
     >
       <style>{getPageSetupCSS()}</style>
       <div
         id="print-modal-card"
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-h-none print:max-w-none print:w-full"
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-h-none print:max-w-none print:w-full print:block print:overflow-visible print:p-0 print:m-0"
       >
         
         {/* Modal Controls Header (Hidden in Print) */}
@@ -194,24 +417,34 @@ export default function QuotationPrintModal({
         {/* Printable Document Body */}
         <div
           id="print-area"
-          className="overflow-y-auto p-6 md:p-8 flex-1 bg-white print:p-0 print:overflow-visible"
+          className="overflow-y-auto p-6 md:p-8 flex-1 bg-white print:p-0 print:m-0 print:overflow-visible print:block print:w-full print:max-w-none"
         >
-          <div className={`mx-auto bg-white border border-slate-300 p-8 print:border-none print:p-0 ${pageSize === 'a5' ? 'max-w-[148mm]' : 'max-w-[210mm]'}`}>
+          <div className={`quotation-sheet mx-auto bg-white border border-slate-300 p-8 print:border-none print:p-0 print:m-0 print:w-full print:max-w-none ${pageSize === 'a5' ? 'max-w-[148mm]' : 'max-w-[210mm]'}`}>
             
             {/* Document Header */}
-            <div className="flex justify-between items-start border-b-2 border-slate-900 pb-5 mb-5">
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-slate-900 uppercase">
-                  {business.name || "Business Firm"}
-                </h1>
-                <p className="text-xs text-slate-600 mt-1 max-w-sm whitespace-pre-line leading-relaxed">
-                  {business.address}
-                </p>
-                <div className="mt-2 text-xs text-slate-600 space-y-0.5">
-                  {business.phone && <p><span className="font-semibold text-slate-700">Phone:</span> {business.phone}</p>}
-                  {business.email && <p><span className="font-semibold text-slate-700">Email:</span> {business.email}</p>}
-                  {business.gstin && <p><span className="font-semibold text-slate-700 font-mono">GSTIN:</span> {business.gstin}</p>}
-                  {business.state && <p><span className="font-semibold text-slate-700">State:</span> {business.state}</p>}
+            <div className="quotation-header-block flex justify-between items-start border-b-2 border-slate-900 pb-5 mb-5 print:pb-3 print:mb-3">
+              <div className="flex items-start gap-3">
+                {business.logoUrl && (
+                  <img
+                    src={business.logoUrl}
+                    referrerPolicy="no-referrer"
+                    alt="Logo"
+                    className="w-12 h-12 object-contain rounded border border-slate-200 p-0.5 shrink-0"
+                  />
+                )}
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight text-slate-900 uppercase">
+                    {business.name || "Business Firm"}
+                  </h1>
+                  <p className="text-xs text-slate-600 mt-1 max-w-sm whitespace-pre-line leading-relaxed">
+                    {business.address}
+                  </p>
+                  <div className="mt-2 text-xs text-slate-600 space-y-0.5">
+                    {business.phone && <p><span className="font-semibold text-slate-700">Phone:</span> {business.phone}</p>}
+                    {business.email && <p><span className="font-semibold text-slate-700">Email:</span> {business.email}</p>}
+                    {business.gstin && <p><span className="font-semibold text-slate-700 font-mono">GSTIN:</span> {business.gstin}</p>}
+                    {business.state && <p><span className="font-semibold text-slate-700">State:</span> {business.state}</p>}
+                  </div>
                 </div>
               </div>
 
@@ -241,7 +474,7 @@ export default function QuotationPrintModal({
             </div>
 
             {/* Client / Customer Party Information Box */}
-            <div className="grid grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6 text-xs text-slate-700">
+            <div className="quotation-client-block grid grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6 text-xs text-slate-700 print:mb-4 print:p-3">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                   QUOTATION TO (CLIENT)
@@ -277,43 +510,43 @@ export default function QuotationPrintModal({
             </div>
 
             {/* Items Table */}
-            <div className="mb-6 overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+            <div className="quotation-table-container mb-6 overflow-x-auto print:overflow-visible print:mb-4">
+              <table className="quotation-table w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="bg-slate-900 text-white font-semibold border-b border-slate-900">
-                    <th className="py-2.5 px-3 text-center w-8">#</th>
-                    <th className="py-2.5 px-3">Item Description</th>
-                    <th className="py-2.5 px-3 text-center">HSN</th>
-                    <th className="py-2.5 px-3 text-right">Qty</th>
-                    <th className="py-2.5 px-3 text-right">Rate</th>
-                    <th className="py-2.5 px-3 text-right">Discount</th>
-                    <th className="py-2.5 px-3 text-right">Taxable</th>
-                    <th className="py-2.5 px-3 text-right">GST %</th>
-                    <th className="py-2.5 px-3 text-right">Total</th>
+                  <tr className="bg-slate-900 text-white font-semibold border-b border-slate-900 print:bg-slate-900 print:text-white">
+                    <th className="py-2.5 px-3 text-center w-8 print:py-1.5 print:px-2">#</th>
+                    <th className="py-2.5 px-3 print:py-1.5 print:px-2">Item Description</th>
+                    <th className="py-2.5 px-3 text-center print:py-1.5 print:px-2">HSN</th>
+                    <th className="py-2.5 px-3 text-right print:py-1.5 print:px-2">Qty</th>
+                    <th className="py-2.5 px-3 text-right print:py-1.5 print:px-2">Rate</th>
+                    <th className="py-2.5 px-3 text-right print:py-1.5 print:px-2">Discount</th>
+                    <th className="py-2.5 px-3 text-right print:py-1.5 print:px-2">Taxable</th>
+                    <th className="py-2.5 px-3 text-right print:py-1.5 print:px-2">GST %</th>
+                    <th className="py-2.5 px-3 text-right print:py-1.5 print:px-2">Total</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-200">
+                <tbody className="divide-y divide-slate-200 print:divide-slate-300">
                   {quotation.items.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="py-2.5 px-3 text-center text-slate-500 font-mono">{idx + 1}</td>
-                      <td className="py-2.5 px-3 font-medium text-slate-800">
+                    <tr key={idx} className="hover:bg-slate-50 print:break-inside-avoid">
+                      <td className="py-2.5 px-3 text-center text-slate-500 font-mono print:py-1.5 print:px-2">{idx + 1}</td>
+                      <td className="py-2.5 px-3 font-medium text-slate-800 print:py-1.5 print:px-2">
                         {item.itemName}
                       </td>
-                      <td className="py-2.5 px-3 text-center font-mono text-slate-600">{item.hsn || "-"}</td>
-                      <td className="py-2.5 px-3 text-right font-medium text-slate-800">
+                      <td className="py-2.5 px-3 text-center font-mono text-slate-600 print:py-1.5 print:px-2">{item.hsn || "-"}</td>
+                      <td className="py-2.5 px-3 text-right font-medium text-slate-800 print:py-1.5 print:px-2">
                         {item.quantity} {item.unit || "PCS"}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-700">{formatINR(item.price)}</td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-500">
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-700 print:py-1.5 print:px-2">{formatINR(item.price)}</td>
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-500 print:py-1.5 print:px-2">
                         {item.discount ? formatINR(item.discount) : "-"}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-700 font-medium">
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-700 font-medium print:py-1.5 print:px-2">
                         {formatINR(item.amountBeforeTax)}
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                      <td className="py-2.5 px-3 text-right font-mono text-slate-600 print:py-1.5 print:px-2">
                         {item.gstRate}%
                       </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900">
+                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 print:py-1.5 print:px-2">
                         {formatINR(item.totalAmount)}
                       </td>
                     </tr>
@@ -323,7 +556,7 @@ export default function QuotationPrintModal({
             </div>
 
             {/* Calculations & Summary Section */}
-            <div className="grid grid-cols-12 gap-6 mb-6">
+            <div className="quotation-summary-block grid grid-cols-12 gap-6 mb-6 print:mb-4 print:gap-4 print:break-inside-avoid">
               {/* Left Column: Words, Notes, Terms */}
               <div className="col-span-7 space-y-4">
                 {/* Amount in words */}
@@ -411,7 +644,7 @@ export default function QuotationPrintModal({
             </div>
 
             {/* Signatures & Footer */}
-            <div className="mt-8 pt-6 border-t border-slate-200 grid grid-cols-2 gap-4 items-end text-xs">
+            <div className="quotation-footer-block mt-8 pt-6 border-t border-slate-200 grid grid-cols-2 gap-4 items-end text-xs print:mt-4 print:pt-4 print:break-inside-avoid">
               <div>
                 <p className="text-[11px] text-slate-500">
                   This quotation is a price estimate subject to our terms and conditions above. It does not constitute a tax invoice.
@@ -419,7 +652,7 @@ export default function QuotationPrintModal({
               </div>
 
               <div className="text-right">
-                <p className="text-xs font-semibold text-slate-800">For {business.name}</p>
+                <p className="text-xs font-semibold text-slate-800">{business.signatureText || `For ${business.name}`}</p>
                 <div className="h-16 flex items-end justify-end">
                   <span className="text-[11px] text-slate-400 border-t border-slate-300 px-6 pt-1">
                     Authorized Signatory

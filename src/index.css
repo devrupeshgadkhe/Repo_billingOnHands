@@ -20,8 +20,24 @@ html, body {
     color: #000000 !important;
     margin: 0 !important;
     padding: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  /* Reset #root height in print so it doesn't take 100vh of blank space */
+  #root {
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  /* When a print modal is portaled into document.body as a direct child, hide #root completely to avoid blank page 1 */
+  body:has(> #print-modal-container) > #root {
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
   }
 
   /* When a print modal is open, completely hide the rest of the app */
@@ -44,7 +60,8 @@ html, body {
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
-    min-height: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
     display: block !important;
     overflow: visible !important;
   }
@@ -53,17 +70,25 @@ html, body {
     box-shadow: none !important;
     border: none !important;
     max-height: none !important;
+    height: auto !important;
+    min-height: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     padding: 0 !important;
     margin: 0 !important;
     border-radius: 0 !important;
     background: transparent !important;
+    display: block !important;
+    overflow: visible !important;
   }
 
   #print-area {
     padding: 0 !important;
     margin: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
     overflow: visible !important;
+    display: block !important;
   }
 }
