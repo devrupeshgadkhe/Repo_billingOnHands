@@ -24,10 +24,13 @@ html, body {
     print-color-adjust: exact !important;
   }
 
-  /* When the invoice print modal is open, completely hide the rest of the app */
+  /* When a print modal is open, completely hide the rest of the app */
   #v-sidebar,
   #v-sidebar-overlay,
   #app-header,
+  #v-app-toolbar,
+  #v-app-main,
+  #v-auto-update-banner,
   #app-main-content,
   #print-modal-toolbar,
   .no-print {

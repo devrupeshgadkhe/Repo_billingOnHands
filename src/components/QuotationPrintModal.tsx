@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { Quotation, BusinessProfile } from "../types.js";
 import { Printer, X, FileText, CheckCircle2, Calendar, ShieldCheck, ArrowRight } from "lucide-react";
 
@@ -85,12 +86,45 @@ export default function QuotationPrintModal({
 
   const currentStatus = statusColors[quotation.status] || statusColors.draft;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-h-none print:max-w-none print:w-full">
+  const getPageSetupCSS = () => {
+    switch (pageSize) {
+      case "a4":
+        return `
+          @media print {
+            @page { size: A4 portrait; margin: 8mm; }
+            body { font-size: 11px !important; }
+            #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
+          }
+        `;
+      case "a5":
+        return `
+          @media print {
+            @page { size: A5 landscape; margin: 6mm; }
+            body { font-size: 9.5px !important; }
+            #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
+          }
+        `;
+      default:
+        return "";
+    }
+  };
+
+  const modalContent = (
+    <div
+      id="print-modal-container"
+      className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static"
+    >
+      <style>{getPageSetupCSS()}</style>
+      <div
+        id="print-modal-card"
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-h-none print:max-w-none print:w-full"
+      >
         
         {/* Modal Controls Header (Hidden in Print) */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 print:hidden">
+        <div
+          id="print-modal-toolbar"
+          className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 print:hidden"
+        >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200">
               <FileText className="w-5 h-5" />
@@ -140,7 +174,7 @@ export default function QuotationPrintModal({
               type="button"
               id="quotation-print-button"
               onClick={handlePrint}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition active:scale-95"
+              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold shadow-sm transition active:scale-95 cursor-pointer"
             >
               <Printer className="w-4 h-4" />
               Print / Save PDF
@@ -150,7 +184,7 @@ export default function QuotationPrintModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
+              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -158,7 +192,10 @@ export default function QuotationPrintModal({
         </div>
 
         {/* Printable Document Body */}
-        <div className="overflow-y-auto p-6 md:p-8 flex-1 bg-white print:p-0 print:overflow-visible">
+        <div
+          id="print-area"
+          className="overflow-y-auto p-6 md:p-8 flex-1 bg-white print:p-0 print:overflow-visible"
+        >
           <div className={`mx-auto bg-white border border-slate-300 p-8 print:border-none print:p-0 ${pageSize === 'a5' ? 'max-w-[148mm]' : 'max-w-[210mm]'}`}>
             
             {/* Document Header */}
@@ -397,4 +434,9 @@ export default function QuotationPrintModal({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return modalContent;
+  }
+  return createPortal(modalContent, document.body);
 }

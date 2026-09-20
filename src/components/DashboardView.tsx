@@ -128,16 +128,16 @@ export default function DashboardView({
     const electronAPI = (window as any).electronAPI;
     if (electronAPI?.checkForUpdates) {
       setIsCheckingUpdate(true);
-      setUpdateStatusText("तपासत आहे...");
+      setUpdateStatusText("Checking...");
       try {
         const res = await electronAPI.checkForUpdates();
         if (res?.updateAvailable) {
-          setUpdateStatusText("नवीन अपडेट सापडले!");
+          setUpdateStatusText("Update Available!");
         } else {
-          setUpdateStatusText("अद्ययावत आहे");
+          setUpdateStatusText("Up to Date");
         }
       } catch (err: any) {
-        setUpdateStatusText("अद्ययावत आहे");
+        setUpdateStatusText("Up to Date");
       } finally {
         setTimeout(() => {
           setIsCheckingUpdate(false);
@@ -179,7 +179,7 @@ export default function DashboardView({
             onClick={handleCheckUpdateClick}
             disabled={isCheckingUpdate}
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer disabled:opacity-60 max-w-[200px] shrink-0"
-            title="Auto-Update व प्रणाली सेटिंग्ज उघडा किंवा तपासा"
+            title="Check for updates and system settings"
           >
             <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
             <span className="truncate">{updateStatusText || `v${APP_VERSION} Updates`}</span>

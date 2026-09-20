@@ -153,8 +153,8 @@ export default function TransactionsView({
     const amountNum = Number(formAmount);
     if (isNaN(amountNum) || amountNum <= 0) {
       await showAlert({
-        title: "अवैध रक्कम (Invalid Amount)",
-        message: "कृपया शून्यपेक्षा जास्त वैध रक्कम टाका (Amount must be greater than zero).",
+        title: "Invalid Amount",
+        message: "Please enter a valid amount greater than zero.",
         variant: "warning"
       });
       return;
@@ -163,8 +163,8 @@ export default function TransactionsView({
     const finalCategory = isCustomCategory ? customCategory.trim() : formCategory;
     if (!finalCategory.trim()) {
       await showAlert({
-        title: "कॅटेगरी आवश्यक (Category Required)",
-        message: "कृपया योग्य कॅटेगरी निवडा किंवा टाका (Please select or enter category).",
+        title: "Category Required",
+        message: "Please select or enter a category.",
         variant: "warning"
       });
       return;
@@ -187,9 +187,9 @@ export default function TransactionsView({
   // Handle deletion
   const handleDelete = async (id: string) => {
     const confirmed = await showConfirm({
-      title: "व्यवहार नोंद हटवा (Delete Transaction)",
-      message: "तुम्हाला खात्री आहे का ही उत्पन्न/खर्च व्यवहार नोंद कायमची हटवायची आहे?",
-      confirmText: "नोंद हटवा",
+      title: "Delete Transaction",
+      message: "Are you sure you want to permanently delete this income/expense transaction?",
+      confirmText: "Delete Transaction",
       variant: "danger"
     });
     if (confirmed) {

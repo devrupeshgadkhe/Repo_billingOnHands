@@ -4,6 +4,7 @@
  */
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { DeliveryChallan, BusinessProfile } from "../types.js";
 import { Printer, X, FileText, CheckCircle2, Truck, Scale, ShieldCheck } from "lucide-react";
 
@@ -44,12 +45,45 @@ export default function ChallanPrintModal({
     window.print();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-h-none print:max-w-none print:w-full">
+  const getPageSetupCSS = () => {
+    switch (pageSize) {
+      case "a4":
+        return `
+          @media print {
+            @page { size: A4 portrait; margin: 8mm; }
+            body { font-size: 11px !important; }
+            #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
+          }
+        `;
+      case "a5":
+        return `
+          @media print {
+            @page { size: A5 landscape; margin: 6mm; }
+            body { font-size: 9.5px !important; }
+            #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
+          }
+        `;
+      default:
+        return "";
+    }
+  };
+
+  const modalContent = (
+    <div
+      id="print-modal-container"
+      className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static"
+    >
+      <style>{getPageSetupCSS()}</style>
+      <div
+        id="print-modal-card"
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden print:border-none print:shadow-none print:max-h-none print:max-w-none print:w-full"
+      >
         
         {/* Modal Controls Header (Hidden in Print) */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 print:hidden">
+        <div
+          id="print-modal-toolbar"
+          className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 print:hidden"
+        >
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-50 text-blue-700 rounded-lg border border-blue-200">
               <Truck className="w-5 h-5" />
@@ -134,7 +168,10 @@ export default function ChallanPrintModal({
         </div>
 
         {/* Printable Document View */}
-        <div className="p-8 overflow-y-auto bg-slate-100 print:bg-white print:p-0 print:overflow-visible">
+        <div
+          id="print-area"
+          className="p-8 overflow-y-auto bg-slate-100 print:bg-white print:p-0 print:overflow-visible"
+        >
           <div className={`mx-auto bg-white border border-slate-300 shadow-xs p-8 text-slate-900 print:border-none print:shadow-none print:p-4 ${
             pageSize === 'a5' ? 'max-w-[148mm] text-xs' : 'max-w-[210mm] text-sm'
           }`}>
@@ -274,7 +311,7 @@ export default function ChallanPrintModal({
                   </span>
                 </p>
                 <p className="text-slate-600">
-                  <span className="font-medium text-slate-500">Weight Slip (काटा पावती):</span>{" "}
+                  <span className="font-medium text-slate-500">Weight Slip No:</span>{" "}
                   <span className="font-mono font-medium text-slate-900">{challan.weightSlipNo || "—"}</span>
                 </p>
                 <p className="text-slate-600">
@@ -412,4 +449,9 @@ export default function ChallanPrintModal({
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") {
+    return modalContent;
+  }
+  return createPortal(modalContent, document.body);
 }

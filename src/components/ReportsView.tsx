@@ -99,9 +99,9 @@ export default function ReportsView({
 
   const handleDeleteInvoice = async (id: string, invoiceNumber: string) => {
     const confirmed = await showConfirm({
-      title: "इनव्हॉइस डिलीट करा (Delete Invoice)",
-      message: `सावधान: ${invoiceNumber} डिलीट केल्याने सर्व लेजर नोंदी आपोआप उलट (Reverse) होतील. आयटम्सचा स्टॉक पुन्हा वाढवला जाईल आणि पार्टीचे बाकी खाते अपडेट होईल. तुम्हाला खात्री आहे का?`,
-      confirmText: "इनव्हॉइस डिलीट करा",
+      title: "Delete Invoice",
+      message: `Warning: Deleting ${invoiceNumber} will automatically reverse all ledger entries. Item stock quantities will be restored and party balances updated accordingly. Are you sure you want to proceed?`,
+      confirmText: "Delete Invoice",
       variant: "danger"
     });
     if (confirmed) {

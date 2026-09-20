@@ -575,13 +575,13 @@ export default function App() {
             <div className="flex items-center space-x-2.5">
               <RefreshCw className={`w-4 h-4 shrink-0 ${updateBanner.state === 'downloading' ? 'animate-spin' : ''}`} />
               <span>
-                {updateBanner.state === "available" && `नवीन अपडेट v${updateBanner.version || ''} उपलब्ध आहे. डाऊनलोड आपोआप सुरू होत आहे...`}
+                {updateBanner.state === "available" && `New update v${updateBanner.version || ''} is available. Download starting automatically...`}
                 {updateBanner.state === "downloading" && (
                   (updateBanner.percent && updateBanner.percent >= 100)
-                    ? "डाऊनलोड १००% पूर्ण झाले. अपडेट इन्स्टॉल करण्याची तयारी करत आहे..."
-                    : `नवीन अपडेट डाऊनलोड होत आहे (${updateBanner.percent || 0}%)... कृपया थांबा.`
+                    ? "Download 100% complete. Preparing to install update..."
+                    : `Downloading update (${updateBanner.percent || 0}%)... Please wait.`
                 )}
-                {updateBanner.state === "downloaded" && `नवीन अपडेट v${updateBanner.version || ''} डाऊनलोड पूर्ण झाले! ॲप्लिकेशन रीस्टार्ट होत आहे...`}
+                {updateBanner.state === "downloaded" && `New update v${updateBanner.version || ''} downloaded successfully! Restarting application...`}
               </span>
             </div>
             {updateBanner.state === "downloaded" && (
@@ -590,14 +590,14 @@ export default function App() {
                 onClick={() => (window as any).electronAPI?.restartAndInstall()}
                 className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold px-3 py-1 rounded-md text-xs transition cursor-pointer shadow-sm ml-3 shrink-0"
               >
-                आत्ताच रीस्टार्ट करा (Restart Now)
+                Restart Now
               </button>
             )}
           </div>
         )}
 
         {/* Core Screen Router */}
-        <div id="v-active-canvas" className="p-4 sm:p-8 max-w-7xl w-full mx-auto flex-1 print:p-0">
+        <div id="v-active-canvas" className={`p-3 sm:p-5 lg:p-6 w-full mx-auto flex-1 print:p-0 ${activeTab === "sales" || activeTab === "purchases" ? "max-w-full 2xl:max-w-[1800px]" : "max-w-7xl"}`}>
           {activeTab === "dashboard" && (
             <DashboardView
               items={dbState.items}

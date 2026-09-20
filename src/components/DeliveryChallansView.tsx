@@ -300,9 +300,9 @@ export default function DeliveryChallansView({
       if (dbItem && !challanToEdit) {
         if (dbItem.stockQuantity < item.quantity) {
           const proceed = await showConfirm({
-            title: "कमी स्टॉक सूचना (Stock Alert)",
-            message: `"${item.itemName}" चा गोडाऊनमधील स्टॉक फक्त ${dbItem.stockQuantity} ${item.unit} आहे, परंतु या चलानमध्ये ${item.quantity} नमूद केले आहे. तरीही चलन जारी करून माल पाठवायचा आहे का?`,
-            confirmText: "होय, पुढे चला (Proceed)",
+            title: "Stock Alert",
+            message: `Warehouse stock for "${item.itemName}" is only ${dbItem.stockQuantity} ${item.unit}, but this challan specifies ${item.quantity}. Do you still want to proceed and issue this delivery challan?`,
+            confirmText: "Proceed Anyway",
             variant: "warning"
           });
           if (!proceed) return;
@@ -364,9 +364,9 @@ export default function DeliveryChallansView({
 
   const handleRollback = async (challan: DeliveryChallan) => {
     const confirmed = await showConfirm({
-      title: "डिलिव्हरी चलन रद्द करा (Rollback Challan)",
-      message: `डिलिव्हरी चलन ${challan.challanNumber} रद्द करायचे आहे का?\n\nयामुळे चलन रद्द (CANCELLED) होईल आणि सर्व वस्तूंचा साठा पुन्हा उपलब्ध गोडाऊन शिल्लकमध्ये जमा होईल.`,
-      confirmText: "चलन रद्द करा व स्टॉक परत घ्या",
+      title: "Rollback Delivery Challan",
+      message: `Are you sure you want to cancel delivery challan ${challan.challanNumber}?\n\nThis will mark the challan as CANCELLED and restore all dispatched item quantities back to warehouse inventory.`,
+      confirmText: "Cancel Challan & Restore Stock",
       variant: "danger"
     });
 
@@ -375,8 +375,8 @@ export default function DeliveryChallansView({
         await onCancelChallan(challan.id);
       } catch (err: any) {
         await showAlert({
-          title: "त्रुटी (Error)",
-          message: err?.message || "डिलिव्हरी चलन रद्द होऊ शकले नाही.",
+          title: "Error",
+          message: err?.message || "Failed to cancel delivery challan.",
           variant: "danger"
         });
       }
@@ -385,9 +385,9 @@ export default function DeliveryChallansView({
 
   const handleDelete = async (challan: DeliveryChallan) => {
     const confirmed = await showConfirm({
-      title: "डिलिव्हरी चलन डिलीट करा (Delete Challan)",
-      message: `डिलिव्हरी चलन ${challan.challanNumber} कायमचे डिलीट करायचे आहे का?\n\nजर हे चलन पेंडिंग असेल, तर त्यातील वस्तूंचा साठा आपोआप गोडाऊनमध्ये परत जमा केला जाईल.`,
-      confirmText: "चलन डिलीट करा",
+      title: "Delete Delivery Challan",
+      message: `Are you sure you want to permanently delete delivery challan ${challan.challanNumber}?\n\nIf this challan is currently pending, item quantities will automatically be restored to warehouse inventory.`,
+      confirmText: "Delete Challan",
       variant: "danger"
     });
 
@@ -396,8 +396,8 @@ export default function DeliveryChallansView({
         await onDeleteChallan(challan.id);
       } catch (err: any) {
         await showAlert({
-          title: "त्रुटी (Error)",
-          message: err?.message || "डिलिव्हरी चलन डिलीट होऊ शकले नाही.",
+          title: "Error",
+          message: err?.message || "Failed to delete delivery challan.",
           variant: "danger"
         });
       }
@@ -461,7 +461,7 @@ export default function DeliveryChallansView({
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              Delivery Challan (डिलिव्हरी चलन)
+              Delivery Challans
               <span className="text-xs px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700 font-semibold">
                 Rule 55 CGST
               </span>
@@ -879,7 +879,7 @@ export default function DeliveryChallansView({
           <div className="flex items-center justify-between pb-4 border-b border-slate-200">
             <div>
               <h2 className="text-lg font-bold text-slate-900">
-                {viewMode === 'create' ? "Create Delivery Challan (नवीन डिलिव्हरी चलन)" : `Edit Delivery Challan (${challanNumber})`}
+                {viewMode === 'create' ? "Create Delivery Challan" : `Edit Delivery Challan (${challanNumber})`}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 Physical goods dispatch without immediate tax charge. Saving will deduct stock lines from inventory.
@@ -941,19 +941,19 @@ export default function DeliveryChallansView({
                 onChange={(e) => setPurpose(e.target.value as any)}
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg bg-white text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium"
               >
-                <option value="dispatch">Dispatch before Invoice (बिलापूर्वी माल पाठवणे)</option>
-                <option value="approval">Supply on Approval (मंजुरीवर माल देणे)</option>
-                <option value="job_work">Job Work / Processing (जॉब वर्क)</option>
-                <option value="branch_transfer">Branch Transfer (शाखा / गोडाऊन ट्रान्सफर)</option>
-                <option value="exhibition">Exhibition / Demo (प्रदर्शन / डेमो)</option>
-                <option value="other">Other Transport (इतर)</option>
+                <option value="dispatch">Dispatch before Invoice</option>
+                <option value="approval">Supply on Approval</option>
+                <option value="job_work">Job Work / Processing</option>
+                <option value="branch_transfer">Branch Transfer</option>
+                <option value="exhibition">Exhibition / Demo</option>
+                <option value="other">Other Transport</option>
               </select>
             </div>
 
             {/* Customer Search & Select */}
             <div className="relative">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Customer / Consignee (ग्राहक) *
+                Customer / Consignee *
               </label>
               <input
                 type="text"
@@ -1024,7 +1024,7 @@ export default function DeliveryChallansView({
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                 <Package className="w-4 h-4 text-blue-600" />
-                Dispatched Line Items (मालाची यादी)
+                Dispatched Line Items
               </h3>
               <button
                 type="button"
@@ -1157,12 +1157,12 @@ export default function DeliveryChallansView({
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
               <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
                 <Truck className="w-4 h-4 text-blue-600" />
-                <span>Transport & Vehicle (वाहतूक तपशील)</span>
+                <span>Transport & Vehicle</span>
               </div>
 
               <div>
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  Vehicle Number (गाडी क्र.)
+                  Vehicle Number
                 </label>
                 <input
                   type="text"
@@ -1188,7 +1188,7 @@ export default function DeliveryChallansView({
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    LR / Bilty No. (बिल्टी क्र.)
+                    LR / Bilty No.
                   </label>
                   <input
                     type="text"
@@ -1229,7 +1229,7 @@ export default function DeliveryChallansView({
 
               <div>
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  E-Way Bill Number (ई-वे बिल क्र.)
+                  E-Way Bill Number
                 </label>
                 <input
                   type="text"
@@ -1259,33 +1259,33 @@ export default function DeliveryChallansView({
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
               <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
                 <Scale className="w-4 h-4 text-emerald-600" />
-                <span>Weight & Packaging (वजन व पॅकेजिंग)</span>
+                <span>Weight & Packaging</span>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Gross Weight (एकूण वजन)
+                    Gross Weight
                   </label>
                   <input
                     type="number"
                     step="any"
                     value={grossWeight}
                     onChange={(e) => setGrossWeight(e.target.value)}
-                    placeholder="उदा. 520"
+                    placeholder="e.g. 520"
                     className="w-full px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg"
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Net Weight (निव्वळ वजन)
+                    Net Weight
                   </label>
                   <input
                     type="number"
                     step="any"
                     value={netWeight}
                     onChange={(e) => setNetWeight(e.target.value)}
-                    placeholder="उदा. 500"
+                    placeholder="e.g. 500"
                     className="w-full px-3 py-1.5 text-xs font-bold border border-slate-300 rounded-lg"
                   />
                 </div>
@@ -1303,20 +1303,20 @@ export default function DeliveryChallansView({
                   >
                     <option value="KG">Kilograms (KG)</option>
                     <option value="TON">Metric Tons (TON)</option>
-                    <option value="QUINTAL">Quintals (क्विंटल)</option>
+                    <option value="QUINTAL">Quintals (QTL)</option>
                     <option value="GRAMS">Grams (G)</option>
-                    <option value="BAGS">Bags / पोती</option>
+                    <option value="BAGS">Bags</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Weight Slip (काटा पावती क्र.)
+                    Weight Slip / Weighbridge No.
                   </label>
                   <input
                     type="text"
                     value={weightSlipNo}
                     onChange={(e) => setWeightSlipNo(e.target.value)}
-                    placeholder="उदा. WB-4091"
+                    placeholder="e.g. WB-4091"
                     className="w-full px-3 py-1.5 text-xs font-mono border border-slate-300 rounded-lg"
                   />
                 </div>
@@ -1324,13 +1324,13 @@ export default function DeliveryChallansView({
 
               <div>
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  Package Count / Description (नग / पॅकेज)
+                  Package Count / Description
                 </label>
                 <input
                   type="text"
                   value={packageCount}
                   onChange={(e) => setPackageCount(e.target.value)}
-                  placeholder="उदा. 10 Bags, 4 Wooden Crates, 2 Bundles"
+                  placeholder="e.g. 10 Bags, 4 Wooden Crates, 2 Bundles"
                   className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg"
                 />
               </div>
@@ -1345,12 +1345,12 @@ export default function DeliveryChallansView({
             <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-3">
               <div className="flex items-center gap-2 font-bold text-slate-800 text-xs">
                 <ShieldCheck className="w-4 h-4 text-amber-600" />
-                <span>Hamali & Freight (हमाली व भाडे)</span>
+                <span>Hamali & Freight</span>
               </div>
 
               <div className="space-y-2">
                 <label className="block text-[11px] font-semibold text-slate-600">
-                  Hamali / Labour Charge (हमाली)
+                  Hamali / Labour Charge
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative">
@@ -1379,7 +1379,7 @@ export default function DeliveryChallansView({
 
               <div className="space-y-2 pt-2 border-t border-slate-200">
                 <label className="block text-[11px] font-semibold text-slate-600">
-                  Freight / Transport Charge (वाहतूक भाडे)
+                  Freight / Transport Charge
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="relative">
@@ -1408,7 +1408,7 @@ export default function DeliveryChallansView({
 
               <div className="pt-2">
                 <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                  Notes / Instructions (शेरा)
+                  Notes / Instructions
                 </label>
                 <textarea
                   rows={2}

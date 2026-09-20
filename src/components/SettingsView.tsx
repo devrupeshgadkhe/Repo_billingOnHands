@@ -58,25 +58,25 @@ export default function SettingsView({
       const cleanup = electronAPI.onUpdateStatus((status: any) => {
         if (status.state === "checking") {
           setCheckingUpdate(true);
-          setUpdaterMsg("नवीन अपडेट शोधत आहे (Checking for updates on GitHub)...");
+          setUpdaterMsg("Checking for updates on GitHub...");
         } else if (status.state === "available") {
           setCheckingUpdate(false);
           setUpdateAvailable(status.version);
-          setUpdaterMsg(`नवीन व्हर्जन v${status.version} उपलब्ध आहे! ऑटो डाऊनलोड सुरू आहे...`);
+          setUpdaterMsg(`New version v${status.version} is available! Starting automatic download...`);
         } else if (status.state === "downloading") {
           setCheckingUpdate(false);
           setDownloadProgress(status.percent);
-          setUpdaterMsg(`अपडेट डाऊनलोड होत आहे: ${status.percent}%`);
+          setUpdaterMsg(`Downloading update: ${status.percent}%`);
         } else if (status.state === "downloaded") {
           setCheckingUpdate(false);
           setDownloadProgress(100);
-          setUpdaterMsg(`अपडेट डाऊनलोड पूर्ण झाले! ॲप्लिकेशन रीस्टार्ट होत आहे...`);
+          setUpdaterMsg(`Update downloaded successfully! Restarting application...`);
         } else if (status.state === "up-to-date") {
           setCheckingUpdate(false);
-          setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${status.currentVersion || APP_VERSION} हे सर्वात नवीन व्हर्जन आहे).`);
+          setUpdaterMsg(`Software is up to date (v${status.currentVersion || APP_VERSION} is the latest version).`);
         } else if (status.state === "error") {
           setCheckingUpdate(false);
-          setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${APP_VERSION} चालू व्हर्जन आहे).`);
+          setUpdaterMsg(`Software is up to date (running v${APP_VERSION}).`);
         }
       });
       return cleanup;
@@ -87,24 +87,24 @@ export default function SettingsView({
     const electronAPI = (window as any).electronAPI;
     if (electronAPI?.checkForUpdates) {
       setCheckingUpdate(true);
-      setUpdaterMsg("गिटहब रिलीज तपासत आहे...");
+      setUpdaterMsg("Checking GitHub releases...");
       try {
         const res = await electronAPI.checkForUpdates();
         if (res?.updateAvailable) {
-          setUpdaterMsg(`नवीन व्हर्जन v${res.version || ""} उपलब्ध आहे! ऑटो डाऊनलोड सुरू आहे...`);
+          setUpdaterMsg(`New version v${res.version || ""} is available! Starting automatic download...`);
         } else {
-          setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${APP_VERSION} हे सर्वात नवीन व्हर्जन आहे).`);
+          setUpdaterMsg(`Software is up to date (v${APP_VERSION} is the latest version).`);
         }
       } catch (err: any) {
-        setUpdaterMsg(`सॉफ्टवेअर अद्ययावत आहे (v${APP_VERSION}).`);
+        setUpdaterMsg(`Software is up to date (v${APP_VERSION}).`);
       } finally {
         setCheckingUpdate(false);
       }
     } else {
       // In web browser preview mode
       await showAlert({
-        title: "डेस्कटॉप ऑटो-अपडेटर (Desktop Auto-Updater)",
-        message: `हे फीचर विंडोज डेस्कटॉप ॲप्लिकेशन (.exe) मध्ये आपोआप काम करते. गिटहबवरून नवीन रिलीज आल्यावर आपोआप डाऊनलोड आणि रीस्टार्ट होईल.\n\nसध्याचे व्हर्जन: v${APP_VERSION}\nGitHub Repo: ${GITHUB_REPO}`,
+        title: "Desktop Auto-Updater",
+        message: `This feature works automatically in the Windows Desktop application (.exe). When a new release is published to GitHub, it will automatically download and restart.\n\nCurrent Version: v${APP_VERSION}\nGitHub Repo: ${GITHUB_REPO}`,
         variant: "info"
       });
     }
@@ -221,9 +221,9 @@ export default function SettingsView({
     if (!file) return;
 
     const confirmed = await showConfirm({
-      title: "डेटाबेस रिस्टोअर करा (Restore Database)",
-      message: "सावधान: बॅकअप रिस्टोअर केल्याने सध्याचे सर्व इनव्हॉइसेस, पार्टी खाती, आयटम्स कॅटलॉग आणि व्यवहार ओव्हरराईट होतील. तुम्हाला खात्री आहे का पुढे जायचे आहे?",
-      confirmText: "रिस्टोअर करा (Overwrite & Restore)",
+      title: "Restore Database",
+      message: "Warning: Restoring backup will overwrite all existing invoices, party accounts, items catalog, and transactions. Are you sure you want to proceed?",
+      confirmText: "Overwrite & Restore",
       variant: "danger"
     });
 
@@ -340,8 +340,8 @@ export default function SettingsView({
                       if (file) {
                         if (file.size > 1.5 * 1024 * 1024) {
                           showAlert({
-                            title: "लोगो साईझ मोठी आहे (File Too Large)",
-                            message: "कृपया 1.5 MB पेक्षा लहान साईझचा फोटो निवडा (Please choose an image smaller than 1.5 MB).",
+                            title: "File Too Large",
+                            message: "Please choose an image smaller than 1.5 MB.",
                             variant: "warning"
                           });
                           return;
@@ -662,16 +662,16 @@ export default function SettingsView({
             </div>
 
             <p className="text-[11px] text-slate-500 leading-normal">
-              विंडोज डेस्कटॉप ॲप्लिकेशन (.exe) ऑटो-अपडेट सुविधेसह सुसज्ज आहे. गिटहबवर नवीन व्हर्जन येताच सॉफ्टवेअर बॅकग्राऊंडमध्ये डाऊनलोड करून आपोआप रीस्टार्ट होते.
+              Windows desktop application (.exe) is equipped with background auto-updates. When a new release is available on GitHub, the app downloads it automatically and restarts.
             </p>
 
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 space-y-2 text-xs">
               <div className="flex justify-between items-center text-slate-600">
-                <span className="text-[11px]">सध्याचे व्हर्जन:</span>
+                <span className="text-[11px]">Current Version:</span>
                 <span className="font-mono font-bold text-slate-900">v{APP_VERSION}</span>
               </div>
               <div className="flex justify-between items-center text-slate-600">
-                <span className="text-[11px]">बिल्ड दिनांक:</span>
+                <span className="text-[11px]">Build Date:</span>
                 <span className="font-mono text-slate-700">{APP_BUILD_DATE}</span>
               </div>
               <div className="flex justify-between items-center text-slate-600">
@@ -709,7 +709,7 @@ export default function SettingsView({
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 shadow-sm"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>सॉफ्टवेअर रीस्टार्ट करा (Restart & Apply Now)</span>
+                <span>Restart & Apply Now</span>
               </button>
             )}
 
@@ -721,7 +721,7 @@ export default function SettingsView({
                 className="w-full bg-slate-900 hover:bg-black text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-400"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? "animate-spin" : ""}`} />
-                <span>{checkingUpdate ? "तपासत आहे..." : "नवीन अपडेट तपासा (Check for Update)"}</span>
+                <span>{checkingUpdate ? "Checking..." : "Check for Updates"}</span>
               </button>
 
               <a

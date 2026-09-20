@@ -58,7 +58,7 @@ export default function Sidebar({
     { id: "parties", label: "Parties", icon: Users, badge: unpaidCount },
     { id: "items", label: "Items & Stock", icon: PackageCheck, badge: lowStockCount },
     { id: "quotations", label: "Quotations", icon: FileText, badge: pendingQuotationsCount || 0 },
-    { id: "sales", label: "Sales Invoices", icon: ReceiptIndianRupee, badge: 0 },
+    { id: "sales", label: "Sales & POS", icon: ReceiptIndianRupee, badge: 0 },
     { id: "challans", label: "Delivery Challans", icon: Truck, badge: pendingChallansCount || 0 },
     { id: "purchases", label: "Purchase Bills", icon: Building2, badge: 0 },
     { id: "transactions", label: "Income & Expenses", icon: Coins, badge: 0 },

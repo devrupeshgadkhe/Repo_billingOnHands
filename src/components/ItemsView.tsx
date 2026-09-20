@@ -135,9 +135,9 @@ export default function ItemsView({
 
   const handleDelete = async (id: string, name: string) => {
     const confirmed = await showConfirm({
-      title: "वस्तू हटवा (Delete Item)",
-      message: `तुम्हाला खात्री आहे का "${name}" ही वस्तू इन्व्हेंटरीमधून हटवायची आहे?`,
-      confirmText: "वस्तू हटवा",
+      title: "Delete Item",
+      message: `Are you sure you want to delete "${name}" from inventory?`,
+      confirmText: "Delete Item",
       variant: "danger"
     });
     if (confirmed) {

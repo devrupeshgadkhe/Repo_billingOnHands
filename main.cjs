@@ -70,11 +70,11 @@ function setupAutoUpdater() {
     const rawMsg = (err == null ? "unknown" : (err.message || String(err))).toString();
     console.error("[AutoUpdater] Background notice in auto-updater:", rawMsg);
     
-    // User-friendly localized status, preventing technical raw dumps
-    let friendly = "सॉफ्टवेअर अद्ययावत आहे (कोणतेही नवीन अपडेट नाही).";
+    // User-friendly status, preventing technical raw dumps
+    let friendly = "Software is up to date (no new updates available).";
     const lower = rawMsg.toLowerCase();
     if (lower.includes("net::err") || lower.includes("enotfound") || lower.includes("etimedout")) {
-      friendly = "इंटरनेट कनेक्शन उपलब्ध नाही. कृपया नेटवर्क तपासा.";
+      friendly = "No internet connection. Please check your network.";
     }
     
     sendToWindow("updater:status", {
@@ -243,7 +243,7 @@ ipcMain.handle("app:check-for-updates", async () => {
     return { 
       success: true, 
       isUpToDate: true, 
-      message: "सॉफ्टवेअर अद्ययावत आहे." 
+      message: "Software is up to date." 
     };
   }
   try {
@@ -253,16 +253,16 @@ ipcMain.handle("app:check-for-updates", async () => {
       success: true, 
       updateAvailable,
       version: result?.updateInfo?.version || app.getVersion(),
-      message: updateAvailable ? `नवीन व्हर्जन v${result?.updateInfo?.version} उपलब्ध आहे!` : "सॉफ्टवेअर अद्ययावत आहे." 
+      message: updateAvailable ? `New version v${result?.updateInfo?.version} is available!` : "Software is up to date." 
     };
   } catch (err) {
     const rawMsg = String(err?.message || "").toLowerCase();
     console.warn("[AutoUpdater] Update check notice:", err?.message);
     
-    // User-friendly Marathi message without technical jargon or raw HTTP 404 dumps
-    let cleanMessage = "सॉफ्टवेअर अद्ययावत आहे.";
+    // User-friendly English message without technical jargon or raw HTTP 404 dumps
+    let cleanMessage = "Software is up to date.";
     if (rawMsg.includes("net::err") || rawMsg.includes("enotfound") || rawMsg.includes("etimedout")) {
-      cleanMessage = "इंटरनेट कनेक्शन तपासा.";
+      cleanMessage = "Please check your internet connection.";
     }
     
     return { 

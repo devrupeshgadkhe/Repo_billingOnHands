@@ -231,9 +231,9 @@ export default function AccessControlView({ activeSession, onUpdateSession }: Ac
     }
 
     const confirmed = await showConfirm({
-      title: "वापरकर्ता खाते हटवा (Revoke User Access)",
-      message: `तुम्हाला खात्री आहे का "${targetUsername}" या युजरचे बिलिंग सॉफ्टवेअर ॲक्सेस कायमचे रद्द करायचे आहे?`,
-      confirmText: "खाते रद्द करा",
+      title: "Revoke User Access",
+      message: `Are you sure you want to permanently revoke billing software access for user "${targetUsername}"?`,
+      confirmText: "Revoke Access",
       variant: "danger"
     });
 

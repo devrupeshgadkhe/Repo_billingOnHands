@@ -166,9 +166,9 @@ export default function PartiesView({
   const handleDelete = async (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Avoid triggering row click selection
     const confirmed = await showConfirm({
-      title: "पार्टी हटवा (Delete Party)",
-      message: `तुम्हाला खात्री आहे का "${name}" ही पार्टी हटवायची आहे? या पार्टीशी संबंधित सर्व व्यवहार नोंदी सुरक्षित राहतील परंतु संपर्क यादीतून काढला जाईल.`,
-      confirmText: "पार्टी हटवा",
+      title: "Delete Party",
+      message: `Are you sure you want to delete "${name}"? All related transaction history will remain intact, but the party will be removed from your active directory.`,
+      confirmText: "Delete Party",
       variant: "danger"
     });
     if (confirmed) {
@@ -343,8 +343,8 @@ export default function PartiesView({
     const amountVal = parseFloat(payAmount);
     if (!amountVal || amountVal <= 0) {
       await showAlert({
-        title: "अवैध रक्कम (Invalid Amount)",
-        message: "कृपया योग्य रक्कम टाका (Valid payment amount required).",
+        title: "Invalid Amount",
+        message: "Please enter a valid payment amount.",
         variant: "warning"
       });
       return;
@@ -394,8 +394,8 @@ export default function PartiesView({
     } catch (err: any) {
       console.error(err);
       await showAlert({
-        title: "नोंद अयशस्वी (Transaction Error)",
-        message: err?.message || "लेजर खात्यामध्ये पेमेंट नोंद होऊ शकली नाही.",
+        title: "Transaction Error",
+        message: err?.message || "Failed to record payment in ledger account.",
         variant: "danger"
       });
     } finally {
