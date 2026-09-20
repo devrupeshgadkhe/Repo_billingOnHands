@@ -120,33 +120,50 @@ export default function DashboardView({
   const totalPurchases = invoices.filter(i => i.type === "purchase").reduce((s, i) => s + i.totalAmount, 0);
   const estProfit = totalSales - totalPurchases;
 
-  // Interactive update status state for desktop & web
+  // Autonomous background update monitoring state
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
-  const [updateStatusText, setUpdateStatusText] = useState<string | null>(null);
+  const [updateStatusText, setUpdateStatusText] = useState<string>("Auto-Update Active");
 
   const handleCheckUpdateClick = async () => {
     const electronAPI = (window as any).electronAPI;
     if (electronAPI?.checkForUpdates) {
       setIsCheckingUpdate(true);
-      setUpdateStatusText("Checking...");
+      setUpdateStatusText("Checking updates...");
       try {
         const res = await electronAPI.checkForUpdates();
         if (res?.updateAvailable) {
-          setUpdateStatusText("Update Available!");
+          setUpdateStatusText("New update found!");
         } else {
           setUpdateStatusText("Up to Date");
         }
       } catch (err: any) {
-        setUpdateStatusText("Up to Date");
+        setUpdateStatusText("Auto-Update Active");
       } finally {
         setTimeout(() => {
           setIsCheckingUpdate(false);
-          setTimeout(() => setUpdateStatusText(null), 3000);
-        }, 1200);
+          setTimeout(() => setUpdateStatusText("Auto-Update Active"), 2500);
+        }, 1000);
       }
     } else {
-      // In Web preview, navigate to Settings
-      onNavigateTab("settings");
+      // In Web preview, check /api/version
+      setIsCheckingUpdate(true);
+      setUpdateStatusText("Checking live...");
+      try {
+        const res = await fetch("/api/version");
+        const data = await res.json();
+        if (data?.version && data.version !== APP_VERSION) {
+          setUpdateStatusText(`Update v${data.version} detected!`);
+        } else {
+          setUpdateStatusText("Up to Date");
+        }
+      } catch {
+        setUpdateStatusText("Auto-Update Active");
+      } finally {
+        setTimeout(() => {
+          setIsCheckingUpdate(false);
+          setTimeout(() => setUpdateStatusText("Auto-Update Active"), 2500);
+        }, 800);
+      }
     }
   };
 
@@ -178,11 +195,15 @@ export default function DashboardView({
             id="dashboard-open-settings-update"
             onClick={handleCheckUpdateClick}
             disabled={isCheckingUpdate}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition cursor-pointer disabled:opacity-60 max-w-[200px] shrink-0"
-            title="Check for updates and system settings"
+            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 transition cursor-pointer disabled:opacity-75 shrink-0"
+            title="ऑटो-अपडेट २४/७ सक्रिय आहे. नवीन रिलीज आल्यास सिस्टीम आपोआप डाउनलोड करून अपडेट करते."
           >
-            <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-            <span className="truncate">{updateStatusText || `v${APP_VERSION} Updates`}</span>
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+            </span>
+            <RefreshCw className={`w-3.5 h-3.5 text-emerald-700 shrink-0 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+            <span className="font-semibold">{updateStatusText}</span>
           </button>
           <div className="flex items-center space-x-2 bg-slate-100 px-3 py-1.5 rounded-lg text-slate-700 text-xs font-semibold shrink-0">
             <CalendarDays className="w-4 h-4 text-slate-500 shrink-0" />

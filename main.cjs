@@ -36,6 +36,8 @@ function getFreePort(startPort, callback) {
 
 let mainWindow = null;
 let updateDownloadedInfo = null;
+let isCheckingUpdate = false;
+let isDownloadingUpdate = false;
 
 function sendToWindow(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -45,11 +47,14 @@ function sendToWindow(channel, data) {
 
 function setupAutoUpdater() {
   autoUpdater.on("checking-for-update", () => {
+    isCheckingUpdate = true;
     console.log("[AutoUpdater] Checking for updates...");
     sendToWindow("updater:status", { state: "checking" });
   });
 
   autoUpdater.on("update-available", (info) => {
+    isCheckingUpdate = false;
+    isDownloadingUpdate = true;
     console.log(`[AutoUpdater] Update available: v${info.version}`);
     sendToWindow("updater:status", {
       state: "available",
@@ -59,7 +64,8 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("update-not-available", (info) => {
-    console.log("[AutoUpdater] Application is up to date.");
+    isCheckingUpdate = false;
+    isDownloadingUpdate = false;
     sendToWindow("updater:status", {
       state: "up-to-date",
       currentVersion: app.getVersion()
@@ -67,11 +73,13 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("error", (err) => {
+    isCheckingUpdate = false;
+    isDownloadingUpdate = false;
     const rawMsg = (err == null ? "unknown" : (err.message || String(err))).toString();
     console.error("[AutoUpdater] Background notice in auto-updater:", rawMsg);
     
     // User-friendly status, preventing technical raw dumps
-    let friendly = "Software is up to date (no new updates available).";
+    let friendly = "Software is up to date.";
     const lower = rawMsg.toLowerCase();
     if (lower.includes("net::err") || lower.includes("enotfound") || lower.includes("etimedout")) {
       friendly = "No internet connection. Please check your network.";
@@ -84,6 +92,7 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("download-progress", (progressObj) => {
+    isDownloadingUpdate = true;
     const percent = Math.round(progressObj.percent || 0);
     console.log(`[AutoUpdater] Download progress: ${percent}%`);
     sendToWindow("updater:status", {
@@ -96,11 +105,14 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    console.log(`[AutoUpdater] Update v${info.version} downloaded successfully!`);
+    isCheckingUpdate = false;
+    isDownloadingUpdate = false;
+    console.log(`[AutoUpdater] Update v${info.version} downloaded successfully! Installing automatically in 3s...`);
     updateDownloadedInfo = info;
     sendToWindow("updater:status", {
       state: "downloaded",
-      version: info.version
+      version: info.version,
+      autoRestartIn: 3
     });
 
     // Auto install and restart after 3 seconds:
@@ -207,25 +219,38 @@ function createWindow(port) {
     }
   });
 
-  // Background auto-updater checking lifecycle
+  // Background auto-updater checking lifecycle (continuous autonomous checking)
   function checkForAppUpdates() {
     if (!app.isPackaged) {
-      console.log("[AutoUpdater] Running in unpackaged dev environment; skipping background check.");
       return;
     }
-    console.log("[AutoUpdater] Checking for updates on GitHub...");
-    autoUpdater.checkForUpdates().catch((err) => {
-      console.warn("[AutoUpdater] Update check notice (network/offline):", err.message);
-    });
+    if (isCheckingUpdate || isDownloadingUpdate || updateDownloadedInfo) {
+      // Avoid overlapping checks while download is active or update already ready
+      return;
+    }
+    isCheckingUpdate = true;
+    console.log("[AutoUpdater] Autonomous background check for updates...");
+    autoUpdater.checkForUpdates()
+      .catch((err) => {
+        console.warn("[AutoUpdater] Background update check notice:", err.message);
+      })
+      .finally(() => {
+        isCheckingUpdate = false;
+      });
   }
 
-  // Initial check 4 seconds after window finishes loading
+  // Initial check 1.5 seconds after window finishes loading
   mainWindow.webContents.once("did-finish-load", () => {
-    setTimeout(checkForAppUpdates, 4000);
+    setTimeout(checkForAppUpdates, 1500);
   });
 
-  // Recurring check every 45 minutes while app is running if connected to internet
-  const autoUpdateInterval = setInterval(checkForAppUpdates, 45 * 60 * 1000);
+  // Check whenever application window receives focus
+  mainWindow.on("focus", () => {
+    checkForAppUpdates();
+  });
+
+  // Recurring autonomous check every 15 seconds while app is running
+  const autoUpdateInterval = setInterval(checkForAppUpdates, 15 * 1000);
 
   mainWindow.on("closed", () => {
     clearInterval(autoUpdateInterval);
@@ -246,6 +271,21 @@ ipcMain.handle("app:check-for-updates", async () => {
       message: "Software is up to date." 
     };
   }
+  if (isDownloadingUpdate) {
+    return {
+      success: true,
+      updateAvailable: true,
+      message: "Update is currently downloading in background..."
+    };
+  }
+  if (updateDownloadedInfo) {
+    return {
+      success: true,
+      updateAvailable: true,
+      version: updateDownloadedInfo.version,
+      message: `Update v${updateDownloadedInfo.version} downloaded! Restarting automatically...`
+    };
+  }
   try {
     const result = await autoUpdater.checkForUpdates();
     const updateAvailable = Boolean(result && result.updateInfo && result.updateInfo.version && result.updateInfo.version !== app.getVersion());
@@ -253,7 +293,7 @@ ipcMain.handle("app:check-for-updates", async () => {
       success: true, 
       updateAvailable,
       version: result?.updateInfo?.version || app.getVersion(),
-      message: updateAvailable ? `New version v${result?.updateInfo?.version} is available!` : "Software is up to date." 
+      message: updateAvailable ? `New version v${result?.updateInfo?.version} is available! Downloading automatically...` : "Software is up to date." 
     };
   } catch (err) {
     const rawMsg = String(err?.message || "").toLowerCase();

@@ -656,19 +656,33 @@ export default function SettingsView({
                 <Laptop className="w-5 h-5 text-indigo-600" />
                 <h3 className="font-bold text-slate-900 text-sm">Desktop App & Auto-Update</h3>
               </div>
-              <span className="px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full font-mono text-[10px] font-bold">
+              <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-full font-mono text-[10px] font-bold inline-flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 v{APP_VERSION}
               </span>
             </div>
 
-            <p className="text-[11px] text-slate-500 leading-normal">
-              Windows desktop application (.exe) is equipped with background auto-updates. When a new release is available on GitHub, the app downloads it automatically and restarts.
-            </p>
+            <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-lg text-xs space-y-1">
+              <div className="flex items-center space-x-2 text-emerald-900 font-bold">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+                </span>
+                <span>ऑटो-अपडेट २४/७ सक्रिय (Auto-Update Active)</span>
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-normal">
+                सिस्टीम बॅकग्राउंडमध्ये सतत नवीन अपडेट तपासत असते. नवीन व्हर्जन उपलब्ध होताच मॅन्युअल बटण न दाबता ते आपोआप डाउनलोड होते आणि ॲप अपडेट होते.
+              </p>
+            </div>
 
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 space-y-2 text-xs">
               <div className="flex justify-between items-center text-slate-600">
                 <span className="text-[11px]">Current Version:</span>
                 <span className="font-mono font-bold text-slate-900">v{APP_VERSION}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span className="text-[11px]">Auto-Update Checking:</span>
+                <span className="font-semibold text-emerald-700">Autonomous (Every 15s)</span>
               </div>
               <div className="flex justify-between items-center text-slate-600">
                 <span className="text-[11px]">Build Date:</span>
@@ -690,12 +704,12 @@ export default function SettingsView({
             {downloadProgress !== null && downloadProgress < 100 && (
               <div className="space-y-1.5">
                 <div className="flex justify-between text-[11px] font-semibold text-slate-700">
-                  <span>Downloading update...</span>
+                  <span>Downloading update automatically...</span>
                   <span>{downloadProgress}%</span>
                 </div>
                 <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
                   <div
-                    className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                    className="bg-emerald-600 h-2 rounded-full transition-all duration-300"
                     style={{ width: `${downloadProgress}%` }}
                   />
                 </div>
@@ -718,10 +732,10 @@ export default function SettingsView({
                 type="button"
                 onClick={handleManualCheckUpdate}
                 disabled={checkingUpdate}
-                className="w-full bg-slate-900 hover:bg-black text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-400"
+                className="w-full bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-200"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? "animate-spin" : ""}`} />
-                <span>{checkingUpdate ? "Checking..." : "Check for Updates"}</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? "animate-spin text-indigo-600" : ""}`} />
+                <span>{checkingUpdate ? "Checking releases..." : "Force Check Now (Optional)"}</span>
               </button>
 
               <a

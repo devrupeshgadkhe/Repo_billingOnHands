@@ -1186,12 +1186,39 @@ app.delete("/api/transactions/:id", (req, res) => {
 });
 
 
-// System Health & Ready Check
-app.get("/api/health", (req, res) => {
+// System Health & Version API
+app.get("/api/version", (req, res) => {
+  let appVer = "1.0.15";
+  try {
+    const pkgPath = path.join(process.cwd(), "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      if (pkg.version) appVer = pkg.version;
+    }
+  } catch {}
+
   res.json({
     status: "ok",
     app: "BillingOnHand",
-    version: "1.0.3",
+    version: appVer,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get("/api/health", (req, res) => {
+  let appVer = "1.0.15";
+  try {
+    const pkgPath = path.join(process.cwd(), "package.json");
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      if (pkg.version) appVer = pkg.version;
+    }
+  } catch {}
+
+  res.json({
+    status: "ok",
+    app: "BillingOnHand",
+    version: appVer,
     timestamp: new Date().toISOString()
   });
 });

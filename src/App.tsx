@@ -19,6 +19,7 @@ import DeliveryChallansView from "./components/DeliveryChallansView";
 import QuotationsView from "./components/QuotationsView";
 import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus } from "./types";
 import { RefreshCw, LayoutGrid, CheckCircle, LogOut, Menu } from "lucide-react";
+import { APP_VERSION } from "./version";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>("dashboard");
@@ -30,23 +31,110 @@ export default function App() {
   const [session, setSession] = useState<{ username: string; name: string; role: string; token: string } | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const [updateBanner, setUpdateBanner] = useState<{
-    state: "available" | "downloading" | "downloaded";
+    state: "available" | "downloading" | "downloaded" | "reloading";
     version?: string;
     percent?: number;
+    countdown?: number;
   } | null>(null);
 
-  // Auto-updater desktop listener
+  // Autonomous Continuous Auto-Updater Engine (Desktop Electron & Web)
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
-    if (electronAPI?.onUpdateStatus) {
+    let autoRestartTimer: any = null;
+    let countdownInterval: any = null;
+
+    if (electronAPI?.isElectron && electronAPI?.onUpdateStatus) {
+      // 1. Electron Desktop Listener
       const cleanup = electronAPI.onUpdateStatus((status: any) => {
-        if (status.state === "available" || status.state === "downloading" || status.state === "downloaded") {
-          setUpdateBanner(status);
+        if (status.state === "available" || status.state === "downloading") {
+          setUpdateBanner({
+            state: status.state,
+            version: status.version,
+            percent: status.percent
+          });
+        } else if (status.state === "downloaded") {
+          let secs = 3;
+          setUpdateBanner({
+            state: "downloaded",
+            version: status.version,
+            countdown: secs
+          });
+          // Countdown and automatically install/restart without requiring manual clicks
+          countdownInterval = setInterval(() => {
+            secs -= 1;
+            if (secs > 0) {
+              setUpdateBanner(prev => prev ? { ...prev, countdown: secs } : null);
+            } else {
+              clearInterval(countdownInterval);
+            }
+          }, 1000);
+
+          autoRestartTimer = setTimeout(() => {
+            electronAPI.restartAndInstall?.();
+          }, 3200);
         } else if (status.state === "up-to-date" || status.state === "error") {
-          setUpdateBanner(null);
+          setUpdateBanner(prev => (prev?.state === "downloading" || prev?.state === "downloaded") ? prev : null);
         }
       });
-      return cleanup;
+
+      // Autonomous background check every 15 seconds + on window focus
+      const checkDesktop = () => {
+        electronAPI.checkForUpdates?.().catch(() => {});
+      };
+      checkDesktop();
+      const desktopInterval = setInterval(checkDesktop, 15000);
+      window.addEventListener("focus", checkDesktop);
+
+      return () => {
+        cleanup?.();
+        clearInterval(desktopInterval);
+        window.removeEventListener("focus", checkDesktop);
+        if (autoRestartTimer) clearTimeout(autoRestartTimer);
+        if (countdownInterval) clearInterval(countdownInterval);
+      };
+    } else {
+      // 2. Web Browser Autonomous Live Updater
+      let isUpdating = false;
+      const checkWebVersion = async () => {
+        if (isUpdating) return;
+        try {
+          const res = await fetch("/api/version");
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.version && data.version !== APP_VERSION) {
+            isUpdating = true;
+            let secs = 2;
+            setUpdateBanner({
+              state: "reloading",
+              version: data.version,
+              countdown: secs
+            });
+            countdownInterval = setInterval(() => {
+              secs -= 1;
+              if (secs > 0) {
+                setUpdateBanner(prev => prev ? { ...prev, countdown: secs } : null);
+              } else {
+                clearInterval(countdownInterval);
+              }
+            }, 1000);
+
+            setTimeout(() => {
+              window.location.reload();
+            }, 2200);
+          }
+        } catch {}
+      };
+
+      // Periodic check every 5 seconds for web environment
+      checkWebVersion();
+      const webInterval = setInterval(checkWebVersion, 5000);
+      window.addEventListener("focus", checkWebVersion);
+
+      return () => {
+        clearInterval(webInterval);
+        window.removeEventListener("focus", checkWebVersion);
+        if (countdownInterval) clearInterval(countdownInterval);
+      };
     }
   }, []);
 
@@ -569,28 +657,33 @@ export default function App() {
           </div>
         </header>
 
-        {/* Global Auto-Update Notification Banner */}
+        {/* Global Autonomous Auto-Update Notification Banner */}
         {updateBanner && (
           <div id="v-auto-update-banner" className="bg-emerald-700 text-white px-4 sm:px-8 py-2.5 flex items-center justify-between text-xs font-semibold shadow-md print:hidden transition-all duration-300">
             <div className="flex items-center space-x-2.5">
-              <RefreshCw className={`w-4 h-4 shrink-0 ${updateBanner.state === 'downloading' ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 shrink-0 ${updateBanner.state === 'downloading' || updateBanner.state === 'reloading' ? 'animate-spin' : ''}`} />
               <span>
-                {updateBanner.state === "available" && `New update v${updateBanner.version || ''} is available. Download starting automatically...`}
+                {updateBanner.state === "available" && `नवीन आवृत्ती (v${updateBanner.version || ''}) सापडली! बॅकग्राउंडमध्ये आपोआप डाउनलोड सुरू होत आहे...`}
                 {updateBanner.state === "downloading" && (
                   (updateBanner.percent && updateBanner.percent >= 100)
-                    ? "Download 100% complete. Preparing to install update..."
-                    : `Downloading update (${updateBanner.percent || 0}%)... Please wait.`
+                    ? "अपडेट डाउनलोड १००% पूर्ण झाले. इन्स्टॉलेशनची तयारी सुरू आहे..."
+                    : `नवीन अपडेट डाउनलोड होत आहे (${updateBanner.percent || 0}%)... कृपया थांबा.`
                 )}
-                {updateBanner.state === "downloaded" && `New update v${updateBanner.version || ''} downloaded successfully! Restarting application...`}
+                {updateBanner.state === "downloaded" && (
+                  `नवीन अपडेट (v${updateBanner.version || ''}) तयार आहे! ${updateBanner.countdown ?? 3} सेकंदात ॲप आपोआप रीस्टार्ट होत आहे...`
+                )}
+                {updateBanner.state === "reloading" && (
+                  `नवीन अपडेट (v${updateBanner.version || ''}) उपलब्ध आहे! ${updateBanner.countdown ?? 2} सेकंदात ॲप्लिकेशन आपोआप अपडेट होत आहे...`
+                )}
               </span>
             </div>
             {updateBanner.state === "downloaded" && (
               <button
                 type="button"
-                onClick={() => (window as any).electronAPI?.restartAndInstall()}
+                onClick={() => (window as any).electronAPI?.restartAndInstall?.()}
                 className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold px-3 py-1 rounded-md text-xs transition cursor-pointer shadow-sm ml-3 shrink-0"
               >
-                Restart Now
+                आत्ताच रीस्टार्ट करा (Restart Now)
               </button>
             )}
           </div>
