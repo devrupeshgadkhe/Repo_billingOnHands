@@ -78,13 +78,13 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
       const result = await uploadBackupToGoogleDrive(currentDb, true);
       setActionMessage({
         type: "success",
-        text: `बॅकअप यशस्वीरीत्या तयार झाला: ${result.fileName}`
+        text: `Backup created successfully: ${result.fileName}`
       });
       await loadFiles();
     } catch (err: any) {
       setActionMessage({
         type: "error",
-        text: err.message || "बॅकअप तयार करताना अडचण आली."
+        text: err.message || "Failed to create backup."
       });
     } finally {
       setIsProcessingAction(false);
@@ -105,10 +105,10 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
   // Restore database from a backup file
   const handleRestoreFile = async (file: DriveBackupFile) => {
     const confirmed = await showConfirm({
-      title: "बॅकअप रिस्टोअर करायचा आहे का?",
-      message: `'${file.name}' या फाईलमधून सर्व डेटा रिस्टोअर होईल. चालू इनव्हॉइसेस, आयटम्स आणि लेजर या बॅकअपमधील डेटाने अपडेट होतील.`,
-      confirmText: "होय, रिस्टोअर करा",
-      cancelText: "रद्द करा",
+      title: "Restore Database Backup?",
+      message: `All current invoices, inventory items, and transaction ledgers will be restored from '${file.name}'.`,
+      confirmText: "Yes, Restore",
+      cancelText: "Cancel",
       variant: "danger"
     });
 
@@ -119,8 +119,8 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
     try {
       const result = await restoreAutomatedBackup(file.name);
       await showAlert({
-        title: "रिस्टोअर यशस्वी!",
-        message: result.message || `'${file.name}' मधून डेटा यशस्वीरीत्या रिस्टोअर झाला.`,
+        title: "Restore Successful",
+        message: result.message || `Data successfully restored from '${file.name}'.`,
         variant: "success"
       });
 
@@ -128,8 +128,8 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
       await loadFiles();
     } catch (err: any) {
       await showAlert({
-        title: "रिस्टोअर अयशस्वी",
-        message: err.message || "बॅकअप रिस्टोअर करताना अडचण आली.",
+        title: "Restore Failed",
+        message: err.message || "Failed to restore backup.",
         variant: "danger"
       });
     } finally {
@@ -177,7 +177,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
               </span>
             </h3>
             <p className="text-[11px] text-slate-500">
-              ऑटोमेटेड क्लाउड बॅकअप डेस्टिनेशन: <strong className="text-slate-800 font-mono">{TARGET_BACKUP_EMAIL}</strong>
+              Automated Cloud Backup Destination: <strong className="text-slate-800 font-mono">{TARGET_BACKUP_EMAIL}</strong>
             </p>
           </div>
         </div>
@@ -214,17 +214,16 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center space-x-2 text-slate-900 font-bold text-xs">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>100% स्वयंचलित क्लाउड बॅकअप (0% मॅन्युअल इंटरव्हेंशन)</span>
+              <span>100% Automated Cloud Backup (0% Manual Intervention)</span>
             </div>
             <p className="text-[11px] text-slate-600 leading-relaxed max-w-2xl">
-              सर्व इनव्हॉइसेस, आयटम्स, कस्टमर्स आणि व्यवहारांचा बॅकअप <strong>JSON फॉरमॅटमध्ये</strong> आपोआप{" "}
-              <strong className="text-slate-900 font-mono">{TARGET_BACKUP_EMAIL}</strong> च्या गुगल ड्राईव्ह / क्लाउड व्हॉल्टमध्ये सेव्ह केला जात आहे.
-              कुठल्याही मॅन्युअल ऑथरायझेशन किंवा पॉपअपची गरज नाही.
+              All invoices, inventory items, parties, and transaction ledgers are saved automatically in <strong>JSON format</strong> to{" "}
+              <strong className="text-slate-900 font-mono">{TARGET_BACKUP_EMAIL}</strong> cloud storage without requiring manual authorizations or popups.
             </p>
           </div>
 
           <div className="shrink-0 bg-white px-3 py-2 border border-emerald-200 rounded-lg text-right">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">बॅकअप फोल्डर</span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Backup Folder</span>
             <span className="text-xs font-mono font-bold text-emerald-800">{BACKUP_FOLDER_NAME}</span>
           </div>
         </div>
@@ -234,7 +233,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
           <div className="space-y-0.5">
             <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block flex items-center gap-1">
               <FileJson className="w-3.5 h-3.5 text-indigo-600" />
-              <span>बॅकअप फाईल नेमिंग फॉरमॅट: [StoreName]_[Date]_[Time].json</span>
+              <span>Backup File Naming Format: [StoreName]_[Date]_[Time].json</span>
             </span>
             <p className="text-[11px] font-mono text-slate-800 font-semibold truncate">
               {sampleFileName}
@@ -252,10 +251,10 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
         <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between">
           <div className="space-y-0.5">
             <label htmlFor="auto-backup-toggle" className="text-xs font-bold text-slate-800 block cursor-pointer">
-              ऑटोमॅटिक क्लाउड सिंक (Automatic Sync)
+              Automatic Cloud Sync
             </label>
             <p className="text-[10px] text-slate-500">
-              प्रत्येक नवीन बिल / बदल झाल्यावर आणि दर १५ मिनिटांनी आपोआप बॅकअप
+              Automatic backup triggered on every invoice / ledger modification and every 15 minutes
             </p>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
@@ -274,10 +273,10 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
         <div className="p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between">
           <div className="space-y-0.5 truncate">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
-              शेवटचा क्लाउड बॅकअप (Last Snapshot)
+              Last Cloud Snapshot
             </span>
             <span className="text-xs font-semibold text-slate-800 block truncate">
-              {status.lastBackupTime ? formatDate(status.lastBackupTime) : "सध्या कोणताही बॅकअप नाही"}
+              {status.lastBackupTime ? formatDate(status.lastBackupTime) : "No backup recorded yet"}
             </span>
             {status.lastBackupFileName && (
               <span className="text-[10px] font-mono text-emerald-700 truncate block">
@@ -289,7 +288,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
             {status.state === "syncing" ? (
               <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold">
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                <span>सिंक होत आहे...</span>
+                <span>Syncing...</span>
               </span>
             ) : (
               <span className="w-7 h-7 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -312,12 +311,12 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
           {status.state === "syncing" || isProcessingAction ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>बॅकअप सेव्ह होत आहे...</span>
+              <span>Saving Backup...</span>
             </>
           ) : (
             <>
               <CloudUpload className="w-4 h-4" />
-              <span>आत्ता त्वरित बॅकअप सेव्ह करा (Instant Backup Now)</span>
+              <span>Instant Backup Now</span>
             </>
           )}
         </button>
@@ -331,7 +330,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
           title="Refresh backups list"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLoadingFiles ? "animate-spin" : ""}`} />
-          <span>रिफ्रेश यादी</span>
+          <span>Refresh List</span>
         </button>
       </div>
 
@@ -340,23 +339,23 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
             <FolderLock className="w-3.5 h-3.5 text-emerald-600" />
-            <span>क्लाउड बॅकअप इतिहास ({driveFiles.length} फाईल्स)</span>
+            <span>Cloud Backup History ({driveFiles.length} files)</span>
           </span>
           <span className="text-[10px] text-slate-500">
-            प्रत्येक फाईल: <strong className="font-mono text-slate-700">{storeName}_[Date]_[Time].json</strong>
+            File format: <strong className="font-mono text-slate-700">{storeName}_[Date]_[Time].json</strong>
           </span>
         </div>
 
         {isLoadingFiles ? (
           <div className="p-4 text-center text-slate-400 text-xs flex items-center justify-center space-x-2">
             <RefreshCw className="w-4 h-4 animate-spin text-emerald-500" />
-            <span>बॅकअप यादी लोड होत आहे...</span>
+            <span>Loading backup list...</span>
           </div>
         ) : driveFiles.length === 0 ? (
           <div className="p-5 bg-slate-50 border border-dashed border-slate-200 rounded-lg text-center text-xs text-slate-500 space-y-2">
             <HardDrive className="w-6 h-6 text-slate-400 mx-auto" />
             <p>
-              अद्याप कोणताही बॅकअप रेकॉर्ड झालेला नाही. वर दिलेल्या <strong>"आत्ता त्वरित बॅकअप सेव्ह करा"</strong> बटणावर क्लिक करा.
+              No backups recorded yet. Click on <strong>"Instant Backup Now"</strong> above to create a snapshot.
             </p>
           </div>
         ) : (
@@ -384,10 +383,10 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
                     onClick={() => handleRestoreFile(file)}
                     disabled={isProcessingAction}
                     className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded text-[11px] font-semibold flex items-center space-x-1 transition cursor-pointer"
-                    title="या बॅकअपमधून डेटा रिस्टोअर करा"
+                    title="Restore data from this backup"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    <span>रिस्टोअर (Restore)</span>
+                    <span>Restore</span>
                   </button>
 
                   {/* Direct Download button */}
@@ -396,10 +395,10 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
                     onClick={() => handleDownloadFile(file.name)}
                     disabled={isProcessingAction}
                     className="p-1.5 hover:bg-slate-200 text-slate-700 rounded transition cursor-pointer flex items-center gap-1 border border-slate-200 bg-white"
-                    title="JSON फाईल डाऊनलोड करा"
+                    title="Download JSON File"
                   >
                     <Download className="w-3.5 h-3.5 text-slate-600" />
-                    <span className="hidden sm:inline text-[10px] font-medium">डाऊनलोड</span>
+                    <span className="hidden sm:inline text-[10px] font-medium">Download</span>
                   </button>
                 </div>
               </div>

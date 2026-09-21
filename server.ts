@@ -348,6 +348,11 @@ export function performAutoBackup(data: DatabaseState): { fileName: string; size
       console.warn("Auto-backup clean warning:", cleanErr);
     }
 
+    // Trigger background Google Drive upload without blocking local operations
+    uploadBackupToGoogleDrive(fileName, jsonStr).catch((uploadErr) => {
+      console.warn("[Cloud Backup] Background upload note:", uploadErr);
+    });
+
     return {
       fileName,
       size: stat.size,
@@ -356,6 +361,172 @@ export function performAutoBackup(data: DatabaseState): { fileName: string; size
   } catch (err) {
     console.error("Auto backup execution failed:", err);
     return null;
+  }
+}
+
+// Retrieve Google Cloud / Drive access token
+async function getGoogleCloudAccessToken(): Promise<string | null> {
+  if (process.env.GOOGLE_ACCESS_TOKEN) {
+    return process.env.GOOGLE_ACCESS_TOKEN;
+  }
+  try {
+    const metaRes = await fetch("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token", {
+      headers: { "Metadata-Flavor": "Google" },
+      signal: AbortSignal.timeout(3000)
+    });
+    if (metaRes.ok) {
+      const data = await metaRes.json() as any;
+      if (data && data.access_token) {
+        return data.access_token;
+      }
+    }
+  } catch {
+    // Metadata server unavailable or not in GCP environment
+  }
+  return null;
+}
+
+// Share Google Drive file or folder with target email account
+async function shareGoogleDriveItem(fileId: string, email: string, token: string) {
+  try {
+    const permRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions?sendNotificationEmail=false`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        role: "writer",
+        type: "user",
+        emailAddress: email
+      }),
+      signal: AbortSignal.timeout(10000)
+    });
+    if (permRes.ok) {
+      console.log(`[Cloud Backup] Shared backup item ${fileId} with ${email}`);
+    }
+  } catch {}
+}
+
+let isDriveApiAvailable: boolean | null = null;
+let lastDriveApiCheckTime = 0;
+
+async function checkDriveApiAvailable(token: string): Promise<boolean> {
+  if (isDriveApiAvailable !== null && Date.now() - lastDriveApiCheckTime < 3600000) {
+    return isDriveApiAvailable;
+  }
+  try {
+    const checkRes = await fetch("https://www.googleapis.com/drive/v3/files?pageSize=1", {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5000)
+    });
+    lastDriveApiCheckTime = Date.now();
+    isDriveApiAvailable = checkRes.ok;
+    return checkRes.ok;
+  } catch {
+    lastDriveApiCheckTime = Date.now();
+    isDriveApiAvailable = false;
+    return false;
+  }
+}
+
+// Upload backup JSON directly to Google Drive in folder 'BillingOnHand_Backups'
+export async function uploadBackupToGoogleDrive(fileName: string, jsonContent: string): Promise<{ success: boolean; fileId?: string; error?: string }> {
+  try {
+    const token = await getGoogleCloudAccessToken();
+    if (!token) {
+      return { success: false, error: "Access token unavailable" };
+    }
+
+    const available = await checkDriveApiAvailable(token);
+    if (!available) {
+      // Google Drive API is not enabled for the GCP project; local backups remain 100% functional
+      return { success: false, error: "Drive sync deferred: API pending activation" };
+    }
+
+    // 1. Locate or create folder 'BillingOnHand_Backups'
+    let folderId: string | null = null;
+    try {
+      const query = encodeURIComponent("name = 'BillingOnHand_Backups' and mimeType = 'application/vnd.google-apps.folder' and trashed = false");
+      const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000)
+      });
+      if (listRes.ok) {
+        const listData = await listRes.json() as any;
+        if (listData?.files && listData.files.length > 0) {
+          folderId = listData.files[0].id;
+        }
+      }
+
+      if (!folderId) {
+        const createFolderRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            name: "BillingOnHand_Backups",
+            mimeType: "application/vnd.google-apps.folder"
+          }),
+          signal: AbortSignal.timeout(10000)
+        });
+        if (createFolderRes.ok) {
+          const folderData = await createFolderRes.json() as any;
+          folderId = folderData.id;
+          if (folderId) {
+            await shareGoogleDriveItem(folderId, TARGET_BACKUP_ACCOUNT, token);
+          }
+        }
+      }
+    } catch {}
+
+    // 2. Perform multipart upload to Google Drive
+    const boundary = "-------BillingOnHandBoundary" + Date.now();
+    const metadata: Record<string, any> = {
+      name: fileName,
+      mimeType: "application/json"
+    };
+    if (folderId) {
+      metadata.parents = [folderId];
+    }
+
+    const multipartBody =
+      `--${boundary}\r\n` +
+      `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+      `${JSON.stringify(metadata)}\r\n` +
+      `--${boundary}\r\n` +
+      `Content-Type: application/json\r\n\r\n` +
+      `${jsonContent}\r\n` +
+      `--${boundary}--`;
+
+    const uploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`
+      },
+      body: multipartBody,
+      signal: AbortSignal.timeout(25000)
+    });
+
+    if (!uploadRes.ok) {
+      return { success: false, error: `Drive upload skipped with status ${uploadRes.status}` };
+    }
+
+    const uploadData = await uploadRes.json() as any;
+    const fileId = uploadData?.id;
+    console.log(`[Cloud Backup] Successfully uploaded '${fileName}' to Google Drive`);
+
+    // 3. Share the uploaded backup with target email
+    if (fileId) {
+      await shareGoogleDriveItem(fileId, TARGET_BACKUP_ACCOUNT, token);
+    }
+
+    return { success: true, fileId };
+  } catch (err: any) {
+    return { success: false, error: "Cloud backup deferred" };
   }
 }
 

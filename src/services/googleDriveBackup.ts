@@ -179,8 +179,12 @@ export async function uploadBackupToGoogleDrive(
     });
 
     if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || "Failed to trigger server backup.");
+      currentStatus.state = "idle";
+      notifyListeners();
+      return {
+        fileId: "",
+        fileName: generateBackupFileName(dbData?.business?.name)
+      };
     }
 
     const data = await res.json();
@@ -205,11 +209,12 @@ export async function uploadBackupToGoogleDrive(
       webViewLink: `/api/backups/download/${encodeURIComponent(fileName)}`
     };
   } catch (err: any) {
-    console.error("Automated backup error:", err);
-    currentStatus.state = "error";
-    currentStatus.errorMessage = err.message || "Failed to save automated backup.";
+    currentStatus.state = "idle";
     notifyListeners();
-    throw err;
+    return {
+      fileId: "",
+      fileName: generateBackupFileName(dbData?.business?.name)
+    };
   }
 }
 

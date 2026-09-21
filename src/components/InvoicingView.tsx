@@ -1678,7 +1678,7 @@ export default function InvoicingView({
 
         {/* =========================================================================
             RIGHT COLUMN (lg:col-span-4): THE PURE POS SIDE REGISTER CONTAINER
-            "साइडला एका कंटेनरमध्ये सर्व अमाऊंट्स वगैरे दिसल्या पाहिजेत"
+            Side container displaying all calculated amounts, taxes, and payment summary
             ========================================================================= */}
         <div className="lg:col-span-4 sticky top-20 space-y-4">
           

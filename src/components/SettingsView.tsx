@@ -7,7 +7,6 @@ import React, { useState, useEffect } from "react";
 import { BusinessProfile, DatabaseState, INDIAN_STATES } from "../types.js";
 import { useDialog } from "../context/DialogContext.js";
 import { APP_VERSION, APP_BUILD_DATE, GITHUB_REPO, GITHUB_RELEASES_URL } from "../version.js";
-import { GoogleDriveBackupPanel } from "./GoogleDriveBackupPanel.js";
 import {
   Settings,
   Building2,
@@ -597,9 +596,6 @@ export default function SettingsView({
             </div>
           )}
 
-          {/* Google Drive Automated Cloud Backup Panel */}
-          <GoogleDriveBackupPanel currentDb={currentDb} onRestoreSuccess={onRestoreSuccess} />
-
           {/* Backup & Restore Panel */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
             <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
@@ -676,10 +672,10 @@ export default function SettingsView({
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
                 </span>
-                <span>ऑटो-अपडेट २४/७ सक्रिय (Auto-Update Active)</span>
+                <span>Auto-Update Active 24/7</span>
               </div>
               <p className="text-[11px] text-emerald-800 leading-normal">
-                सिस्टीम बॅकग्राउंडमध्ये सतत नवीन अपडेट तपासत असते. नवीन व्हर्जन उपलब्ध होताच मॅन्युअल बटण न दाबता ते आपोआप डाउनलोड होते आणि ॲप अपडेट होते.
+                The system continuously monitors for updates in the background. When a new version is released, it is downloaded automatically without requiring manual intervention.
               </p>
             </div>
 

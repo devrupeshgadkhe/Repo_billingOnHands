@@ -196,7 +196,7 @@ export default function DashboardView({
             onClick={handleCheckUpdateClick}
             disabled={isCheckingUpdate}
             className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 transition cursor-pointer disabled:opacity-75 shrink-0"
-            title="ऑटो-अपडेट २४/७ सक्रिय आहे. नवीन रिलीज आल्यास सिस्टीम आपोआप डाउनलोड करून अपडेट करते."
+            title="Auto-Update is active 24/7. When a new release is available, the system automatically downloads and installs it."
           >
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
