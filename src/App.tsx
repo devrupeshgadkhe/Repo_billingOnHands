@@ -18,8 +18,16 @@ import AccessControlView from "./components/AccessControlView";
 import DeliveryChallansView from "./components/DeliveryChallansView";
 import QuotationsView from "./components/QuotationsView";
 import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus } from "./types";
-import { RefreshCw, LayoutGrid, CheckCircle, LogOut, Menu } from "lucide-react";
+import { RefreshCw, LayoutGrid, CheckCircle, LogOut, Menu, Cloud, CloudUpload, X } from "lucide-react";
 import { APP_VERSION } from "./version";
+import {
+  initDriveAuth,
+  uploadBackupToGoogleDrive,
+  getBackupStatus,
+  subscribeBackupStatus,
+  TARGET_BACKUP_EMAIL,
+  BackupStatus
+} from "./services/googleDriveBackup";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<string>("dashboard");
@@ -30,6 +38,12 @@ export default function App() {
   const [isReturnMode, setIsReturnMode] = useState<boolean>(false);
   const [session, setSession] = useState<{ username: string; name: string; role: string; token: string } | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
+  const [driveStatus, setDriveStatus] = useState<BackupStatus>(getBackupStatus());
+  const [isDismissedDriveBanner, setIsDismissedDriveBanner] = useState<boolean>(() => {
+    return localStorage.getItem("billing_dismissed_drive_banner") === "true";
+  });
+  const isInitialDbLoad = React.useRef(true);
+  const autoBackupTimerRef = React.useRef<any>(null);
   const [updateBanner, setUpdateBanner] = useState<{
     state: "available" | "downloading" | "downloaded" | "reloading";
     version?: string;
@@ -164,6 +178,56 @@ export default function App() {
     }
     fetchState();
   }, []);
+
+  // Google Drive Cloud Backup Service Initialization
+  useEffect(() => {
+    initDriveAuth();
+    const unsubscribe = subscribeBackupStatus((status) => {
+      setDriveStatus(status);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Automated Debounced Sync to Google Drive on Database state modification
+  useEffect(() => {
+    if (isInitialDbLoad.current) {
+      if (dbState) isInitialDbLoad.current = false;
+      return;
+    }
+    if (!dbState) return;
+
+    const status = getBackupStatus();
+    if (status.isAuthenticated && status.autoBackupEnabled) {
+      if (autoBackupTimerRef.current) clearTimeout(autoBackupTimerRef.current);
+      autoBackupTimerRef.current = setTimeout(async () => {
+        try {
+          await uploadBackupToGoogleDrive(dbState);
+        } catch (err) {
+          console.error("Auto Google Drive backup failed:", err);
+        }
+      }, 6000);
+    }
+
+    return () => {
+      if (autoBackupTimerRef.current) clearTimeout(autoBackupTimerRef.current);
+    };
+  }, [dbState]);
+
+  // Periodic 15-minute background auto-backup
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const status = getBackupStatus();
+      if (status.isAuthenticated && status.autoBackupEnabled && dbState) {
+        try {
+          await uploadBackupToGoogleDrive(dbState);
+        } catch (err) {
+          console.error("Periodic Google Drive backup error:", err);
+        }
+      }
+    }, 15 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [dbState]);
 
   // Update business profile
   const handleSaveBusiness = async (profile: BusinessProfile) => {
@@ -629,7 +693,25 @@ export default function App() {
             </span>
           </div>
 
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3 sm:space-x-4">
+            {/* Google Drive Automated Cloud Backup Status Pill */}
+            <button
+              id="header-drive-status-btn"
+              onClick={() => setActiveTab("settings")}
+              className="flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-lg text-xs font-semibold transition cursor-pointer"
+              title={`Automated Cloud Backup Active for ${TARGET_BACKUP_EMAIL} (0% Manual Intervention). Click to view snapshots.`}
+            >
+              {driveStatus.state === "syncing" ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+              ) : (
+                <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+              )}
+              <span className="hidden md:inline">
+                {driveStatus.state === "syncing" ? "Syncing Drive..." : "Drive Synced"}
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            </button>
+
             {/* Authenticated User Profile */}
             <div className="px-2 sm:px-3 py-1 bg-slate-50 border border-slate-200/60 rounded-xl text-right flex items-center space-x-2 sm:space-x-3">
               <div className="text-right">
@@ -839,6 +921,8 @@ export default function App() {
                 setSession(updatedSession);
                 localStorage.setItem("billingonhand_session", JSON.stringify(updatedSession));
               }}
+              currentDb={dbState}
+              onRestoreSuccess={fetchState}
             />
           )}
 

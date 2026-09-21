@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { BusinessProfile, INDIAN_STATES } from "../types.js";
+import { BusinessProfile, DatabaseState, INDIAN_STATES } from "../types.js";
 import { useDialog } from "../context/DialogContext.js";
 import { APP_VERSION, APP_BUILD_DATE, GITHUB_REPO, GITHUB_RELEASES_URL } from "../version.js";
+import { GoogleDriveBackupPanel } from "./GoogleDriveBackupPanel.js";
 import {
   Settings,
   Building2,
@@ -33,6 +34,8 @@ interface SettingsViewProps {
   onResetDb: () => void;
   session?: { username: string; name: string; role: string; token: string } | null;
   onUpdateSession?: (updatedSession: { username: string; name: string; role: string; token: string }) => void;
+  currentDb?: DatabaseState;
+  onRestoreSuccess?: () => void;
 }
 
 export default function SettingsView({
@@ -40,7 +43,9 @@ export default function SettingsView({
   onSaveBusiness,
   onResetDb,
   session,
-  onUpdateSession
+  onUpdateSession,
+  currentDb,
+  onRestoreSuccess
 }: SettingsViewProps) {
   
   // State managers
@@ -591,6 +596,9 @@ export default function SettingsView({
               </form>
             </div>
           )}
+
+          {/* Google Drive Automated Cloud Backup Panel */}
+          <GoogleDriveBackupPanel currentDb={currentDb} onRestoreSuccess={onRestoreSuccess} />
 
           {/* Backup & Restore Panel */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
