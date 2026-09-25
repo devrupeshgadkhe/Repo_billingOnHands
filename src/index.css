@@ -92,3 +92,66 @@ html, body {
     display: block !important;
   }
 }
+
+/* Google Sign-in Material Button */
+.gsi-material-button {
+  -moz-user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #ffffff;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: #3c4043;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  height: 40px;
+  letter-spacing: 0.2px;
+  outline: none;
+  overflow: hidden;
+  padding: 0 16px;
+  position: relative;
+  text-align: center;
+  transition: background-color .2s, border-color .2s, box-shadow .2s;
+  vertical-align: middle;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gsi-material-button:hover {
+  background-color: #f8fafc;
+  border-color: #c0c4cc;
+  box-shadow: 0 1px 3px rgba(60, 64, 67, 0.15);
+}
+
+.gsi-material-button:active {
+  background-color: #eeeeee;
+}
+
+.gsi-material-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.gsi-material-button-content-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.gsi-material-button-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  shrink: 0;
+}

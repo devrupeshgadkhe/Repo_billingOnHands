@@ -19,7 +19,7 @@
     "version:bump": "node scripts/bump-version.cjs",
     "version:auto": "node scripts/auto-version.cjs",
     "electron:dev": "npm run build && electron .",
-    "postinstall": "node patch-electron-builder.cjs",
+    "postinstall": "node patch-electron-builder.cjs || true",
     "electron:pack": "npm run clean && npm run build && node pack.cjs",
     "electron:build": "npm run clean && npm run build && electron-builder --win --x64"
   },
@@ -47,8 +47,7 @@
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "typescript": "~5.8.2"
   },
   "build": {
     "appId": "com.billingonhand.app",

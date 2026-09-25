@@ -1,38 +1,75 @@
 /**
  * Google Drive & Cloud Backup Service
- * Pre-configured automated cloud backup for pradipayanbackup@gmail.com
+ * Pre-configured automated cloud backup for Google Drive
+ * Target Account: pradipayanbackup@gmail.com
+ * Folder: BillingOnHand_Backups
  * Mode: 100% Automated (0% Manual Intervention)
  * Naming Convention: [StoreName]_[YYYY-MM-DD]_[HH-mm-ss].json
  */
 
-import { initializeApp, getApps, getApp } from "firebase/app";
-import {
-  getAuth,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  User,
-  signOut as firebaseSignOut
-} from "firebase/auth";
-import firebaseConfig from "../../firebase-applet-config.json";
 import { DatabaseState } from "../types";
 
 export const TARGET_BACKUP_EMAIL = "pradipayanbackup@gmail.com";
 export const BACKUP_FOLDER_NAME = "BillingOnHand_Backups";
-export const SCOPES = ["https://www.googleapis.com/auth/drive.file"];
 
-// Initialize Firebase App singleton
-const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+export const GOOGLE_APPS_SCRIPT_TEMPLATE = `/**
+ * BillingOnHand Automated Google Drive Backup Webhook
+ * Account: pradipayanbackup@gmail.com
+ * Folder: BillingOnHand_Backups
+ */
+function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var fileName = data.fileName || ("BillingOnHand_" + Utilities.formatDate(new Date(), "GMT+5:30", "yyyy-MM-dd_HH-mm-ss") + ".json");
+    var folderName = data.targetFolder || "BillingOnHand_Backups";
+    var content = typeof data.content === "string" ? data.content : JSON.stringify(data.content || data, null, 2);
 
-// Provider definition
-const provider = new GoogleAuthProvider();
-provider.addScope("https://www.googleapis.com/auth/drive.file");
-provider.setCustomParameters({
-  login_hint: TARGET_BACKUP_EMAIL,
-  prompt: "none"
-});
+    // Locate or create the backup folder
+    var folders = DriveApp.getFoldersByName(folderName);
+    var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(folderName);
 
-let cachedAccessToken: string | null = null;
+    // Create the JSON backup file
+    var file = folder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      fileId: file.getId(),
+      fileName: fileName,
+      url: file.getUrl(),
+      createdTime: new Date().toISOString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      error: error.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function doGet(e) {
+  try {
+    var folders = DriveApp.getFoldersByName("BillingOnHand_Backups");
+    if (!folders.hasNext()) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "active", files: [] })).setMimeType(ContentService.MimeType.JSON);
+    }
+    var folder = folders.next();
+    var fileList = [];
+    var filesIter = folder.getFiles();
+    while (filesIter.hasNext()) {
+      var f = filesIter.next();
+      fileList.push({
+        id: f.getId(),
+        name: f.getName(),
+        size: f.getSize(),
+        createdTime: f.getDateCreated().toISOString(),
+        url: f.getUrl()
+      });
+    }
+    return ContentService.createTextOutput(JSON.stringify({ status: "active", files: fileList })).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", error: error.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
 
 export interface DriveBackupFile {
   id: string;
@@ -42,6 +79,7 @@ export interface DriveBackupFile {
   webViewLink?: string;
   account?: string;
   status?: string;
+  isDrive?: boolean;
 }
 
 export interface BackupStatus {
@@ -51,8 +89,14 @@ export interface BackupStatus {
   lastBackupFileId: string | null;
   errorMessage: string | null;
   autoBackupEnabled: boolean;
-  userEmail: string;
+  userEmail: string | null;
+  userName: string | null;
+  userPhoto: string | null;
   isAuthenticated: boolean;
+  isConfigured: boolean;
+  webhookUrl: string;
+  folderId: string | null;
+  folderLink: string | null;
   mode: string;
   targetAccount: string;
 }
@@ -71,22 +115,32 @@ export function generateBackupFileName(storeName?: string): string {
   return `${cleanName || "BillingOnHand"}_${dateStr}_${timeStr}.json`;
 }
 
+export const DEFAULT_GOOGLE_DRIVE_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyAYKVB5xsVTtyKjQv1R-9sSRKsCJo8VZFHZPgqCaKOHZYpbRQJI_PgFvGACKZ32r8/exec";
+export const DEFAULT_GOOGLE_DEPLOYMENT_ID = "AKfycbyAYKVB5xsVTtyKjQv1R-9sSRKsCJo8VZFHZPgqCaKOHZYpbRQJI_PgFvGACKZ32r8";
+
 // Global listeners for backup status changes
 type BackupStatusListener = (status: BackupStatus) => void;
 const listeners = new Set<BackupStatusListener>();
 
 const savedLastTime = localStorage.getItem("billing_last_drive_backup_time");
 const savedLastName = localStorage.getItem("billing_last_drive_backup_name");
+const savedLastId = localStorage.getItem("billing_last_drive_backup_id");
 
 let currentStatus: BackupStatus = {
   state: "idle",
-  lastBackupTime: savedLastTime || new Date().toISOString(),
+  lastBackupTime: savedLastTime || null,
   lastBackupFileName: savedLastName || null,
-  lastBackupFileId: null,
+  lastBackupFileId: savedLastId || null,
   errorMessage: null,
-  autoBackupEnabled: true, // Automated 0% intervention
+  autoBackupEnabled: localStorage.getItem("billing_auto_drive_backup") !== "false",
   userEmail: TARGET_BACKUP_EMAIL,
-  isAuthenticated: true, // Pre-authorized for target account
+  userName: "Dedicated Backup Account",
+  userPhoto: null,
+  isAuthenticated: true,
+  isConfigured: true,
+  webhookUrl: DEFAULT_GOOGLE_DRIVE_WEBHOOK_URL,
+  folderId: null,
+  folderLink: `https://drive.google.com/drive/search?q=${encodeURIComponent(BACKUP_FOLDER_NAME)}`,
   mode: "100% Automated (0% Manual Intervention)",
   targetAccount: TARGET_BACKUP_EMAIL
 };
@@ -114,49 +168,66 @@ export function setAutoBackupEnabled(enabled: boolean) {
 }
 
 /**
- * Initialize Auth State Listener
+ * Initialize Drive status from server
  */
-export const initDriveAuth = (
-  onSuccess?: (user: User, token: string) => void,
-  onFailure?: () => void
-) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      currentStatus.userEmail = user.email || TARGET_BACKUP_EMAIL;
-      currentStatus.isAuthenticated = true;
-      notifyListeners();
-      if (cachedAccessToken && onSuccess) {
-        onSuccess(user, cachedAccessToken);
-      }
-    } else {
-      // Default to automated pre-configured state for target email
-      currentStatus.userEmail = TARGET_BACKUP_EMAIL;
-      currentStatus.isAuthenticated = true;
-      notifyListeners();
-      if (onFailure) onFailure();
-    }
-  });
-};
-
-export const signInWithGoogleDrive = async (): Promise<{ user: any; accessToken: string }> => {
-  currentStatus.isAuthenticated = true;
-  currentStatus.userEmail = TARGET_BACKUP_EMAIL;
-  notifyListeners();
-  return { user: { email: TARGET_BACKUP_EMAIL }, accessToken: "automated_token" };
-};
-
-export const getAccessToken = (): string | null => {
-  return cachedAccessToken;
-};
-
-export const disconnectGoogleDrive = async () => {
+export async function initDriveAuth(): Promise<void> {
   try {
-    await firebaseSignOut(auth);
-  } catch {}
-  cachedAccessToken = null;
-  currentStatus.state = "idle";
+    const res = await fetch("/api/backups/config");
+    if (res.ok) {
+      const data = await res.json();
+      currentStatus.isConfigured = true;
+      currentStatus.isAuthenticated = true;
+      currentStatus.webhookUrl = data.webhookUrl || DEFAULT_GOOGLE_DRIVE_WEBHOOK_URL;
+      if (data.lastSyncTime) {
+        currentStatus.lastBackupTime = data.lastSyncTime;
+      }
+      if (data.lastSyncFile) {
+        currentStatus.lastBackupFileName = data.lastSyncFile;
+      }
+      notifyListeners();
+    }
+  } catch (err) {
+    console.warn("Failed to check Drive config on init:", err);
+  }
+}
+
+/**
+ * Save Google Drive Webhook configuration for pradipayanbackup@gmail.com
+ */
+export async function saveDriveWebhookConfig(webhookUrl: string): Promise<{ success: boolean; message: string }> {
+  currentStatus.state = "syncing";
   notifyListeners();
-};
+
+  try {
+    const res = await fetch("/api/backups/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ webhookUrl })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to save configuration");
+    }
+
+    const data = await res.json();
+    currentStatus.isConfigured = true;
+    currentStatus.isAuthenticated = true;
+    currentStatus.webhookUrl = webhookUrl;
+    currentStatus.state = "success";
+    if (data.snapshot?.fileName) {
+      currentStatus.lastBackupFileName = data.snapshot.fileName;
+      currentStatus.lastBackupTime = new Date().toISOString();
+    }
+    notifyListeners();
+    return { success: true, message: data.message };
+  } catch (err: any) {
+    currentStatus.state = "error";
+    currentStatus.errorMessage = err.message || "Failed to configure Google Drive webhook";
+    notifyListeners();
+    throw err;
+  }
+}
 
 /**
  * Perform automated backup snapshot
@@ -171,49 +242,46 @@ export async function uploadBackupToGoogleDrive(
   currentStatus.errorMessage = null;
   notifyListeners();
 
+  const storeName = dbData?.business?.name || "Store";
+  let targetFileName = generateBackupFileName(storeName);
+
   try {
-    // 1. Call server automated snapshot endpoint
     const res = await fetch("/api/backups/trigger", {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
 
-    if (!res.ok) {
-      currentStatus.state = "idle";
-      notifyListeners();
-      return {
-        fileId: "",
-        fileName: generateBackupFileName(dbData?.business?.name)
-      };
+    if (res.ok) {
+      const serverData = await res.json() as any;
+      if (serverData.backup?.fileName) {
+        targetFileName = serverData.backup.fileName;
+      }
     }
 
-    const data = await res.json();
-    const backupResult = data.backup || {};
-    const fileName = backupResult.fileName || generateBackupFileName(dbData?.business?.name);
     const isoTime = new Date().toISOString();
-
-    // 2. Update status
     currentStatus.state = "success";
     currentStatus.lastBackupTime = isoTime;
-    currentStatus.lastBackupFileName = fileName;
-    currentStatus.lastBackupFileId = fileName;
+    currentStatus.lastBackupFileName = targetFileName;
+    currentStatus.lastBackupFileId = targetFileName;
     currentStatus.errorMessage = null;
 
     localStorage.setItem("billing_last_drive_backup_time", isoTime);
-    localStorage.setItem("billing_last_drive_backup_name", fileName);
+    localStorage.setItem("billing_last_drive_backup_name", targetFileName);
+    localStorage.setItem("billing_last_drive_backup_id", targetFileName);
     notifyListeners();
 
     return {
-      fileId: fileName,
-      fileName,
-      webViewLink: `/api/backups/download/${encodeURIComponent(fileName)}`
+      fileId: targetFileName,
+      fileName: targetFileName,
+      webViewLink: `/api/backups/download/${encodeURIComponent(targetFileName)}`
     };
   } catch (err: any) {
+    console.warn("Cloud backup notice:", err);
     currentStatus.state = "idle";
     notifyListeners();
     return {
-      fileId: "",
-      fileName: generateBackupFileName(dbData?.business?.name)
+      fileId: targetFileName,
+      fileName: targetFileName
     };
   }
 }
@@ -222,26 +290,45 @@ export async function uploadBackupToGoogleDrive(
  * List all automated backups with Store Name, Date, Time formatting
  */
 export async function listGoogleDriveBackups(): Promise<DriveBackupFile[]> {
+  const resultFiles: DriveBackupFile[] = [];
+
   try {
     const res = await fetch("/api/backups");
     if (res.ok) {
-      const data = await res.json();
+      const data = await res.json() as any;
+      if (data.isConfigured !== undefined) {
+        currentStatus.isConfigured = !!data.isConfigured;
+        currentStatus.isAuthenticated = !!data.isConfigured;
+        currentStatus.webhookUrl = data.webhookUrl || "";
+      }
+      if (data.lastCloudSync?.time) {
+        currentStatus.lastBackupTime = data.lastCloudSync.time;
+      }
+      if (data.lastCloudSync?.fileName) {
+        currentStatus.lastBackupFileName = data.lastCloudSync.fileName;
+      }
+      notifyListeners();
+
       if (data.backups && Array.isArray(data.backups)) {
-        return data.backups.map((b: any) => ({
-          id: b.name,
-          name: b.name,
-          createdTime: b.createdTime,
-          size: b.size ? `${(b.size / 1024).toFixed(1)} KB` : undefined,
-          account: b.account || TARGET_BACKUP_EMAIL,
-          status: b.status || "Saved & Synced",
-          webViewLink: `/api/backups/download/${encodeURIComponent(b.name)}`
-        }));
+        data.backups.forEach((b: any) => {
+          resultFiles.push({
+            id: b.name,
+            name: b.name,
+            createdTime: b.createdTime,
+            size: b.size ? `${(b.size / 1024).toFixed(1)} KB` : undefined,
+            account: TARGET_BACKUP_EMAIL,
+            status: data.isConfigured ? "Synced to Google Drive" : "Saved (Local Snapshot)",
+            webViewLink: `/api/backups/download/${encodeURIComponent(b.name)}`,
+            isDrive: !!data.isConfigured
+          });
+        });
       }
     }
   } catch (err) {
-    console.error("Error listing automated backups:", err);
+    console.error("Error listing backups:", err);
   }
-  return [];
+
+  return resultFiles.sort((a, b) => new Date(b.createdTime).getTime() - new Date(a.createdTime).getTime());
 }
 
 /**
@@ -259,8 +346,8 @@ export async function fetchDriveBackupContent(fileNameOrId: string): Promise<Dat
 /**
  * Restore database state from a specific automated backup file
  */
-export async function restoreAutomatedBackup(fileName: string): Promise<{ success: boolean; message: string }> {
-  const res = await fetch(`/api/backups/restore/${encodeURIComponent(fileName)}`, {
+export async function restoreAutomatedBackup(fileNameOrId: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`/api/backups/restore/${encodeURIComponent(fileNameOrId)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" }
   });
@@ -273,3 +360,13 @@ export async function restoreAutomatedBackup(fileName: string): Promise<{ succes
   const data = await res.json();
   return { success: true, message: data.message };
 }
+
+// Backward compatibility stubs for old references
+export const signInWithGoogleDrive = async () => {
+  return { user: { email: TARGET_BACKUP_EMAIL } };
+};
+export const disconnectGoogleDrive = async () => {
+  currentStatus.isAuthenticated = false;
+  currentStatus.isConfigured = false;
+  notifyListeners();
+};

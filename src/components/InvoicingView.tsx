@@ -43,8 +43,10 @@ import {
   ChevronUp,
   Printer
 } from "lucide-react";
+import { InvoiceUploadModal, ParsedInvoiceData } from "./InvoiceUploadModal.js";
 
 interface InvoicingViewProps {
+  key?: React.Key;
   type: 'sale' | 'purchase';
   items: Item[];
   parties: Party[];
@@ -138,9 +140,7 @@ export default function InvoicingView({
   const [invoiceNumber, setInvoiceNumber] = useState("");
   const [originalInvoiceNumber, setOriginalInvoiceNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(() => new Date().toISOString().split("T")[0]);
-  const [invoiceLines, setInvoiceLines] = useState<InvoiceLine[]>([
-    { itemId: "", quantity: 1, customPrice: 0, discount: 0, discountType: 'percent', gstRate: 0 }
-  ]);
+  const [invoiceLines, setInvoiceLines] = useState<InvoiceLine[]>([]);
   const [extraCharges, setExtraCharges] = useState<Array<{ title: string; amount: number }>>([]);
   const [showExtraChargesSection, setShowExtraChargesSection] = useState(false);
   const [paymentType, setPaymentType] = useState<'cash' | 'bank' | 'unpaid'>('cash');
@@ -176,6 +176,118 @@ export default function InvoicingView({
 
   // Notes accordion
   const [showNotes, setShowNotes] = useState(false);
+
+  // AI Invoice Scanner state
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [isAiAvailable, setIsAiAvailable] = useState(true);
+  const [aiScanNotification, setAiScanNotification] = useState("");
+
+  useEffect(() => {
+    if (type === "purchase") {
+      fetch("/api/ai/quota-status")
+        .then(res => res.json())
+        .then(data => {
+          setIsAiAvailable(!!data.available && !data.quotaExceeded);
+        })
+        .catch(() => {
+          setIsAiAvailable(false);
+        });
+    }
+  }, [type]);
+
+  const handleInvoiceParsed = (parsedData: ParsedInvoiceData) => {
+    // 1. Match party by GSTIN or Name
+    let matched = false;
+    if (parsedData.supplierGstin) {
+      const cleanGst = parsedData.supplierGstin.trim().toUpperCase();
+      const matchedByGstin = parties.find(
+        p => p.type === "supplier" && p.gstin && p.gstin.trim().toUpperCase() === cleanGst
+      );
+      if (matchedByGstin) {
+        setSelectedPartyId(matchedByGstin.id);
+        setPartySearchText(matchedByGstin.name);
+        matched = true;
+      }
+    }
+    
+    if (!matched && parsedData.supplierName) {
+      const cleanName = parsedData.supplierName.toLowerCase().trim();
+      const matchedByName = parties.find(
+        p => p.type === "supplier" && (
+          p.name.toLowerCase().includes(cleanName) ||
+          cleanName.includes(p.name.toLowerCase())
+        )
+      );
+      if (matchedByName) {
+        setSelectedPartyId(matchedByName.id);
+        setPartySearchText(matchedByName.name);
+        matched = true;
+      } else {
+        setPartySearchText(parsedData.supplierName);
+      }
+    }
+
+    // 2. Set invoice number and date
+    if (parsedData.invoiceNumber) {
+      setInvoiceNumber(parsedData.invoiceNumber);
+    }
+    if (parsedData.invoiceDate) {
+      setInvoiceDate(parsedData.invoiceDate);
+    }
+
+    // 3. Map items to lines
+    if (parsedData.items && parsedData.items.length > 0) {
+      const newLines: InvoiceLine[] = [];
+
+      parsedData.items.forEach(extractedItem => {
+        const cleanExtractedName = (extractedItem.name || "").toLowerCase().trim();
+        const cleanExtractedHsn = (extractedItem.hsn || "").trim();
+
+        const matchedDbItem = items.find(i => {
+          const dbName = i.name.toLowerCase().trim();
+          return dbName === cleanExtractedName || 
+                 dbName.includes(cleanExtractedName) || 
+                 cleanExtractedName.includes(dbName) ||
+                 (cleanExtractedHsn && i.hsn && cleanExtractedHsn === i.hsn.trim());
+        });
+
+        if (matchedDbItem) {
+          newLines.push({
+            itemId: matchedDbItem.id,
+            quantity: extractedItem.quantity || 1,
+            customPrice: extractedItem.rate || matchedDbItem.purchasePrice,
+            discount: extractedItem.discount || 0,
+            discountType: 'percent',
+            gstRate: extractedItem.gstRate !== undefined ? extractedItem.gstRate : matchedDbItem.gstRate
+          });
+        } else {
+          const fallbackItem = items[0];
+          newLines.push({
+            itemId: fallbackItem ? fallbackItem.id : "",
+            quantity: extractedItem.quantity || 1,
+            customPrice: extractedItem.rate || 0,
+            discount: extractedItem.discount || 0,
+            discountType: 'percent',
+            gstRate: extractedItem.gstRate || 18
+          });
+        }
+      });
+
+      if (newLines.length > 0) {
+        setInvoiceLines(newLines);
+      }
+    }
+
+    // 4. Notes
+    setNotes(prev => {
+      const aiNote = `Extracted via AI Scan from ${parsedData.supplierName || 'Supplier'} Bill #${parsedData.invoiceNumber}`;
+      return prev ? `${prev} | ${aiNote}` : aiNote;
+    });
+
+    playPOSSound("success");
+    setAiScanNotification(`सप्लायर बिल #${parsedData.invoiceNumber} (${parsedData.supplierName || 'Supplier'}) यशस्वीरीत्या स्कॅन झाले. सर्व तपशील तपासून सेव्ह करा.`);
+    setTimeout(() => setAiScanNotification(""), 8000);
+  };
 
   // DOM Refs
   const quickInputRef = useRef<HTMLInputElement>(null);
@@ -282,27 +394,43 @@ export default function InvoicingView({
     } else {
       setTxSubtype(type);
       setOriginalInvoiceNumber("");
-      // Default to Walk-in Customer for instant POS counter checkout!
-      const cashParty = relevantParties.find(p => p.name.toLowerCase().includes("cash") || p.name.toLowerCase().includes("walk-in"));
-      if (cashParty) {
-        setSelectedPartyId(cashParty.id);
-        setPartySearchText(cashParty.name);
-      } else if (relevantParties.length > 0) {
-        setSelectedPartyId(relevantParties[0].id);
-        setPartySearchText(relevantParties[0].name);
+      if (type === "purchase") {
+        // Completely Fresh Purchase Bill (Zero dummy/test information)
+        setSelectedPartyId("");
+        setPartySearchText("");
+        setInvoiceNumber("");
+        setNotes("");
+        setPaymentType("unpaid");
+        setPaidAmt(0);
+        setCashTendered(0);
+        setCustomPaidAmount(false);
+        setExtraCharges([]);
+        setInvoiceLines([]);
+        setInvoiceDate(new Date().toISOString().split("T")[0]);
       } else {
-        setSelectedPartyId("walkin_customer");
-        setPartySearchText("Walk-in Customer (Cash Sale)");
+        // POS Sales Counter Checkout Mode
+        const cashParty = relevantParties.find(p => p.name.toLowerCase().includes("cash") || p.name.toLowerCase().includes("walk-in"));
+        if (cashParty) {
+          setSelectedPartyId(cashParty.id);
+          setPartySearchText(cashParty.name);
+        } else if (relevantParties.length > 0) {
+          setSelectedPartyId(relevantParties[0].id);
+          setPartySearchText(relevantParties[0].name);
+        } else {
+          setSelectedPartyId("walkin_customer");
+          setPartySearchText("Walk-in Customer (Cash Sale)");
+        }
+        setNotes("");
+        setPaymentType("cash");
+        setPaidAmt(0);
+        setCashTendered(0);
+        setCustomPaidAmount(false);
+        setExtraCharges([]);
+        setInvoiceLines([]);
+        const randomSuffix = Math.floor(100 + Math.random() * 900);
+        setInvoiceNumber(`INV-2026-${randomSuffix}`);
+        setInvoiceDate(new Date().toISOString().split("T")[0]);
       }
-      setNotes("");
-      setPaymentType("cash");
-      setCustomPaidAmount(false);
-      setExtraCharges([]);
-      setInvoiceLines([]);
-      const randomSuffix = Math.floor(100 + Math.random() * 900);
-      const prefix = type === "sale" ? "INV" : "PUR";
-      setInvoiceNumber(`${prefix}-2026-${randomSuffix}`);
-      setInvoiceDate(new Date().toISOString().split("T")[0]);
     }
   }, [type, invoiceToEdit, isReturnMode, parties, relevantParties]);
 
@@ -857,20 +985,35 @@ export default function InvoicingView({
       if (invoiceToEdit) {
         onNavigateTab("dashboard");
       } else {
-        // In POS mode, stay on sales and prepare for the next customer in queue!
-        setInvoiceLines([]);
-        setExtraCharges([]);
-        setNotes("");
-        setCustomPaidAmount(false);
-        setSourceChallanId(undefined);
-        setSourceChallanNumber(undefined);
-        setSourceQuotationId(undefined);
-        setSourceQuotationNumber(undefined);
-        const randomSuffix = Math.floor(100 + Math.random() * 900);
-        const prefix = txSubtype === "sale" ? "INV" : txSubtype === "sale_return" ? "CN" : txSubtype === "purchase" ? "PUR" : "DN";
-        setInvoiceNumber(`${prefix}-2026-${randomSuffix}`);
-        setQuickNotification("Sale completed successfully! Invoice ready for printing.");
-        setTimeout(() => setQuickNotification(""), 3000);
+        if (type === "purchase") {
+          setSelectedPartyId("");
+          setPartySearchText("");
+          setInvoiceNumber("");
+          setNotes("");
+          setPaymentType("unpaid");
+          setPaidAmt(0);
+          setCashTendered(0);
+          setCustomPaidAmount(false);
+          setExtraCharges([]);
+          setInvoiceLines([]);
+          setQuickNotification("Purchase bill recorded successfully!");
+          setTimeout(() => setQuickNotification(""), 3000);
+        } else {
+          // In POS mode, stay on sales and prepare for the next customer in queue!
+          setInvoiceLines([]);
+          setExtraCharges([]);
+          setNotes("");
+          setCustomPaidAmount(false);
+          setSourceChallanId(undefined);
+          setSourceChallanNumber(undefined);
+          setSourceQuotationId(undefined);
+          setSourceQuotationNumber(undefined);
+          const randomSuffix = Math.floor(100 + Math.random() * 900);
+          const prefix = txSubtype === "sale" ? "INV" : txSubtype === "sale_return" ? "CN" : txSubtype === "purchase" ? "PUR" : "DN";
+          setInvoiceNumber(`${prefix}-2026-${randomSuffix}`);
+          setQuickNotification("Sale completed successfully! Invoice ready for printing.");
+          setTimeout(() => setQuickNotification(""), 3000);
+        }
       }
     } catch (err: any) {
       setErrorText(err.message || "Failed to submit billing invoice transaction.");
@@ -962,8 +1105,19 @@ export default function InvoicingView({
           )}
         </div>
 
-        {/* Right: Parked Bills & Shortcuts Bar */}
+        {/* Right: AI Scan (Purchase Mode), Parked Bills & Shortcuts Bar */}
         <div className="flex items-center space-x-2">
+          {type === "purchase" && isAiAvailable && (
+            <button
+              type="button"
+              onClick={() => setIsAiModalOpen(true)}
+              className="flex items-center space-x-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border border-emerald-500/40"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>AI Scan Bill (PDF/Photo)</span>
+            </button>
+          )}
+
           {parkedBills.length > 0 && (
             <button
               type="button"
@@ -998,6 +1152,23 @@ export default function InvoicingView({
           )}
         </div>
       </div>
+
+      {/* AI Scan Success Notification Banner */}
+      {aiScanNotification && (
+        <div className="p-3 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-xl text-xs flex items-center justify-between shadow-2xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{aiScanNotification}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAiScanNotification("")}
+            className="text-slate-400 hover:text-slate-600 font-bold p-1 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Conversion Banners */}
       {sourceChallanNumber && (
@@ -1090,7 +1261,7 @@ export default function InvoicingView({
                     ref={partyInputRef}
                     type="text"
                     required
-                    placeholder={`Search ${txSubtype.includes("sale") ? "customer" : "supplier"} (F4)...`}
+                    placeholder={txSubtype.includes("sale") ? "Search customer (F4)..." : "Search or Select Supplier (F4)..."}
                     value={partySearchText}
                     onChange={(e) => {
                       setPartySearchText(e.target.value);
@@ -1163,15 +1334,30 @@ export default function InvoicingView({
 
               {/* Invoice Number */}
               <div className="sm:col-span-3">
-                <input
-                  id="pos-invoice-number-input"
-                  type="text"
-                  required
-                  value={invoiceNumber}
-                  onChange={(e) => setInvoiceNumber(e.target.value)}
-                  className="w-full px-2.5 py-2 border border-slate-200 focus:border-emerald-500 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none"
-                  placeholder="Invoice #"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    id="pos-invoice-number-input"
+                    type="text"
+                    required
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    className="w-full px-2.5 py-2 border border-slate-200 focus:border-emerald-500 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none"
+                    placeholder={type === "purchase" ? "Supplier Bill # (e.g. 1042)" : "Invoice #"}
+                  />
+                  {type === "purchase" && !invoiceNumber && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const randomSuffix = Math.floor(100 + Math.random() * 900);
+                        setInvoiceNumber(`PUR-2026-${randomSuffix}`);
+                      }}
+                      className="absolute right-1 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded font-mono font-bold cursor-pointer"
+                      title="Auto-generate Purchase Bill Number"
+                    >
+                      Auto
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Invoice Date */}
@@ -1192,7 +1378,7 @@ export default function InvoicingView({
             </div>
 
             {/* Active Customer Status Strip */}
-            {activeParty && (
+            {activeParty && selectedPartyId && (
               <div className="flex flex-wrap items-center justify-between text-[11px] bg-slate-50 border border-slate-100 px-3 py-1.5 rounded-xl text-slate-600 gap-2">
                 <div className="flex items-center space-x-2">
                   <span className="font-bold text-slate-800">{activeParty.name}</span>
@@ -1308,7 +1494,7 @@ export default function InvoicingView({
                           </p>
                         </div>
                         <div className="text-right shrink-0 font-mono">
-                          <span className="text-xs font-bold text-slate-900 block">{formatINR(item.salePrice)}</span>
+                          <span className="text-xs font-bold text-slate-900 block">{formatINR(type === "purchase" ? item.purchasePrice : item.salePrice)}</span>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
                             item.stockQuantity <= item.minStockAlert ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"
                           }`}>
@@ -1445,7 +1631,7 @@ export default function InvoicingView({
 
                         <div className="mt-2 pt-1 border-t border-slate-100/80 flex items-center justify-between">
                           <span className="font-bold text-xs text-emerald-800 font-mono">
-                            {formatINR(item.salePrice)}
+                            {formatINR(type === "purchase" ? item.purchasePrice : item.salePrice)}
                           </span>
                           <span className={`text-[9.5px] px-1.5 py-0.2 rounded font-mono font-semibold ${
                             isLowStock ? "text-rose-700 bg-rose-50" : "text-slate-500 bg-slate-100"
@@ -1557,7 +1743,7 @@ export default function InvoicingView({
                                 <option value="">-- Choose Item --</option>
                                 {items.map(item => (
                                   <option key={item.id} value={item.id}>
-                                    {item.name} ({formatINR(item.salePrice)})
+                                    {item.name} ({formatINR(type === "purchase" ? item.purchasePrice : item.salePrice)})
                                   </option>
                                 ))}
                               </select>
@@ -2128,6 +2314,17 @@ export default function InvoicingView({
           </div>
         </div>
       )}
+
+      {/* AI Supplier Invoice Upload & Extraction Modal */}
+      <InvoiceUploadModal
+        isOpen={isAiModalOpen}
+        onClose={() => setIsAiModalOpen(false)}
+        onInvoiceParsed={handleInvoiceParsed}
+        onQuotaExceeded={() => {
+          setIsAiAvailable(false);
+          setIsAiModalOpen(false);
+        }}
+      />
 
     </div>
   );

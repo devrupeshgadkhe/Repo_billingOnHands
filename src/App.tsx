@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Sidebar from "./components/Sidebar";
 import DashboardView from "./components/DashboardView";
 import ItemsView from "./components/ItemsView";
@@ -177,6 +177,21 @@ export default function App() {
     initDriveAuth();
   }, []);
 
+  // System Startup Backup: Create initial snapshot in firm's name on startup
+  const hasTriggeredStartupBackup = useRef(false);
+  useEffect(() => {
+    if (dbState && !hasTriggeredStartupBackup.current) {
+      hasTriggeredStartupBackup.current = true;
+      setTimeout(async () => {
+        try {
+          await uploadBackupToGoogleDrive(dbState, false);
+        } catch (err) {
+          console.warn("Startup backup snapshot:", err);
+        }
+      }, 1200);
+    }
+  }, [dbState]);
+
   // Automated Debounced Sync to Google Drive on Database state modification
   useEffect(() => {
     if (isInitialDbLoad.current) {
@@ -186,7 +201,7 @@ export default function App() {
     if (!dbState) return;
 
     const status = getBackupStatus();
-    if (status.isAuthenticated && status.autoBackupEnabled) {
+    if (status.autoBackupEnabled) {
       if (autoBackupTimerRef.current) clearTimeout(autoBackupTimerRef.current);
       autoBackupTimerRef.current = setTimeout(async () => {
         try {
@@ -204,7 +219,7 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(async () => {
       const status = getBackupStatus();
-      if (status.isAuthenticated && status.autoBackupEnabled && dbState) {
+      if (status.autoBackupEnabled && dbState) {
         try {
           await uploadBackupToGoogleDrive(dbState);
         } catch {}
@@ -644,7 +659,11 @@ export default function App() {
       {/* Sidebar - Fix position */}
       <Sidebar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={(tab) => {
+          setActiveTab(tab);
+          setInvoiceToEdit(null);
+          setIsReturnMode(false);
+        }}
         business={dbState.business}
         lowStockCount={lowStockCount}
         unpaidCount={unpaidCount}
@@ -790,11 +809,12 @@ export default function App() {
 
           {activeTab === "sales" && (
             <InvoicingView
+              key="sales"
               type="sale"
               items={dbState.items}
               parties={dbState.parties}
               business={dbState.business}
-              invoiceToEdit={invoiceToEdit}
+              invoiceToEdit={invoiceToEdit?.type.includes("sale") ? invoiceToEdit : null}
               isReturnMode={isReturnMode}
               onSaveInvoice={async (inv) => {
                 await handleSaveInvoice(inv);
@@ -807,6 +827,8 @@ export default function App() {
               }}
               onNavigateTab={(tab) => {
                 setActiveTab(tab);
+                setInvoiceToEdit(null);
+                setIsReturnMode(false);
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               permissions={session?.permissions?.sales}
@@ -829,11 +851,12 @@ export default function App() {
 
           {activeTab === "purchases" && (
             <InvoicingView
+              key="purchases"
               type="purchase"
               items={dbState.items}
               parties={dbState.parties}
               business={dbState.business}
-              invoiceToEdit={invoiceToEdit}
+              invoiceToEdit={invoiceToEdit?.type.includes("purchase") ? invoiceToEdit : null}
               isReturnMode={isReturnMode}
               onSaveInvoice={async (inv) => {
                 await handleSaveInvoice(inv);
@@ -846,6 +869,8 @@ export default function App() {
               }}
               onNavigateTab={(tab) => {
                 setActiveTab(tab);
+                setInvoiceToEdit(null);
+                setIsReturnMode(false);
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               permissions={session?.permissions?.purchases}
