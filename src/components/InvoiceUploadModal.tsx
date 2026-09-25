@@ -156,7 +156,17 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
       onInvoiceParsed(result.invoice);
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.message || "स्कॅनिंग अयशस्वी झाले. कृपया स्पष्ट फोटो किंवा PDF वापरा.");
+      let msg = err.message || "स्कॅनिंग अयशस्वी झाले. कृपया स्पष्ट फोटो किंवा PDF वापरा.";
+      try {
+        const match = msg.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          if (parsed.error && parsed.error.message) {
+            msg = parsed.error.message;
+          }
+        }
+      } catch {}
+      setErrorMessage(msg);
     } finally {
       setIsProcessing(false);
       setProcessingStep("");

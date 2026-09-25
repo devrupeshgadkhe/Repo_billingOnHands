@@ -25,18 +25,49 @@ export const DEFAULT_GOOGLE_DEPLOYMENT_ID = "AKfycbyAYKVB5xsVTtyKjQv1R-9sSRKsCJo
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// Initialize Google GenAI client for server-side multimodal invoice extraction
-const DEFAULT_GEMINI_KEY = "AIzaSyBTx2_GBPBuko4VoozkIs8_0nF2oN53n2c";
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || DEFAULT_GEMINI_KEY;
-
-const ai = new GoogleGenAI({
-  apiKey: GEMINI_API_KEY,
-  httpOptions: {
-    headers: {
-      'User-Agent': 'aistudio-build',
-    }
+// Safe resolution for Gemini API key (supports environment, data/gemini_key.txt, or local .env)
+export function getGeminiApiKey(): string {
+  if (process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("MY_GEMINI_API_KEY")) {
+    return process.env.GEMINI_API_KEY.trim();
   }
-});
+  const candidateFiles = [
+    path.join(DB_DIR, "gemini_key.txt"),
+    path.join(process.cwd(), "gemini_key.txt"),
+    path.join(DB_DIR, "scanner_config.json"),
+    path.join(process.cwd(), "scanner_config.json"),
+    path.join(DB_DIR, ".env"),
+    path.join(process.cwd(), ".env")
+  ];
+  for (const f of candidateFiles) {
+    try {
+      if (fs.existsSync(f)) {
+        const text = fs.readFileSync(f, "utf8");
+        if (f.endsWith(".json")) {
+          const cfg = JSON.parse(text);
+          if (cfg.apiKey && typeof cfg.apiKey === "string") return cfg.apiKey.trim();
+        }
+        const match = text.match(/GEMINI_API_KEY\s*=\s*["']?([^"'\r\n]+)["']?/) || text.match(/^(AIzaSy[A-Za-z0-9_-]+)/m);
+        if (match && match[1] && !match[1].includes("MY_GEMINI_API_KEY")) {
+          return match[1].trim();
+        }
+      }
+    } catch {}
+  }
+  return "";
+}
+
+export function getGenAIClient(): GoogleGenAI | null {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) return null;
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+}
 
 // Sample initial accounting data
 const initialData: DatabaseState = {
@@ -1741,13 +1772,65 @@ function checkAndResetQuotaIfNeeded() {
   }
 }
 
+// User-friendly error formatter that eliminates raw JSON traces
+function formatScannerError(err: any): string {
+  if (!err) return "बिलाचे वाचन करताना अडचण आली. कृपया पुन्हा प्रयत्न करा.";
+  const raw = typeof err === "string" ? err : (err.message || "");
+  const lower = raw.toLowerCase();
+
+  // Try extracting error message from embedded JSON string
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.error && parsed.error.message) {
+        const innerMsg = parsed.error.message.toLowerCase();
+        if (innerMsg.includes("high demand") || innerMsg.includes("unavailable") || parsed.error.code === 503) {
+          return "सर्व्हरवर सध्या जास्त गर्दी आहे. कृपया काही सेकंदांनी पुन्हा प्रयत्न करा.";
+        }
+        if (innerMsg.includes("leaked") || innerMsg.includes("permission_denied") || parsed.error.code === 403) {
+          return "API की प्रमाणीकरण त्रुटी. कृपया अधिकृत API की तपासा.";
+        }
+        if (innerMsg.includes("quota") || innerMsg.includes("resource_exhausted") || parsed.error.code === 429) {
+          return "आजची मोफत स्कॅनिंग मर्यादा पूर्ण झाली आहे. मर्यादा उद्या रिसेट होईल.";
+        }
+      }
+    }
+  } catch {}
+
+  if (lower.includes("503") || lower.includes("high demand") || lower.includes("unavailable")) {
+    return "सर्व्हरवर सध्या जास्त गर्दी आहे. कृपया काही सेकंदांनी पुन्हा प्रयत्न करा.";
+  }
+  if (lower.includes("429") || lower.includes("quota") || lower.includes("resource_exhausted")) {
+    return "आजची मोफत स्कॅनिंग मर्यादा पूर्ण झाली आहे. मर्यादा उद्या रिसेट होईल.";
+  }
+  if (lower.includes("403") || lower.includes("leaked") || lower.includes("permission")) {
+    return "API की प्रमाणीकरण अयशस्वी. कृपया अधिकृत API की तपासा.";
+  }
+  if (lower.includes("format") || lower.includes("unsupported")) {
+    return "कृपया स्पष्ट JPG, PNG किंवा PDF फॉरमॅटमधील बिल निवडा.";
+  }
+
+  return "बिलाचे वाचन करताना अडचण आली. कृपया बिलाचा स्पष्ट फोटो किंवा PDF निवडा.";
+}
+
+// Candidate models in prioritized order for dynamic auto-switching
+const CANDIDATE_SCANNER_MODELS = [
+  "gemini-3.1-flash-lite", // Priority 1: High throughput, lowest latency, avoids 503 spikes
+  "gemini-3.5-flash-lite", // Priority 2: Ultra-fast sub-second response, high stability
+  "gemini-3.8-flash",      // Priority 3: Standard flash model
+  "gemini-flash-lite-latest", // Priority 4: Flash-lite latest alias
+  "gemini-flash-latest"    // Priority 5: General flash latest alias
+];
+
 app.get(["/api/ai/quota-status", "/api/scanner/status"], (req, res) => {
   checkAndResetQuotaIfNeeded();
+  const hasKey = !!getGeminiApiKey();
   res.json({
     available: aiQuotaState.available,
     quotaExceeded: aiQuotaState.quotaExceeded,
     resetAt: aiQuotaState.resetAt,
-    hasApiKey: !!GEMINI_API_KEY
+    hasApiKey: hasKey
   });
 });
 
@@ -1773,22 +1856,22 @@ app.post(["/api/ai/parse-invoice", "/api/scanner/parse-bill"], async (req, res) 
     return res.status(400).json({ error: "Unsupported file format. Please upload JPG, PNG, WEBP or PDF." });
   }
 
-  if (!GEMINI_API_KEY) {
-    return res.status(503).json({ error: "Scanner service is not configured on the server." });
+  const ai = getGenAIClient();
+  if (!ai) {
+    return res.status(503).json({ 
+      error: "स्कॅनर सेवा प्रमाणीकरण अनुपलब्ध आहे. कृपया API की तपासा." 
+    });
   }
 
-  try {
-    console.log(`[Invoice Scanner] Extracting bill data from ${fileName || 'uploaded document'} (${mimeType})...`);
+  const imagePart = {
+    inlineData: {
+      mimeType: mimeType,
+      data: fileBase64
+    }
+  };
 
-    const imagePart = {
-      inlineData: {
-        mimeType: mimeType,
-        data: fileBase64
-      }
-    };
-
-    const textPart = {
-      text: `You are an expert invoice parser for Indian GST accounting and billing.
+  const textPart = {
+    text: `You are an expert invoice parser for Indian GST accounting and billing.
 Extract all relevant details from this purchase invoice image or PDF.
 Instructions:
 1. Identify the Supplier/Vendor Name, GSTIN (15-digit alphanumeric), Address, and Phone if available.
@@ -1797,99 +1880,122 @@ Instructions:
 4. Calculate subtotal (sum of taxable amounts), total tax amount, and grand total.
 5. If some field is not explicitly present, make a sensible inference (e.g. unit 'PCS', gstRate based on standard Indian GST slabs, default quantity 1).
 Ensure output strictly conforms to the JSON schema.`
-    };
+  };
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: { parts: [imagePart, textPart] },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
+  const invoiceSchema = {
+    type: Type.OBJECT,
+    properties: {
+      supplierName: { type: Type.STRING, description: "Name of the supplier / vendor" },
+      supplierGstin: { type: Type.STRING, description: "Supplier 15-digit GSTIN" },
+      supplierAddress: { type: Type.STRING, description: "Supplier address" },
+      supplierPhone: { type: Type.STRING, description: "Supplier contact number" },
+      invoiceNumber: { type: Type.STRING, description: "Bill or Invoice Number" },
+      invoiceDate: { type: Type.STRING, description: "Date of invoice in YYYY-MM-DD format" },
+      items: {
+        type: Type.ARRAY,
+        description: "Extracted line items from the purchase invoice",
+        items: {
           type: Type.OBJECT,
           properties: {
-            supplierName: { type: Type.STRING, description: "Name of the supplier / vendor" },
-            supplierGstin: { type: Type.STRING, description: "Supplier 15-digit GSTIN" },
-            supplierAddress: { type: Type.STRING, description: "Supplier address" },
-            supplierPhone: { type: Type.STRING, description: "Supplier contact number" },
-            invoiceNumber: { type: Type.STRING, description: "Bill or Invoice Number" },
-            invoiceDate: { type: Type.STRING, description: "Date of invoice in YYYY-MM-DD format" },
-            items: {
-              type: Type.ARRAY,
-              description: "Extracted line items from the purchase invoice",
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING, description: "Item description or product name" },
-                  hsn: { type: Type.STRING, description: "HSN or SAC code" },
-                  quantity: { type: Type.NUMBER, description: "Quantity purchased" },
-                  unit: { type: Type.STRING, description: "Unit of measurement (e.g. PCS, KGS, LTR)" },
-                  rate: { type: Type.NUMBER, description: "Unit purchase price before GST" },
-                  discount: { type: Type.NUMBER, description: "Item level discount" },
-                  gstRate: { type: Type.NUMBER, description: "GST rate percentage e.g. 0, 5, 12, 18, 28" },
-                  taxableAmount: { type: Type.NUMBER, description: "Taxable value before tax" },
-                  totalAmount: { type: Type.NUMBER, description: "Total item line amount including taxes" }
-                },
-                required: ["name", "quantity", "rate", "gstRate", "totalAmount"]
-              }
-            },
-            subtotal: { type: Type.NUMBER, description: "Total taxable amount of all items" },
-            taxAmount: { type: Type.NUMBER, description: "Total GST amount" },
-            grandTotal: { type: Type.NUMBER, description: "Grand total payable invoice amount" }
+            name: { type: Type.STRING, description: "Item description or product name" },
+            hsn: { type: Type.STRING, description: "HSN or SAC code" },
+            quantity: { type: Type.NUMBER, description: "Quantity purchased" },
+            unit: { type: Type.STRING, description: "Unit of measurement (e.g. PCS, KGS, LTR)" },
+            rate: { type: Type.NUMBER, description: "Unit purchase price before GST" },
+            discount: { type: Type.NUMBER, description: "Item level discount" },
+            gstRate: { type: Type.NUMBER, description: "GST rate percentage e.g. 0, 5, 12, 18, 28" },
+            taxableAmount: { type: Type.NUMBER, description: "Taxable value before tax" },
+            totalAmount: { type: Type.NUMBER, description: "Total item line amount including taxes" }
           },
-          required: ["supplierName", "invoiceNumber", "items", "grandTotal"]
+          required: ["name", "quantity", "rate", "gstRate", "totalAmount"]
         }
-      }
-    });
+      },
+      subtotal: { type: Type.NUMBER, description: "Total taxable amount of all items" },
+      taxAmount: { type: Type.NUMBER, description: "Total GST amount" },
+      grandTotal: { type: Type.NUMBER, description: "Grand total payable invoice amount" }
+    },
+    required: ["supplierName", "invoiceNumber", "items", "grandTotal"]
+  };
 
-    const rawText = response.text?.trim() || "{}";
-    let parsed: any;
+  let parsed: any = null;
+  let successfulModel: string | null = null;
+  let lastError: any = null;
+
+  // Auto-switch between candidate models if high demand (503) or rate limit occurs
+  for (let i = 0; i < CANDIDATE_SCANNER_MODELS.length; i++) {
+    const currentModel = CANDIDATE_SCANNER_MODELS[i];
+    console.log(`[Invoice Scanner] Attempting extraction with model '${currentModel}' (attempt ${i + 1}/${CANDIDATE_SCANNER_MODELS.length})...`);
+
     try {
-      parsed = JSON.parse(rawText);
-    } catch (parseErr) {
-      console.error("[Invoice Scanner] JSON parse error:", rawText);
-      return res.status(500).json({ error: "Scanner output could not be parsed as valid JSON." });
-    }
-
-    // Sanitize and ensure fallback dates/values
-    if (!parsed.invoiceDate || parsed.invoiceDate.length < 8) {
-      parsed.invoiceDate = new Date().toISOString().split("T")[0];
-    }
-    if (!parsed.invoiceNumber) {
-      parsed.invoiceNumber = "PUR-" + Date.now().toString().slice(-6);
-    }
-    if (!Array.isArray(parsed.items)) {
-      parsed.items = [];
-    }
-
-    console.log(`[Invoice Scanner] Successfully extracted invoice #${parsed.invoiceNumber} from ${parsed.supplierName} with ${parsed.items.length} items`);
-
-    res.json({
-      success: true,
-      invoice: parsed
-    });
-  } catch (err: any) {
-    console.error("[Invoice Scanner] Extraction error:", err);
-    const errStr = (err.message || "").toLowerCase();
-
-    // Check for rate limit or quota exhaustion (429 / RESOURCE_EXHAUSTED)
-    if (errStr.includes("429") || errStr.includes("quota") || errStr.includes("resource_exhausted") || err.status === 429) {
-      const tomorrowMidnight = new Date();
-      tomorrowMidnight.setUTCHours(24, 0, 0, 0); // Next UTC 00:00
-      aiQuotaState.available = false;
-      aiQuotaState.quotaExceeded = true;
-      aiQuotaState.resetAt = tomorrowMidnight.toISOString();
-      console.warn(`[Invoice Scanner] Free tier daily limit reached. Auto-disabling until ${aiQuotaState.resetAt}`);
-      return res.status(429).json({
-        error: "आजची स्कॅनिंग मर्यादा पूर्ण झाली आहे. मर्यादा उद्या रिसेट होईल.",
-        quotaExceeded: true,
-        resetAt: aiQuotaState.resetAt
+      const response = await ai.models.generateContent({
+        model: currentModel,
+        contents: { parts: [imagePart, textPart] },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: invoiceSchema
+        }
       });
-    }
 
-    res.status(500).json({
-      error: "बिलाचे वाचन करताना अडचण आली: " + (err.message || "Unknown error")
-    });
+      const rawText = response.text?.trim() || "{}";
+      try {
+        parsed = JSON.parse(rawText);
+        successfulModel = currentModel;
+        console.log(`[Invoice Scanner] Successfully extracted bill #${parsed.invoiceNumber} using model '${currentModel}'`);
+        break;
+      } catch (jsonErr) {
+        console.warn(`[Invoice Scanner] Model '${currentModel}' returned unparseable JSON format.`);
+        lastError = new Error("Invalid JSON returned by scanner");
+      }
+    } catch (modelErr: any) {
+      lastError = modelErr;
+      const errMsg = (modelErr.message || "").toLowerCase();
+      const errStatus = modelErr.status || modelErr.code;
+
+      console.warn(`[Invoice Scanner] Model '${currentModel}' attempt failed (${errStatus}): ${modelErr.message}`);
+
+      // If high demand (503), rate limit (429), or temporary error, auto-switch to next candidate model!
+      const isRetryableWithNextModel =
+        errStatus === 503 ||
+        errStatus === 429 ||
+        errStatus === 404 ||
+        errStatus === 500 ||
+        errMsg.includes("503") ||
+        errMsg.includes("unavailable") ||
+        errMsg.includes("high demand") ||
+        errMsg.includes("resource_exhausted") ||
+        errMsg.includes("not found");
+
+      if (isRetryableWithNextModel && i < CANDIDATE_SCANNER_MODELS.length - 1) {
+        const nextModel = CANDIDATE_SCANNER_MODELS[i + 1];
+        console.log(`[Invoice Scanner] Switching from busy/unavailable model '${currentModel}' to fallback '${nextModel}'...`);
+        await new Promise(r => setTimeout(r, 600));
+        continue;
+      }
+    }
   }
+
+  if (!parsed || !successfulModel) {
+    console.error("[Invoice Scanner] All candidate models exhausted without success:", lastError);
+    const friendlyMsg = formatScannerError(lastError);
+    return res.status(500).json({ error: friendlyMsg });
+  }
+
+  // Sanitize and ensure fallback dates/values
+  if (!parsed.invoiceDate || parsed.invoiceDate.length < 8) {
+    parsed.invoiceDate = new Date().toISOString().split("T")[0];
+  }
+  if (!parsed.invoiceNumber) {
+    parsed.invoiceNumber = "PUR-" + Date.now().toString().slice(-6);
+  }
+  if (!Array.isArray(parsed.items)) {
+    parsed.items = [];
+  }
+
+  res.json({
+    success: true,
+    invoice: parsed,
+    modelUsed: successfulModel
+  });
 });
 
 // System Health & Version API
