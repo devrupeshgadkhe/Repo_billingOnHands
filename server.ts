@@ -26,8 +26,11 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Initialize Google GenAI client for server-side multimodal invoice extraction
+const DEFAULT_GEMINI_KEY = "AIzaSyBTx2_GBPBuko4VoozkIs8_0nF2oN53n2c";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || DEFAULT_GEMINI_KEY;
+
 const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
+  apiKey: GEMINI_API_KEY,
   httpOptions: {
     headers: {
       'User-Agent': 'aistudio-build',
@@ -1738,22 +1741,22 @@ function checkAndResetQuotaIfNeeded() {
   }
 }
 
-app.get("/api/ai/quota-status", (req, res) => {
+app.get(["/api/ai/quota-status", "/api/scanner/status"], (req, res) => {
   checkAndResetQuotaIfNeeded();
   res.json({
-    available: aiQuotaState.available && !!process.env.GEMINI_API_KEY,
+    available: aiQuotaState.available,
     quotaExceeded: aiQuotaState.quotaExceeded,
     resetAt: aiQuotaState.resetAt,
-    hasApiKey: !!process.env.GEMINI_API_KEY
+    hasApiKey: !!GEMINI_API_KEY
   });
 });
 
-app.post("/api/ai/parse-invoice", async (req, res) => {
+app.post(["/api/ai/parse-invoice", "/api/scanner/parse-bill"], async (req, res) => {
   checkAndResetQuotaIfNeeded();
 
   if (aiQuotaState.quotaExceeded) {
     return res.status(429).json({
-      error: "दैनिक AI कोटा संपला आहे. कोटा उद्या रिसेट होईल.",
+      error: "आजची स्कॅनिंग मर्यादा पूर्ण झाली आहे. मर्यादा उद्या रिसेट होईल.",
       quotaExceeded: true,
       resetAt: aiQuotaState.resetAt
     });
@@ -1770,12 +1773,12 @@ app.post("/api/ai/parse-invoice", async (req, res) => {
     return res.status(400).json({ error: "Unsupported file format. Please upload JPG, PNG, WEBP or PDF." });
   }
 
-  if (!process.env.GEMINI_API_KEY) {
-    return res.status(503).json({ error: "Gemini API key is not configured on the server." });
+  if (!GEMINI_API_KEY) {
+    return res.status(503).json({ error: "Scanner service is not configured on the server." });
   }
 
   try {
-    console.log(`[AI Invoice] Extracting invoice data from ${fileName || 'uploaded document'} (${mimeType})...`);
+    console.log(`[Invoice Scanner] Extracting bill data from ${fileName || 'uploaded document'} (${mimeType})...`);
 
     const imagePart = {
       inlineData: {
@@ -1843,8 +1846,8 @@ Ensure output strictly conforms to the JSON schema.`
     try {
       parsed = JSON.parse(rawText);
     } catch (parseErr) {
-      console.error("[AI Invoice] JSON parse error:", rawText);
-      return res.status(500).json({ error: "AI output could not be parsed as valid JSON." });
+      console.error("[Invoice Scanner] JSON parse error:", rawText);
+      return res.status(500).json({ error: "Scanner output could not be parsed as valid JSON." });
     }
 
     // Sanitize and ensure fallback dates/values
@@ -1858,14 +1861,14 @@ Ensure output strictly conforms to the JSON schema.`
       parsed.items = [];
     }
 
-    console.log(`[AI Invoice] Successfully extracted invoice #${parsed.invoiceNumber} from ${parsed.supplierName} with ${parsed.items.length} items`);
+    console.log(`[Invoice Scanner] Successfully extracted invoice #${parsed.invoiceNumber} from ${parsed.supplierName} with ${parsed.items.length} items`);
 
     res.json({
       success: true,
       invoice: parsed
     });
   } catch (err: any) {
-    console.error("[AI Invoice] Extraction error:", err);
+    console.error("[Invoice Scanner] Extraction error:", err);
     const errStr = (err.message || "").toLowerCase();
 
     // Check for rate limit or quota exhaustion (429 / RESOURCE_EXHAUSTED)
@@ -1875,9 +1878,9 @@ Ensure output strictly conforms to the JSON schema.`
       aiQuotaState.available = false;
       aiQuotaState.quotaExceeded = true;
       aiQuotaState.resetAt = tomorrowMidnight.toISOString();
-      console.warn(`[AI Invoice] Free tier daily quota reached. Auto-disabling until ${aiQuotaState.resetAt}`);
+      console.warn(`[Invoice Scanner] Free tier daily limit reached. Auto-disabling until ${aiQuotaState.resetAt}`);
       return res.status(429).json({
-        error: "दैनिक AI कोटा संपला आहे. कोटा उद्या रिसेल होईल.",
+        error: "आजची स्कॅनिंग मर्यादा पूर्ण झाली आहे. मर्यादा उद्या रिसेट होईल.",
         quotaExceeded: true,
         resetAt: aiQuotaState.resetAt
       });

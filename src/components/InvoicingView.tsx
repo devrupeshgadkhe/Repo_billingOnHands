@@ -17,7 +17,7 @@ import {
   Receipt,
   Scale,
   ArrowRight,
-  Sparkles,
+  ScanLine,
   AlertCircle,
   Keyboard,
   Search,
@@ -177,23 +177,9 @@ export default function InvoicingView({
   // Notes accordion
   const [showNotes, setShowNotes] = useState(false);
 
-  // AI Invoice Scanner state
-  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const [isAiAvailable, setIsAiAvailable] = useState(true);
-  const [aiScanNotification, setAiScanNotification] = useState("");
-
-  useEffect(() => {
-    if (type === "purchase") {
-      fetch("/api/ai/quota-status")
-        .then(res => res.json())
-        .then(data => {
-          setIsAiAvailable(!!data.available && !data.quotaExceeded);
-        })
-        .catch(() => {
-          setIsAiAvailable(false);
-        });
-    }
-  }, [type]);
+  // Supplier Bill Scanner state
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [scanNotification, setScanNotification] = useState("");
 
   const handleInvoiceParsed = (parsedData: ParsedInvoiceData) => {
     // 1. Match party by GSTIN or Name
@@ -280,13 +266,13 @@ export default function InvoicingView({
 
     // 4. Notes
     setNotes(prev => {
-      const aiNote = `Extracted via AI Scan from ${parsedData.supplierName || 'Supplier'} Bill #${parsedData.invoiceNumber}`;
-      return prev ? `${prev} | ${aiNote}` : aiNote;
+      const scanNote = `Scanned from ${parsedData.supplierName || 'Supplier'} Bill #${parsedData.invoiceNumber}`;
+      return prev ? `${prev} | ${scanNote}` : scanNote;
     });
 
     playPOSSound("success");
-    setAiScanNotification(`सप्लायर बिल #${parsedData.invoiceNumber} (${parsedData.supplierName || 'Supplier'}) यशस्वीरीत्या स्कॅन झाले. सर्व तपशील तपासून सेव्ह करा.`);
-    setTimeout(() => setAiScanNotification(""), 8000);
+    setScanNotification(`सप्लायर बिल #${parsedData.invoiceNumber} (${parsedData.supplierName || 'Supplier'}) यशस्वीरीत्या स्कॅन झाले. सर्व तपशील तपासून सेव्ह करा.`);
+    setTimeout(() => setScanNotification(""), 8000);
   };
 
   // DOM Refs
@@ -1105,16 +1091,17 @@ export default function InvoicingView({
           )}
         </div>
 
-        {/* Right: AI Scan (Purchase Mode), Parked Bills & Shortcuts Bar */}
+        {/* Right: Scan Bill (Purchase Mode), Parked Bills & Shortcuts Bar */}
         <div className="flex items-center space-x-2">
-          {type === "purchase" && isAiAvailable && (
+          {type === "purchase" && (
             <button
               type="button"
-              onClick={() => setIsAiModalOpen(true)}
+              onClick={() => setIsScanModalOpen(true)}
               className="flex items-center space-x-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border border-emerald-500/40"
+              title="सप्लायर बिल स्कॅन करा (PDF किंवा फोटो)"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>AI Scan Bill (PDF/Photo)</span>
+              <ScanLine className="w-3.5 h-3.5" />
+              <span>Scan Bill (PDF/Photo)</span>
             </button>
           )}
 
@@ -1153,16 +1140,16 @@ export default function InvoicingView({
         </div>
       </div>
 
-      {/* AI Scan Success Notification Banner */}
-      {aiScanNotification && (
+      {/* Scan Success Notification Banner */}
+      {scanNotification && (
         <div className="p-3 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-xl text-xs flex items-center justify-between shadow-2xs animate-in fade-in">
           <div className="flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span className="font-semibold">{aiScanNotification}</span>
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="font-semibold">{scanNotification}</span>
           </div>
           <button
             type="button"
-            onClick={() => setAiScanNotification("")}
+            onClick={() => setScanNotification("")}
             className="text-slate-400 hover:text-slate-600 font-bold p-1 cursor-pointer"
           >
             <X className="w-3.5 h-3.5" />
@@ -2315,15 +2302,11 @@ export default function InvoicingView({
         </div>
       )}
 
-      {/* AI Supplier Invoice Upload & Extraction Modal */}
+      {/* Supplier Invoice Upload & Extraction Modal */}
       <InvoiceUploadModal
-        isOpen={isAiModalOpen}
-        onClose={() => setIsAiModalOpen(false)}
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
         onInvoiceParsed={handleInvoiceParsed}
-        onQuotaExceeded={() => {
-          setIsAiAvailable(false);
-          setIsAiModalOpen(false);
-        }}
       />
 
     </div>

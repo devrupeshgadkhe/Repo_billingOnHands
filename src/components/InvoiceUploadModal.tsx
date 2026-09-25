@@ -3,18 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef } from "react";
 import {
   Upload,
   FileText,
   Image as ImageIcon,
-  Sparkles,
+  ScanLine,
   AlertCircle,
   X,
   CheckCircle2,
   Loader2,
-  FileCheck,
-  RefreshCw
+  FileCheck
 } from "lucide-react";
 
 export interface ParsedItem {
@@ -114,7 +113,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
 
     setIsProcessing(true);
     setErrorMessage(null);
-    setProcessingStep("फाईल एन्कोड करत आहे...");
+    setProcessingStep("फाईल तयार करत आहे...");
 
     try {
       // Convert file to base64
@@ -122,7 +121,6 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
-          // Extract purely base64 content
           const base64 = result.includes(",") ? result.split(",")[1] : result;
           resolve(base64);
         };
@@ -130,7 +128,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
         reader.readAsDataURL(selectedFile);
       });
 
-      setProcessingStep("जेमिनी AI बिलाचे वाचन व पृथक्करण करत आहे...");
+      setProcessingStep("बिलाचे वाचन व तपशील पृथक्करण सुरू आहे...");
 
       const response = await fetch("/api/ai/parse-invoice", {
         method: "POST",
@@ -147,18 +145,18 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
       if (!response.ok) {
         if (result.quotaExceeded) {
           if (onQuotaExceeded) onQuotaExceeded();
-          throw new Error("दैनिक AI कोटा संपला आहे. कोटा रिसेट झाल्यावर हा पर्याय पुन्हा उपलब्ध होईल.");
+          throw new Error("आजची मोफत स्कॅनिंग मर्यादा पूर्ण झाली आहे. मर्यादा रिसेट झाल्यावर हा पर्याय पुन्हा उपलब्ध होईल.");
         }
-        throw new Error(result.error || "बिलामधून डेटा एक्सट्रॅक्ट करताना त्रुटी आली.");
+        throw new Error(result.error || "बिलामधून डेटा वाचताना त्रुटी आली.");
       }
 
-      setProcessingStep("आयटम्स व पार्टी मॅचिंग पूर्ण!");
+      setProcessingStep("वस्तू व तपशील भरले जात आहेत...");
 
       // Pass parsed data to parent
       onInvoiceParsed(result.invoice);
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.message || "पार्सिंग अयशस्वी झाले. कृपया स्पष्ट फोटो किंवा PDF वापरा.");
+      setErrorMessage(err.message || "स्कॅनिंग अयशस्वी झाले. कृपया स्पष्ट फोटो किंवा PDF वापरा.");
     } finally {
       setIsProcessing(false);
       setProcessingStep("");
@@ -183,18 +181,15 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-emerald-50/50">
           <div className="flex items-center space-x-2.5">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white flex items-center justify-center shadow-xs">
-              <Sparkles className="w-5 h-5 animate-pulse" />
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+              <ScanLine className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                <span>AI सप्लायर बिल स्कॅनर</span>
-                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-semibold rounded-full">
-                  Free Tier
-                </span>
+              <h3 className="font-bold text-slate-900 text-base">
+                सप्लायर बिल स्कॅन (Scan Bill)
               </h3>
               <p className="text-xs text-slate-500">
-                सप्लायर बिलाचा फोटो किंवा PDF अपलोड करा; AI आपोआप सर्व तपशील भरेल.
+                सप्लायर बिलाचा फोटो किंवा PDF अपलोड करा; सर्व तपशील व वस्तू आपोआप भरल्या जातील.
               </p>
             </div>
           </div>
@@ -299,7 +294,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                     {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • {selectedFile.type || "Document"}
                   </p>
                   <span className="inline-flex items-center text-[10px] text-emerald-700 font-semibold mt-1">
-                    <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> AI स्कॅनिंगसाठी तयार
+                    <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> स्कॅनिंगसाठी तयार
                   </span>
                 </div>
               </div>
@@ -314,7 +309,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                     <div className="bg-emerald-600 h-1.5 rounded-full animate-pulse w-3/4"></div>
                   </div>
                   <p className="text-[10px] text-emerald-700">
-                    बिलावरील नाव, GST नंबर, आयटम्स आणि टॅक्स ऑटोमॅटिक भरले जात आहेत...
+                    बिलावरील नाव, GST नंबर, वस्तू, दर आणि टॅक्स भरले जात आहेत...
                   </p>
                 </div>
               )}
@@ -323,11 +318,11 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
 
           {/* Feature hints */}
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
-            <p className="font-semibold text-slate-800">💡 स्मार्ट टीप:</p>
+            <p className="font-semibold text-slate-800">💡 टीप:</p>
             <p>
               • स्कॅन झाल्यानंतर सर्व तपशील परचेस बिल फॉर्ममध्ये आपोआप भरले जातील.
               <br />
-              • तुम्ही सेव्ह करण्यापूर्वी सर्व रक्कम, दर व आयटम्स तपासून बदल करू शकता.
+              • तुम्ही सेव्ह करण्यापूर्वी सर्व रक्कम, दर व वस्तू तपासून आवश्यक बदल करू शकता.
             </p>
           </div>
         </div>
@@ -351,12 +346,12 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
             {isProcessing ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>स्कॅन चालू आहे...</span>
+                <span>स्कॅन होत आहे...</span>
               </>
             ) : (
               <>
-                <Sparkles className="w-4 h-4" />
-                <span>AI ने स्कॅन करा</span>
+                <ScanLine className="w-4 h-4" />
+                <span>स्कॅन करा (Scan Bill)</span>
               </>
             )}
           </button>
