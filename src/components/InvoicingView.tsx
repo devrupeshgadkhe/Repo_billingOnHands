@@ -201,9 +201,31 @@ export default function InvoicingView({
   // Notes accordion
   const [showNotes, setShowNotes] = useState(false);
 
-  // Supplier Bill Scanner state
+  // Supplier Bill Scanner state (Only visible if Gemini AI credits are available)
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [scanNotification, setScanNotification] = useState("");
+  const [isScanAvailable, setIsScanAvailable] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (type === "purchase") {
+      fetch("/api/ai/quota-status")
+        .then(res => res.json())
+        .then(data => {
+          if (isMounted) {
+            setIsScanAvailable(!!data.available);
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setIsScanAvailable(false);
+          }
+        });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [type]);
 
   const handleInvoiceParsed = (parsedData: ParsedInvoiceData) => {
     // 1. Match or Auto-create Supplier
@@ -1164,17 +1186,17 @@ export default function InvoicingView({
           )}
         </div>
 
-        {/* Right: Scan Bill (Purchase Mode), Parked Bills & Shortcuts Bar */}
+        {/* Right: Scan Bill (Purchase Mode - ONLY if Gemini AI credits are available), Parked Bills & Shortcuts Bar */}
         <div className="flex items-center space-x-2">
-          {type === "purchase" && (
+          {type === "purchase" && isScanAvailable && (
             <button
               type="button"
               onClick={() => setIsScanModalOpen(true)}
               className="flex items-center space-x-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border border-emerald-500/40"
-              title="सप्लायर बिल स्कॅन करा (PDF किंवा फोटो)"
+              title="सप्लायर बिल स्कॅन करा (Gemini AI)"
             >
               <ScanLine className="w-3.5 h-3.5" />
-              <span>Scan Bill (PDF/Photo)</span>
+              <span>Scan Bill (AI)</span>
             </button>
           )}
 

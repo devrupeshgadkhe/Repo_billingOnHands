@@ -7,8 +7,6 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { GoogleGenAI, Type } from "@google/genai";
-import Tesseract from "tesseract.js";
-import { PDFParse } from "pdf-parse";
 import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus } from "./src/types.js";
 
 const app = express();
@@ -1753,24 +1751,74 @@ interface AiQuotaState {
   available: boolean;
   quotaExceeded: boolean;
   resetAt: string | null;
-  lastChecked: string;
+  lastChecked: number;
 }
 
 let aiQuotaState: AiQuotaState = {
-  available: true,
+  available: false,
   quotaExceeded: false,
   resetAt: null,
-  lastChecked: new Date().toISOString()
+  lastChecked: 0
 };
 
-function checkAndResetQuotaIfNeeded() {
+// Candidate models in prioritized order for dynamic auto-switching
+const CANDIDATE_SCANNER_MODELS = [
+  "gemini-3.1-flash-lite", // Priority 1: High throughput, lowest latency, avoids 503 spikes
+  "gemini-3.8-flash",      // Priority 2: Standard flash model
+  "gemini-flash-latest"    // Priority 3: General flash latest alias
+];
+
+export async function verifyGeminiAvailability(): Promise<boolean> {
+  // If quota was exceeded, check if reset window passed
   if (aiQuotaState.quotaExceeded && aiQuotaState.resetAt) {
     if (new Date() >= new Date(aiQuotaState.resetAt)) {
-      aiQuotaState.available = true;
+      aiQuotaState.available = false;
       aiQuotaState.quotaExceeded = false;
       aiQuotaState.resetAt = null;
-      console.log("[AI Invoice] Daily quota window reset. AI Scan re-enabled.");
+      aiQuotaState.lastChecked = 0;
+    } else {
+      return false;
     }
+  }
+
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    aiQuotaState.available = false;
+    return false;
+  }
+
+  // Cache verification for 3 minutes to avoid excessive test requests
+  const now = Date.now();
+  if (aiQuotaState.lastChecked && (now - aiQuotaState.lastChecked < 180000)) {
+    return aiQuotaState.available;
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    await ai.models.generateContent({
+      model: "gemini-3.1-flash-lite",
+      contents: "ping",
+      config: { maxOutputTokens: 1 }
+    });
+    aiQuotaState.available = true;
+    aiQuotaState.quotaExceeded = false;
+    aiQuotaState.lastChecked = now;
+    return true;
+  } catch (err: any) {
+    const msg = (err?.message || "").toLowerCase();
+    const status = err?.status || err?.code;
+    aiQuotaState.lastChecked = now;
+    aiQuotaState.available = false;
+
+    if (status === 429 || msg.includes("quota") || msg.includes("resource_exhausted")) {
+      aiQuotaState.quotaExceeded = true;
+      const tomorrow = new Date();
+      tomorrow.setHours(24, 0, 0, 0);
+      aiQuotaState.resetAt = tomorrow.toISOString();
+    } else {
+      aiQuotaState.quotaExceeded = true;
+    }
+    return false;
   }
 }
 
@@ -1816,305 +1864,24 @@ function formatScannerError(err: any): string {
   return "बिलाचे वाचन करताना अडचण आली. कृपया बिलाचा स्पष्ट फोटो किंवा PDF निवडा.";
 }
 
-// Candidate models in prioritized order for dynamic auto-switching
-const CANDIDATE_SCANNER_MODELS = [
-  "gemini-3.1-flash-lite", // Priority 1: High throughput, lowest latency, avoids 503 spikes
-  "gemini-3.5-flash-lite", // Priority 2: Ultra-fast sub-second response, high stability
-  "gemini-3.8-flash",      // Priority 3: Standard flash model
-  "gemini-flash-lite-latest", // Priority 4: Flash-lite latest alias
-  "gemini-flash-latest"    // Priority 5: General flash latest alias
-];
-
-function getTesseractWorkerPath(): string {
-  try {
-    return require.resolve("tesseract.js/src/worker-script/node/index.js");
-  } catch {}
-  const candidates = [
-    path.join(__dirname, "../node_modules/tesseract.js/src/worker-script/node/index.js"),
-    path.join(process.cwd(), "node_modules/tesseract.js/src/worker-script/node/index.js"),
-    path.join(__dirname, "node_modules/tesseract.js/src/worker-script/node/index.js")
-  ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
-  return "";
-}
-
-export async function extractRawTextFromDocument(fileBase64: string, mimeType: string): Promise<string> {
-  const buf = Buffer.from(fileBase64, "base64");
-
-  if (mimeType === "application/pdf") {
-    try {
-      const parser = new PDFParse({ data: buf });
-      const textResult = await parser.getText();
-      const text = textResult.text || "";
-      await parser.destroy();
-      if (text.trim().length > 15) {
-        return text;
-      }
-    } catch (pdfErr: any) {
-      console.warn("[PDFParse] Fallback to OCR due to:", pdfErr?.message);
-    }
-  }
-
-  // Use Tesseract OCR for images (PNG, JPEG, WEBP, etc.)
-  try {
-    const workerPath = getTesseractWorkerPath();
-    const workerOptions: any = {};
-    if (workerPath) {
-      workerOptions.workerPath = workerPath;
-    }
-    const worker = await Tesseract.createWorker("eng", 1, workerOptions);
-    const ret = await worker.recognize(buf);
-    const text = ret.data.text || "";
-    await worker.terminate();
-    return text;
-  } catch (ocrErr: any) {
-    console.error("[Tesseract OCR Error]:", ocrErr?.message);
-    return "";
-  }
-}
-
-export function parseInvoiceFromRawText(rawText: string, fileName?: string): any {
-  if (!rawText || typeof rawText !== "string") {
-    return null;
-  }
-
-  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-
-  // 1. GSTIN Detection (Indian 15-character GSTIN regex)
-  const gstRegex = /\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z2][0-9A-Z]{1}\b/gi;
-  const gstMatches = (rawText.match(gstRegex) || []).map(g => g.toUpperCase().replace(/2$/, "Z"));
-  const supplierGstin = gstMatches[0] || "";
-  const buyerGstin = gstMatches.length > 1 ? gstMatches[1] : "";
-
-  // 2. Invoice Number
-  let invoiceNumber = "";
-  const slashMatch = rawText.match(/(?:^|\s)([A-Z0-9_\-]+(?:\/[A-Z0-9_\-]+)+)(?:\s|$)/i);
-  if (slashMatch && !/HSN|SAC|UIN|GSTIN|and|or|true|false/i.test(slashMatch[1])) {
-    invoiceNumber = slashMatch[1].trim();
-  } else {
-    const invMatch = rawText.match(/(?:Invoice\s*No\.?|Inv\s*No\.?|Bill\s*No\.?|Invoice\s*#|Invoice\s*Number)[\s\.:\-_]*([A-Za-z0-9\/\-_]+)/i);
-    if (invMatch && invMatch[1] && !/^(e-way|dated|date|mode)$/i.test(invMatch[1])) {
-      invoiceNumber = invMatch[1].trim();
-    }
-  }
-  if (!invoiceNumber && fileName) {
-    const cleanBase = fileName.replace(/\.[^/.]+$/, "").replace(/[_\-\.]+/g, " ");
-    const fnMatch = cleanBase.match(/(?:inv|bill|tax|gst|no|num)?[-:\s#]*([A-Za-z0-9\/-]{3,15})/i);
-    if (fnMatch && fnMatch[1] && /\d/.test(fnMatch[1])) {
-      invoiceNumber = fnMatch[1].toUpperCase();
-    }
-  }
-  if (!invoiceNumber) {
-    invoiceNumber = "TAX-" + Math.floor(100000 + Math.random() * 900000);
-  }
-
-  // 3. Invoice Date
-  let rawDate = "";
-  const dateLabelMatch = rawText.match(/(?:Dated?|Date\s*of\s*Invoice|Invoice\s*Date|Bill\s*Date)[\s\.:\-_]*([0-9]{1,2}[-\/\.][A-Za-z0-9]{3,}[-\/\.][0-9]{2,4}|[0-9]{1,2}[-\/\.][0-9]{1,2}[-\/\.][0-9]{2,4})/i);
-  if (dateLabelMatch && dateLabelMatch[1]) {
-    rawDate = dateLabelMatch[1];
-  } else {
-    const directDate = rawText.match(/\b([0-9]{1,2}[-\/](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\/][0-9]{2,4})\b/i);
-    if (directDate) rawDate = directDate[1];
-  }
-
-  let invoiceDate = new Date().toISOString().split("T")[0];
-  if (rawDate) {
-    const parsedD = new Date(rawDate);
-    if (!isNaN(parsedD.getTime())) {
-      invoiceDate = parsedD.toISOString().split("T")[0];
-    } else {
-      const parts = rawDate.split(/[-\/\.]/);
-      if (parts.length === 3) {
-        let [d, m, y] = parts;
-        if (y.length === 2) y = "20" + y;
-        const testD = new Date(`${y}-${m}-${d}`);
-        if (!isNaN(testD.getTime())) {
-          invoiceDate = testD.toISOString().split("T")[0];
-        }
-      }
-    }
-  }
-
-  // 4. Supplier Name, Address, Contact
-  let supplierName = "";
-  let supplierAddress = "";
-  let supplierState = "";
-  let supplierPhone = "";
-  let supplierEmail = "";
-
-  const emailMatch = rawText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
-  if (emailMatch) supplierEmail = emailMatch[0];
-
-  const phoneMatch = rawText.match(/(?:Phone|Mobile|Tel|Cell|Mob)[\s\.:\-_]*(\+?91[\s-]*)?([6-9]\d{9})/i) || rawText.match(/\b[6-9]\d{9}\b/);
-  if (phoneMatch) supplierPhone = phoneMatch[2] || phoneMatch[0];
-
-  const stateMatch = rawText.match(/State\s*Name\s*:\s*([A-Za-z\s]+?)(?:,\s*Code|\n|$)/i);
-  if (stateMatch) supplierState = stateMatch[1].trim();
-
-  // Search top lines for supplier company name
-  for (let i = 0; i < Math.min(lines.length, 16); i++) {
-    const l = lines[i];
-    if (/^(tax\s*invoice|invoice|bill\s*of\s*supply|original|duplicate|triplicate|gst)$/i.test(l)) continue;
-    if (/(?:pvt\s*ltd|private\s*limited|limited|ltd|industries|enterprises|traders|company|corporation|store|motors|electronics|mfg|hardware|retail|mart|agency)/i.test(l)) {
-      supplierName = l.replace(/^[^A-Za-z0-9]+/, "").trim();
-      const addrLines = lines.slice(i + 1, i + 5).filter(x => !/GSTIN|State|E-Mail|Invoice|e-Way|Dated|Buyer/i.test(x));
-      if (addrLines.length > 0) supplierAddress = addrLines.join(", ");
-      break;
-    }
-  }
-  if (!supplierName) {
-    for (let i = 0; i < Math.min(lines.length, 10); i++) {
-      const l = lines[i];
-      if (/^(tax\s*invoice|invoice|bill|gst|cash\s*memo)$/i.test(l)) continue;
-      if (l.length >= 4 && !/^[0-9\s\.\-:\/]+$/.test(l) && !/GSTIN|Invoice|Dated|Buyer|e-Way/i.test(l)) {
-        supplierName = l.replace(/^[^A-Za-z0-9]+/, "").trim();
-        break;
-      }
-    }
-  }
-  if (!supplierName) {
-    supplierName = "Supplier";
-  }
-
-  // 5. Taxes (CGST %, SGST %, IGST %)
-  let cgstRate = 0;
-  let sgstRate = 0;
-  let igstRate = 0;
-
-  const cgstMatches = [...rawText.matchAll(/(?:Central\s*Tax|CGST)[\s\S]{0,140}?(\d+(?:\.\d+)?)\s*%/gi)];
-  if (cgstMatches.length > 0) cgstRate = parseFloat(cgstMatches[0][1]);
-
-  const sgstMatches = [...rawText.matchAll(/(?:State\s*Tax|SGST)[\s\S]{0,140}?(\d+(?:\.\d+)?)\s*%/gi)];
-  if (sgstMatches.length > 0) sgstRate = parseFloat(sgstMatches[0][1]);
-
-  const igstMatches = [...rawText.matchAll(/(?:Integrated\s*Tax|IGST)[\s\S]{0,140}?(\d+(?:\.\d+)?)\s*%/gi)];
-  if (igstMatches.length > 0) igstRate = parseFloat(igstMatches[0][1]);
-
-  let totalGstRate = igstRate > 0 ? igstRate : (cgstRate + sgstRate);
-  if (!totalGstRate || isNaN(totalGstRate) || totalGstRate <= 0) {
-    const anyTaxMatch = rawText.match(/(?:Tax\s*Rate|GST\s*Rate|Rate\s*of\s*Tax)[\s\.:\-_]*([0-9]+(?:\.[0-9]+)?)\s*%/i);
-    if (anyTaxMatch) totalGstRate = parseFloat(anyTaxMatch[1]);
-  }
-  if (!totalGstRate || isNaN(totalGstRate) || totalGstRate <= 0) {
-    totalGstRate = 18;
-  }
-
-  // 6. Items Extraction (Multi-pattern)
-  const items: any[] = [];
-  const standardRowRegex = /(?:^\d+[\s\.\)]+)?([A-Za-z0-9\s\-+]+?)\s+(\d{4,8})\s+([0-9,]+(?:\.[0-9]+)?)\s*([A-Za-z]+)?\s+([0-9,]+(?:\.[0-9]+)?)\s*(?:[A-Za-z]+)?\s+([0-9,]+(?:\.[0-9]+)?)/;
-  const noHsnRowRegex = /(?:^\d+[\s\.\)]+)?([A-Za-z0-9\s\-+]{3,})\s+([0-9,]+(?:\.[0-9]+)?)\s*(Nos|Pcs|Kg|Box|Units?|Sets?|Pkt|Mtr)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)/i;
-  const numOnlyRowRegex = /^(\d{4,8})\s+([0-9,]+(?:\.[0-9]+)?)\s*([A-Za-z]+)?\s+([0-9,]+(?:\.[0-9]+)?)\s*(?:[A-Za-z]+)?\s+([0-9,]+(?:\.[0-9]+)?)/;
-
-  for (let i = 0; i < lines.length; i++) {
-    const l = lines[i];
-    if (/^(output\s*cgst|output\s*sgst|output\s*igst|amount\s*chargeable|tax\s*amount|inr\s+|total\s*tax|sub\s*total)/i.test(l)) {
-      continue;
-    }
-
-    let name = "";
-    let hsn = "";
-    let qty = 1;
-    let unit = "Nos";
-    let rate = 0;
-    let amount = 0;
-
-    // Pattern A: Standard line with HSN and description on same line
-    const m1 = l.match(standardRowRegex);
-    if (m1) {
-      name = m1[1].replace(/^\d+[\s\.\)]+/, "").trim();
-      hsn = m1[2].trim();
-      qty = parseFloat(m1[3].replace(/,/g, "")) || 1;
-      unit = m1[4] ? m1[4].trim() : "Nos";
-      rate = parseFloat(m1[5].replace(/,/g, "")) || 0;
-      amount = parseFloat(m1[6].replace(/,/g, "")) || (qty * rate);
-    } else {
-      // Pattern B: Multi-line where item description was on previous line
-      const mNum = l.match(numOnlyRowRegex);
-      if (mNum) {
-        hsn = mNum[1].trim();
-        qty = parseFloat(mNum[2].replace(/,/g, "")) || 1;
-        unit = mNum[3] ? mNum[3].trim() : "Nos";
-        rate = parseFloat(mNum[4].replace(/,/g, "")) || 0;
-        amount = parseFloat(mNum[5].replace(/,/g, "")) || (qty * rate);
-
-        for (let back = 1; back <= 2; back++) {
-          const prevL = lines[i - back];
-          if (prevL && !/^(batch|serial|s\.no|no|\d+)$/i.test(prevL) && !numOnlyRowRegex.test(prevL)) {
-            name = prevL.replace(/^\d+[\s\.\)]+/, "").replace(/batch\s*:\s*[^\n]+/i, "").trim();
-            if (name) break;
-          }
-        }
-      } else {
-        // Pattern C: Row without HSN
-        const m2 = l.match(noHsnRowRegex);
-        if (m2) {
-          name = m2[1].replace(/^\d+[\s\.\)]+/, "").trim();
-          qty = parseFloat(m2[2].replace(/,/g, "")) || 1;
-          unit = m2[3].trim();
-          rate = parseFloat(m2[4].replace(/,/g, "")) || 0;
-          amount = parseFloat(m2[5].replace(/,/g, "")) || (qty * rate);
-        }
-      }
-    }
-
-    if (name && rate > 0) {
-      if (/^(description|particulars|item|rate|quantity|amount|total|hsn|goods)$/i.test(name)) continue;
-
-      // Avoid duplicates
-      const exists = items.some(it => it.name.toLowerCase() === name.toLowerCase() && it.rate === rate);
-      if (!exists) {
-        items.push({
-          name,
-          hsn: hsn || "8517",
-          quantity: qty,
-          unit,
-          rate,
-          discount: 0,
-          gstRate: totalGstRate,
-          taxableAmount: amount,
-          totalAmount: Math.round(amount * (1 + totalGstRate / 100) * 100) / 100
-        });
-      }
-    }
-  }
-
-  const subtotal = items.reduce((sum, it) => sum + (it.taxableAmount || 0), 0);
-  const taxAmount = items.reduce((sum, it) => sum + ((it.taxableAmount || 0) * ((it.gstRate || 0) / 100)), 0);
-  const grandTotal = Math.round(subtotal + taxAmount);
-
-  return {
-    supplierName,
-    supplierGstin,
-    supplierAddress,
-    supplierState,
-    supplierPhone,
-    supplierEmail,
-    buyerGstin,
-    invoiceNumber,
-    invoiceDate,
-    items,
-    subtotal: Math.round(subtotal * 100) / 100,
-    taxAmount: Math.round(taxAmount * 100) / 100,
-    grandTotal
-  };
-}
-
-app.get(["/api/ai/quota-status", "/api/scanner/status"], (req, res) => {
-  checkAndResetQuotaIfNeeded();
-  const hasKey = !!getGeminiApiKey();
+app.get(["/api/ai/quota-status", "/api/scanner/status"], async (req, res) => {
+  const isAvailable = await verifyGeminiAvailability();
   res.json({
-    available: true,
-    quotaExceeded: false,
-    resetAt: aiQuotaState.resetAt,
-    hasApiKey: hasKey || true
+    available: isAvailable,
+    quotaExceeded: aiQuotaState.quotaExceeded,
+    resetAt: aiQuotaState.resetAt
   });
 });
 
 app.post(["/api/ai/parse-invoice", "/api/scanner/parse-bill"], async (req, res) => {
-  const { fileBase64, mimeType, fileName } = req.body || {};
+  const isAvailable = await verifyGeminiAvailability();
+  if (!isAvailable) {
+    return res.status(429).json({
+      error: "सध्या AI स्कॅनिंग उपलब्ध नाही किंवा आजची मोफत मर्यादा पूर्ण झाली आहे."
+    });
+  }
+
+  const { fileBase64, mimeType } = req.body || {};
 
   if (!fileBase64 || !mimeType) {
     return res.status(400).json({ error: "File data (base64) and MIME type are required." });
@@ -2125,20 +1892,20 @@ app.post(["/api/ai/parse-invoice", "/api/scanner/parse-bill"], async (req, res) 
     return res.status(400).json({ error: "Unsupported file format. Please upload JPG, PNG, WEBP or PDF." });
   }
 
-  let parsed: any = null;
-  let successfulModel: string | null = null;
   const ai = getGenAIClient();
+  if (!ai) {
+    return res.status(503).json({ error: "Gemini AI client is not configured." });
+  }
 
-  if (ai) {
-    const imagePart = {
-      inlineData: {
-        mimeType: mimeType,
-        data: fileBase64
-      }
-    };
+  const imagePart = {
+    inlineData: {
+      mimeType: mimeType,
+      data: fileBase64
+    }
+  };
 
-    const textPart = {
-      text: `You are an expert invoice parser for Indian GST accounting and billing.
+  const textPart = {
+    text: `You are an expert invoice parser for Indian GST accounting and billing.
 Extract all relevant details from this purchase invoice image or PDF.
 Instructions:
 1. Identify the Supplier/Vendor Name, GSTIN (15-digit alphanumeric), Address, and Phone if available.
@@ -2147,100 +1914,93 @@ Instructions:
 4. Calculate subtotal (sum of taxable amounts), total tax amount, and grand total.
 5. If some field is not explicitly present, make a sensible inference (e.g. unit 'PCS', gstRate based on standard Indian GST slabs, default quantity 1).
 Ensure output strictly conforms to the JSON schema.`
-    };
+  };
 
-    const invoiceSchema = {
-      type: Type.OBJECT,
-      properties: {
-        supplierName: { type: Type.STRING, description: "Name of the supplier / vendor" },
-        supplierGstin: { type: Type.STRING, description: "Supplier 15-digit GSTIN" },
-        supplierAddress: { type: Type.STRING, description: "Supplier address" },
-        supplierPhone: { type: Type.STRING, description: "Supplier contact number" },
-        invoiceNumber: { type: Type.STRING, description: "Bill or Invoice Number" },
-        invoiceDate: { type: Type.STRING, description: "Date of invoice in YYYY-MM-DD format" },
+  const invoiceSchema = {
+    type: Type.OBJECT,
+    properties: {
+      supplierName: { type: Type.STRING, description: "Name of the supplier / vendor" },
+      supplierGstin: { type: Type.STRING, description: "Supplier 15-digit GSTIN" },
+      supplierAddress: { type: Type.STRING, description: "Supplier address" },
+      supplierPhone: { type: Type.STRING, description: "Supplier contact number" },
+      invoiceNumber: { type: Type.STRING, description: "Bill or Invoice Number" },
+      invoiceDate: { type: Type.STRING, description: "Date of invoice in YYYY-MM-DD format" },
+      items: {
+        type: Type.ARRAY,
+        description: "Extracted line items from the purchase invoice",
         items: {
-          type: Type.ARRAY,
-          description: "Extracted line items from the purchase invoice",
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING, description: "Item description or product name" },
-              hsn: { type: Type.STRING, description: "HSN or SAC code" },
-              quantity: { type: Type.NUMBER, description: "Quantity purchased" },
-              unit: { type: Type.STRING, description: "Unit of measurement (e.g. PCS, KGS, LTR)" },
-              rate: { type: Type.NUMBER, description: "Unit purchase price before GST" },
-              discount: { type: Type.NUMBER, description: "Item level discount" },
-              gstRate: { type: Type.NUMBER, description: "GST rate percentage e.g. 0, 5, 12, 18, 28" },
-              taxableAmount: { type: Type.NUMBER, description: "Taxable value before tax" },
-              totalAmount: { type: Type.NUMBER, description: "Total item line amount including taxes" }
-            },
-            required: ["name", "quantity", "rate", "gstRate", "totalAmount"]
-          }
-        },
-        subtotal: { type: Type.NUMBER, description: "Total taxable amount of all items" },
-        taxAmount: { type: Type.NUMBER, description: "Total GST amount" },
-        grandTotal: { type: Type.NUMBER, description: "Grand total payable invoice amount" }
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING, description: "Item description or product name" },
+            hsn: { type: Type.STRING, description: "HSN or SAC code" },
+            quantity: { type: Type.NUMBER, description: "Quantity purchased" },
+            unit: { type: Type.STRING, description: "Unit of measurement (e.g. PCS, KGS, LTR)" },
+            rate: { type: Type.NUMBER, description: "Unit purchase price before GST" },
+            discount: { type: Type.NUMBER, description: "Item level discount" },
+            gstRate: { type: Type.NUMBER, description: "GST rate percentage e.g. 0, 5, 12, 18, 28" },
+            taxableAmount: { type: Type.NUMBER, description: "Taxable value before tax" },
+            totalAmount: { type: Type.NUMBER, description: "Total item line amount including taxes" }
+          },
+          required: ["name", "quantity", "rate", "gstRate", "totalAmount"]
+        }
       },
-      required: ["supplierName", "invoiceNumber", "items", "grandTotal"]
-    };
+      subtotal: { type: Type.NUMBER, description: "Total taxable amount of all items" },
+      taxAmount: { type: Type.NUMBER, description: "Total GST amount" },
+      grandTotal: { type: Type.NUMBER, description: "Grand total payable invoice amount" }
+    },
+    required: ["supplierName", "invoiceNumber", "items", "grandTotal"]
+  };
 
-    // Auto-switch between candidate models if high demand (503) or rate limit occurs
-    for (let i = 0; i < CANDIDATE_SCANNER_MODELS.length; i++) {
-      const currentModel = CANDIDATE_SCANNER_MODELS[i];
-      console.log(`[Invoice Scanner] Attempting extraction with model '${currentModel}' (attempt ${i + 1}/${CANDIDATE_SCANNER_MODELS.length})...`);
+  let parsed: any = null;
+  let successfulModel: string | null = null;
+  let lastError: any = null;
 
-      try {
-        const response = await ai.models.generateContent({
-          model: currentModel,
-          contents: { parts: [imagePart, textPart] },
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: invoiceSchema
-          }
-        });
-
-        const rawText = response.text?.trim() || "{}";
-        try {
-          parsed = JSON.parse(rawText);
-          successfulModel = currentModel;
-          console.log(`[Invoice Scanner] Successfully extracted bill #${parsed.invoiceNumber} using model '${currentModel}'`);
-          break;
-        } catch (jsonErr) {
-          console.warn(`[Invoice Scanner] Model '${currentModel}' returned unparseable JSON format.`);
-        }
-      } catch (modelErr: any) {
-        const errMsg = (modelErr.message || "").toLowerCase();
-        const errStatus = modelErr.status || modelErr.code;
-        console.warn(`[Invoice Scanner] Model '${currentModel}' attempt failed (${errStatus}): ${modelErr.message}`);
-
-        if (i < CANDIDATE_SCANNER_MODELS.length - 1) {
-          const nextModel = CANDIDATE_SCANNER_MODELS[i + 1];
-          console.log(`[Invoice Scanner] Switching from model '${currentModel}' to fallback '${nextModel}'...`);
-          await new Promise(r => setTimeout(r, 400));
-          continue;
-        }
-      }
-    }
-  }
-
-  // If AI is unconfigured or all models failed: run authentic OCR / PDF document extraction
-  if (!parsed || !successfulModel) {
-    console.log("[Invoice Scanner] AI models not available or exhausted. Activating Genuine Document OCR / PDF Parser...");
+  // Auto-switch between candidate models if high demand (503) or rate limit occurs
+  for (let i = 0; i < CANDIDATE_SCANNER_MODELS.length; i++) {
+    const currentModel = CANDIDATE_SCANNER_MODELS[i];
     try {
-      const extractedText = await extractRawTextFromDocument(fileBase64, mimeType);
-      if (extractedText && extractedText.trim().length > 10) {
-        parsed = parseInvoiceFromRawText(extractedText, fileName);
-        successfulModel = mimeType === "application/pdf" ? "pdf-text-engine" : "tesseract-ocr-engine";
-        console.log(`[Invoice Scanner] Document parser extracted ${parsed?.items?.length || 0} items using '${successfulModel}'`);
+      const response = await ai.models.generateContent({
+        model: currentModel,
+        contents: { parts: [imagePart, textPart] },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: invoiceSchema
+        }
+      });
+
+      const rawText = response.text?.trim() || "{}";
+      try {
+        parsed = JSON.parse(rawText);
+        successfulModel = currentModel;
+        break;
+      } catch (jsonErr) {
+        console.warn(`[Invoice Scanner] Model '${currentModel}' returned unparseable JSON format.`);
       }
-    } catch (docErr: any) {
-      console.error("[Invoice Scanner] Document extraction failed:", docErr?.message);
+    } catch (modelErr: any) {
+      lastError = modelErr;
+      const errMsg = (modelErr.message || "").toLowerCase();
+      const errStatus = modelErr.status || modelErr.code;
+      console.warn(`[Invoice Scanner] Model '${currentModel}' attempt failed (${errStatus}): ${modelErr.message}`);
+
+      if (errStatus === 429 || errMsg.includes("quota")) {
+        aiQuotaState.available = false;
+        aiQuotaState.quotaExceeded = true;
+        const tomorrow = new Date();
+        tomorrow.setHours(24, 0, 0, 0);
+        aiQuotaState.resetAt = tomorrow.toISOString();
+        break;
+      }
+
+      if (i < CANDIDATE_SCANNER_MODELS.length - 1) {
+        await new Promise(r => setTimeout(r, 400));
+        continue;
+      }
     }
   }
 
   if (!parsed || !parsed.items || parsed.items.length === 0) {
     return res.status(422).json({
-      error: "बिलावरील मजकूर किंवा वस्तू ओळखता आल्या नाहीत. कृपया बिलाचा स्पष्ट आणि उजळ फोटो किंवा PDF निवडा."
+      error: formatScannerError(lastError)
     });
   }
 
