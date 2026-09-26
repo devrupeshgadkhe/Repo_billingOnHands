@@ -7,6 +7,8 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import { GoogleGenAI, Type } from "@google/genai";
+import Tesseract from "tesseract.js";
+import { PDFParse } from "pdf-parse";
 import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus } from "./src/types.js";
 
 const app = express();
@@ -1823,112 +1825,262 @@ const CANDIDATE_SCANNER_MODELS = [
   "gemini-flash-latest"    // Priority 5: General flash latest alias
 ];
 
-// Resilient Document Parser fallback when cloud AI is unreachable or unconfigured
-export function generateIntelligentParsedInvoice(
-  fileName?: string,
-  mimeType?: string,
-  fileBase64?: string
-): any {
-  const db = readDb();
-  const suppliers = (db.parties || []).filter(p => p.type === "supplier");
-  const inventoryItems = db.items || [];
+function getTesseractWorkerPath(): string {
+  try {
+    return require.resolve("tesseract.js/src/worker-script/node/index.js");
+  } catch {}
+  const candidates = [
+    path.join(__dirname, "../node_modules/tesseract.js/src/worker-script/node/index.js"),
+    path.join(process.cwd(), "node_modules/tesseract.js/src/worker-script/node/index.js"),
+    path.join(__dirname, "node_modules/tesseract.js/src/worker-script/node/index.js")
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return "";
+}
 
-  const rawName = (fileName || "").trim();
-  const cleanBase = rawName.replace(/\.[^/.]+$/, "").replace(/[_\-\.]+/g, " ");
+export async function extractRawTextFromDocument(fileBase64: string, mimeType: string): Promise<string> {
+  const buf = Buffer.from(fileBase64, "base64");
 
-  // 1. Determine invoice number from filename or generate clean identifier
+  if (mimeType === "application/pdf") {
+    try {
+      const parser = new PDFParse({ data: buf });
+      const textResult = await parser.getText();
+      const text = textResult.text || "";
+      await parser.destroy();
+      if (text.trim().length > 15) {
+        return text;
+      }
+    } catch (pdfErr: any) {
+      console.warn("[PDFParse] Fallback to OCR due to:", pdfErr?.message);
+    }
+  }
+
+  // Use Tesseract OCR for images (PNG, JPEG, WEBP, etc.)
+  try {
+    const workerPath = getTesseractWorkerPath();
+    const workerOptions: any = {};
+    if (workerPath) {
+      workerOptions.workerPath = workerPath;
+    }
+    const worker = await Tesseract.createWorker("eng", 1, workerOptions);
+    const ret = await worker.recognize(buf);
+    const text = ret.data.text || "";
+    await worker.terminate();
+    return text;
+  } catch (ocrErr: any) {
+    console.error("[Tesseract OCR Error]:", ocrErr?.message);
+    return "";
+  }
+}
+
+export function parseInvoiceFromRawText(rawText: string, fileName?: string): any {
+  if (!rawText || typeof rawText !== "string") {
+    return null;
+  }
+
+  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  // 1. GSTIN Detection (Indian 15-character GSTIN regex)
+  const gstRegex = /\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z2][0-9A-Z]{1}\b/gi;
+  const gstMatches = (rawText.match(gstRegex) || []).map(g => g.toUpperCase().replace(/2$/, "Z"));
+  const supplierGstin = gstMatches[0] || "";
+  const buyerGstin = gstMatches.length > 1 ? gstMatches[1] : "";
+
+  // 2. Invoice Number
   let invoiceNumber = "";
-  const numMatch = cleanBase.match(/(?:inv|bill|tax|gst|no|num)?[-:\s#]*([A-Za-z0-9\/-]{3,15})/i);
-  if (numMatch && numMatch[1] && /\d/.test(numMatch[1])) {
-    invoiceNumber = numMatch[1].toUpperCase();
+  const slashMatch = rawText.match(/(?:^|\s)([A-Z0-9_\-]+(?:\/[A-Z0-9_\-]+)+)(?:\s|$)/i);
+  if (slashMatch && !/HSN|SAC|UIN|GSTIN|and|or|true|false/i.test(slashMatch[1])) {
+    invoiceNumber = slashMatch[1].trim();
   } else {
+    const invMatch = rawText.match(/(?:Invoice\s*No\.?|Inv\s*No\.?|Bill\s*No\.?|Invoice\s*#|Invoice\s*Number)[\s\.:\-_]*([A-Za-z0-9\/\-_]+)/i);
+    if (invMatch && invMatch[1] && !/^(e-way|dated|date|mode)$/i.test(invMatch[1])) {
+      invoiceNumber = invMatch[1].trim();
+    }
+  }
+  if (!invoiceNumber && fileName) {
+    const cleanBase = fileName.replace(/\.[^/.]+$/, "").replace(/[_\-\.]+/g, " ");
+    const fnMatch = cleanBase.match(/(?:inv|bill|tax|gst|no|num)?[-:\s#]*([A-Za-z0-9\/-]{3,15})/i);
+    if (fnMatch && fnMatch[1] && /\d/.test(fnMatch[1])) {
+      invoiceNumber = fnMatch[1].toUpperCase();
+    }
+  }
+  if (!invoiceNumber) {
     invoiceNumber = "TAX-" + Math.floor(100000 + Math.random() * 900000);
   }
 
-  // 2. Determine supplier details
-  let supplierName = "";
-  let supplierGstin = "";
-  let supplierAddress = "";
-  let supplierPhone = "";
-
-  // Check if filename matches any supplier from database
-  let matchedSupplier = suppliers.find(s => 
-    s.name && cleanBase.toLowerCase().includes(s.name.toLowerCase().trim())
-  );
-
-  if (!matchedSupplier && suppliers.length > 0) {
-    matchedSupplier = suppliers[0];
-  }
-
-  if (matchedSupplier) {
-    supplierName = matchedSupplier.name;
-    supplierGstin = matchedSupplier.gstin || "27ABCDE1234F1Z5";
-    supplierAddress = matchedSupplier.address || "Market Yard, Main Road";
-    supplierPhone = matchedSupplier.phone || "9876543210";
+  // 3. Invoice Date
+  let rawDate = "";
+  const dateLabelMatch = rawText.match(/(?:Dated?|Date\s*of\s*Invoice|Invoice\s*Date|Bill\s*Date)[\s\.:\-_]*([0-9]{1,2}[-\/\.][A-Za-z0-9]{3,}[-\/\.][0-9]{2,4}|[0-9]{1,2}[-\/\.][0-9]{1,2}[-\/\.][0-9]{2,4})/i);
+  if (dateLabelMatch && dateLabelMatch[1]) {
+    rawDate = dateLabelMatch[1];
   } else {
-    const words = cleanBase.split(/\s+/).filter(w => !/^(tax|invoice|bill|format|in|india|img|scan|doc|new|file)$/i.test(w));
-    supplierName = words.length > 0 ? words.join(" ") + " Suppliers" : "Vikas Wireman Industries";
-    supplierGstin = "27AAACN1234A1Z1";
-    supplierAddress = "Industrial Area, Phase 1";
-    supplierPhone = "9820012345";
+    const directDate = rawText.match(/\b([0-9]{1,2}[-\/](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\/][0-9]{2,4})\b/i);
+    if (directDate) rawDate = directDate[1];
   }
 
-  // 3. Extract text tokens if PDF
-  if (mimeType === "application/pdf" && fileBase64) {
-    try {
-      const buf = Buffer.from(fileBase64, "base64");
-      const rawStr = buf.toString("latin1");
-      const gstRegex = /\b[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}\b/g;
-      const gstMatches = rawStr.match(gstRegex);
-      if (gstMatches && gstMatches.length > 0) {
-        supplierGstin = gstMatches[0];
+  let invoiceDate = new Date().toISOString().split("T")[0];
+  if (rawDate) {
+    const parsedD = new Date(rawDate);
+    if (!isNaN(parsedD.getTime())) {
+      invoiceDate = parsedD.toISOString().split("T")[0];
+    } else {
+      const parts = rawDate.split(/[-\/\.]/);
+      if (parts.length === 3) {
+        let [d, m, y] = parts;
+        if (y.length === 2) y = "20" + y;
+        const testD = new Date(`${y}-${m}-${d}`);
+        if (!isNaN(testD.getTime())) {
+          invoiceDate = testD.toISOString().split("T")[0];
+        }
       }
-      const invRegex = /(?:invoice\s*(?:no|number)?|bill\s*no)[\s#:]*([A-Za-z0-9\/-]+)/i;
-      const invMatches = rawStr.match(invRegex);
-      if (invMatches && invMatches[1]) {
-        invoiceNumber = invMatches[1].trim();
-      }
-    } catch {}
-  }
-
-  // 4. Generate line items
-  const items: any[] = [];
-  if (inventoryItems.length > 0) {
-    const count = Math.min(inventoryItems.length, 2);
-    for (let i = 0; i < count; i++) {
-      const dbItem = inventoryItems[i];
-      const qty = 5;
-      const rate = dbItem.purchasePrice || dbItem.salePrice || 100;
-      const gstRate = dbItem.gstRate !== undefined ? dbItem.gstRate : 18;
-      const taxable = Math.round(qty * rate * 100) / 100;
-      const itemGst = Math.round(taxable * (gstRate / 100) * 100) / 100;
-      items.push({
-        name: dbItem.name,
-        hsn: dbItem.hsn || "8471",
-        quantity: qty,
-        unit: dbItem.unit || "PCS",
-        rate: rate,
-        discount: 0,
-        gstRate: gstRate,
-        taxableAmount: taxable,
-        totalAmount: Math.round((taxable + itemGst) * 100) / 100
-      });
     }
-  } else {
-    items.push({
-      name: "Standard Goods Line 1",
-      hsn: "8471",
-      quantity: 5,
-      unit: "PCS",
-      rate: 500,
-      discount: 0,
-      gstRate: 18,
-      taxableAmount: 2500,
-      totalAmount: 2950
-    });
   }
 
-  // 5. Calculate totals
+  // 4. Supplier Name, Address, Contact
+  let supplierName = "";
+  let supplierAddress = "";
+  let supplierState = "";
+  let supplierPhone = "";
+  let supplierEmail = "";
+
+  const emailMatch = rawText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/);
+  if (emailMatch) supplierEmail = emailMatch[0];
+
+  const phoneMatch = rawText.match(/(?:Phone|Mobile|Tel|Cell|Mob)[\s\.:\-_]*(\+?91[\s-]*)?([6-9]\d{9})/i) || rawText.match(/\b[6-9]\d{9}\b/);
+  if (phoneMatch) supplierPhone = phoneMatch[2] || phoneMatch[0];
+
+  const stateMatch = rawText.match(/State\s*Name\s*:\s*([A-Za-z\s]+?)(?:,\s*Code|\n|$)/i);
+  if (stateMatch) supplierState = stateMatch[1].trim();
+
+  // Search top lines for supplier company name
+  for (let i = 0; i < Math.min(lines.length, 16); i++) {
+    const l = lines[i];
+    if (/^(tax\s*invoice|invoice|bill\s*of\s*supply|original|duplicate|triplicate|gst)$/i.test(l)) continue;
+    if (/(?:pvt\s*ltd|private\s*limited|limited|ltd|industries|enterprises|traders|company|corporation|store|motors|electronics|mfg|hardware|retail|mart|agency)/i.test(l)) {
+      supplierName = l.replace(/^[^A-Za-z0-9]+/, "").trim();
+      const addrLines = lines.slice(i + 1, i + 5).filter(x => !/GSTIN|State|E-Mail|Invoice|e-Way|Dated|Buyer/i.test(x));
+      if (addrLines.length > 0) supplierAddress = addrLines.join(", ");
+      break;
+    }
+  }
+  if (!supplierName) {
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+      const l = lines[i];
+      if (/^(tax\s*invoice|invoice|bill|gst|cash\s*memo)$/i.test(l)) continue;
+      if (l.length >= 4 && !/^[0-9\s\.\-:\/]+$/.test(l) && !/GSTIN|Invoice|Dated|Buyer|e-Way/i.test(l)) {
+        supplierName = l.replace(/^[^A-Za-z0-9]+/, "").trim();
+        break;
+      }
+    }
+  }
+  if (!supplierName) {
+    supplierName = "Supplier";
+  }
+
+  // 5. Taxes (CGST %, SGST %, IGST %)
+  let cgstRate = 0;
+  let sgstRate = 0;
+  let igstRate = 0;
+
+  const cgstMatches = [...rawText.matchAll(/(?:Central\s*Tax|CGST)[\s\S]{0,140}?(\d+(?:\.\d+)?)\s*%/gi)];
+  if (cgstMatches.length > 0) cgstRate = parseFloat(cgstMatches[0][1]);
+
+  const sgstMatches = [...rawText.matchAll(/(?:State\s*Tax|SGST)[\s\S]{0,140}?(\d+(?:\.\d+)?)\s*%/gi)];
+  if (sgstMatches.length > 0) sgstRate = parseFloat(sgstMatches[0][1]);
+
+  const igstMatches = [...rawText.matchAll(/(?:Integrated\s*Tax|IGST)[\s\S]{0,140}?(\d+(?:\.\d+)?)\s*%/gi)];
+  if (igstMatches.length > 0) igstRate = parseFloat(igstMatches[0][1]);
+
+  let totalGstRate = igstRate > 0 ? igstRate : (cgstRate + sgstRate);
+  if (!totalGstRate || isNaN(totalGstRate) || totalGstRate <= 0) {
+    const anyTaxMatch = rawText.match(/(?:Tax\s*Rate|GST\s*Rate|Rate\s*of\s*Tax)[\s\.:\-_]*([0-9]+(?:\.[0-9]+)?)\s*%/i);
+    if (anyTaxMatch) totalGstRate = parseFloat(anyTaxMatch[1]);
+  }
+  if (!totalGstRate || isNaN(totalGstRate) || totalGstRate <= 0) {
+    totalGstRate = 18;
+  }
+
+  // 6. Items Extraction (Multi-pattern)
+  const items: any[] = [];
+  const standardRowRegex = /(?:^\d+[\s\.\)]+)?([A-Za-z0-9\s\-+]+?)\s+(\d{4,8})\s+([0-9,]+(?:\.[0-9]+)?)\s*([A-Za-z]+)?\s+([0-9,]+(?:\.[0-9]+)?)\s*(?:[A-Za-z]+)?\s+([0-9,]+(?:\.[0-9]+)?)/;
+  const noHsnRowRegex = /(?:^\d+[\s\.\)]+)?([A-Za-z0-9\s\-+]{3,})\s+([0-9,]+(?:\.[0-9]+)?)\s*(Nos|Pcs|Kg|Box|Units?|Sets?|Pkt|Mtr)\s+([0-9,]+(?:\.[0-9]+)?)\s+([0-9,]+(?:\.[0-9]+)?)/i;
+  const numOnlyRowRegex = /^(\d{4,8})\s+([0-9,]+(?:\.[0-9]+)?)\s*([A-Za-z]+)?\s+([0-9,]+(?:\.[0-9]+)?)\s*(?:[A-Za-z]+)?\s+([0-9,]+(?:\.[0-9]+)?)/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (/^(output\s*cgst|output\s*sgst|output\s*igst|amount\s*chargeable|tax\s*amount|inr\s+|total\s*tax|sub\s*total)/i.test(l)) {
+      continue;
+    }
+
+    let name = "";
+    let hsn = "";
+    let qty = 1;
+    let unit = "Nos";
+    let rate = 0;
+    let amount = 0;
+
+    // Pattern A: Standard line with HSN and description on same line
+    const m1 = l.match(standardRowRegex);
+    if (m1) {
+      name = m1[1].replace(/^\d+[\s\.\)]+/, "").trim();
+      hsn = m1[2].trim();
+      qty = parseFloat(m1[3].replace(/,/g, "")) || 1;
+      unit = m1[4] ? m1[4].trim() : "Nos";
+      rate = parseFloat(m1[5].replace(/,/g, "")) || 0;
+      amount = parseFloat(m1[6].replace(/,/g, "")) || (qty * rate);
+    } else {
+      // Pattern B: Multi-line where item description was on previous line
+      const mNum = l.match(numOnlyRowRegex);
+      if (mNum) {
+        hsn = mNum[1].trim();
+        qty = parseFloat(mNum[2].replace(/,/g, "")) || 1;
+        unit = mNum[3] ? mNum[3].trim() : "Nos";
+        rate = parseFloat(mNum[4].replace(/,/g, "")) || 0;
+        amount = parseFloat(mNum[5].replace(/,/g, "")) || (qty * rate);
+
+        for (let back = 1; back <= 2; back++) {
+          const prevL = lines[i - back];
+          if (prevL && !/^(batch|serial|s\.no|no|\d+)$/i.test(prevL) && !numOnlyRowRegex.test(prevL)) {
+            name = prevL.replace(/^\d+[\s\.\)]+/, "").replace(/batch\s*:\s*[^\n]+/i, "").trim();
+            if (name) break;
+          }
+        }
+      } else {
+        // Pattern C: Row without HSN
+        const m2 = l.match(noHsnRowRegex);
+        if (m2) {
+          name = m2[1].replace(/^\d+[\s\.\)]+/, "").trim();
+          qty = parseFloat(m2[2].replace(/,/g, "")) || 1;
+          unit = m2[3].trim();
+          rate = parseFloat(m2[4].replace(/,/g, "")) || 0;
+          amount = parseFloat(m2[5].replace(/,/g, "")) || (qty * rate);
+        }
+      }
+    }
+
+    if (name && rate > 0) {
+      if (/^(description|particulars|item|rate|quantity|amount|total|hsn|goods)$/i.test(name)) continue;
+
+      // Avoid duplicates
+      const exists = items.some(it => it.name.toLowerCase() === name.toLowerCase() && it.rate === rate);
+      if (!exists) {
+        items.push({
+          name,
+          hsn: hsn || "8517",
+          quantity: qty,
+          unit,
+          rate,
+          discount: 0,
+          gstRate: totalGstRate,
+          taxableAmount: amount,
+          totalAmount: Math.round(amount * (1 + totalGstRate / 100) * 100) / 100
+        });
+      }
+    }
+  }
+
   const subtotal = items.reduce((sum, it) => sum + (it.taxableAmount || 0), 0);
   const taxAmount = items.reduce((sum, it) => sum + ((it.taxableAmount || 0) * ((it.gstRate || 0) / 100)), 0);
   const grandTotal = Math.round(subtotal + taxAmount);
@@ -1937,9 +2089,12 @@ export function generateIntelligentParsedInvoice(
     supplierName,
     supplierGstin,
     supplierAddress,
+    supplierState,
     supplierPhone,
+    supplierEmail,
+    buyerGstin,
     invoiceNumber,
-    invoiceDate: new Date().toISOString().split("T")[0],
+    invoiceDate,
     items,
     subtotal: Math.round(subtotal * 100) / 100,
     taxAmount: Math.round(taxAmount * 100) / 100,
@@ -2068,11 +2223,25 @@ Ensure output strictly conforms to the JSON schema.`
     }
   }
 
-  // Graceful Fallback: If AI is unconfigured or all models failed, use the Intelligent Document Parser
+  // If AI is unconfigured or all models failed: run authentic OCR / PDF document extraction
   if (!parsed || !successfulModel) {
-    console.log("[Invoice Scanner] AI models not available or exhausted. Activating Intelligent Document Parser...");
-    parsed = generateIntelligentParsedInvoice(fileName, mimeType, fileBase64);
-    successfulModel = "smart-document-parser";
+    console.log("[Invoice Scanner] AI models not available or exhausted. Activating Genuine Document OCR / PDF Parser...");
+    try {
+      const extractedText = await extractRawTextFromDocument(fileBase64, mimeType);
+      if (extractedText && extractedText.trim().length > 10) {
+        parsed = parseInvoiceFromRawText(extractedText, fileName);
+        successfulModel = mimeType === "application/pdf" ? "pdf-text-engine" : "tesseract-ocr-engine";
+        console.log(`[Invoice Scanner] Document parser extracted ${parsed?.items?.length || 0} items using '${successfulModel}'`);
+      }
+    } catch (docErr: any) {
+      console.error("[Invoice Scanner] Document extraction failed:", docErr?.message);
+    }
+  }
+
+  if (!parsed || !parsed.items || parsed.items.length === 0) {
+    return res.status(422).json({
+      error: "बिलावरील मजकूर किंवा वस्तू ओळखता आल्या नाहीत. कृपया बिलाचा स्पष्ट आणि उजळ फोटो किंवा PDF निवडा."
+    });
   }
 
   // Sanitize and ensure fallback dates/values
@@ -2081,9 +2250,6 @@ Ensure output strictly conforms to the JSON schema.`
   }
   if (!parsed.invoiceNumber) {
     parsed.invoiceNumber = "PUR-" + Date.now().toString().slice(-6);
-  }
-  if (!Array.isArray(parsed.items)) {
-    parsed.items = [];
   }
 
   res.json({

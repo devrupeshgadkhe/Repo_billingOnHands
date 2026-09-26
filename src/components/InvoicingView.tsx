@@ -113,8 +113,8 @@ const playPOSSound = (type: 'beep' | 'success' | 'alert' = 'beep') => {
 
 export default function InvoicingView({
   type,
-  items,
-  parties,
+  items: initialItems,
+  parties: initialParties,
   business,
   invoiceToEdit,
   isReturnMode,
@@ -124,6 +124,30 @@ export default function InvoicingView({
   permissions
 }: InvoicingViewProps) {
   const perms = permissions || { view: true, create: true, update: true, delete: true };
+
+  // Local additions from bill scanning
+  const [addedItems, setAddedItems] = useState<Item[]>([]);
+  const [addedParties, setAddedParties] = useState<Party[]>([]);
+
+  const items = useMemo(() => {
+    const combined = [...initialItems];
+    for (const ai of addedItems) {
+      if (!combined.some(i => i.id === ai.id)) {
+        combined.push(ai);
+      }
+    }
+    return combined;
+  }, [initialItems, addedItems]);
+
+  const parties = useMemo(() => {
+    const combined = [...initialParties];
+    for (const ap of addedParties) {
+      if (!combined.some(p => p.id === ap.id)) {
+        combined.push(ap);
+      }
+    }
+    return combined;
+  }, [initialParties, addedParties]);
 
   // Transaction subtype: sale vs sale_return, purchase vs purchase_return
   const [txSubtype, setTxSubtype] = useState<'sale' | 'purchase' | 'sale_return' | 'purchase_return'>(
@@ -182,21 +206,21 @@ export default function InvoicingView({
   const [scanNotification, setScanNotification] = useState("");
 
   const handleInvoiceParsed = (parsedData: ParsedInvoiceData) => {
-    // 1. Match party by GSTIN or Name
-    let matched = false;
+    // 1. Match or Auto-create Supplier
+    let supplierId = "";
     if (parsedData.supplierGstin) {
       const cleanGst = parsedData.supplierGstin.trim().toUpperCase();
       const matchedByGstin = parties.find(
         p => p.type === "supplier" && p.gstin && p.gstin.trim().toUpperCase() === cleanGst
       );
       if (matchedByGstin) {
+        supplierId = matchedByGstin.id;
         setSelectedPartyId(matchedByGstin.id);
         setPartySearchText(matchedByGstin.name);
-        matched = true;
       }
     }
     
-    if (!matched && parsedData.supplierName) {
+    if (!supplierId && parsedData.supplierName) {
       const cleanName = parsedData.supplierName.toLowerCase().trim();
       const matchedByName = parties.find(
         p => p.type === "supplier" && (
@@ -205,12 +229,35 @@ export default function InvoicingView({
         )
       );
       if (matchedByName) {
+        supplierId = matchedByName.id;
         setSelectedPartyId(matchedByName.id);
         setPartySearchText(matchedByName.name);
-        matched = true;
-      } else {
-        setPartySearchText(parsedData.supplierName);
       }
+    }
+
+    // If supplier is not in database, auto-register them
+    if (!supplierId && (parsedData.supplierName || parsedData.supplierGstin)) {
+      const newSupplierId = `sup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const newSupplier: Party = {
+        id: newSupplierId,
+        name: parsedData.supplierName || "New Supplier",
+        type: "supplier",
+        gstin: parsedData.supplierGstin || "",
+        address: parsedData.supplierAddress || "",
+        state: parsedData.supplierState || "",
+        phone: parsedData.supplierPhone || "",
+        email: parsedData.supplierEmail || "",
+        initialBalance: 0,
+        currentBalance: 0
+      };
+      setAddedParties(prev => [...prev, newSupplier]);
+      setSelectedPartyId(newSupplier.id);
+      setPartySearchText(newSupplier.name);
+      fetch("/api/parties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newSupplier)
+      }).catch(() => {});
     }
 
     // 2. Set invoice number and date
@@ -221,11 +268,12 @@ export default function InvoicingView({
       setInvoiceDate(parsedData.invoiceDate);
     }
 
-    // 3. Map items to lines
+    // 3. Map items to lines and register any new items from the bill
     if (parsedData.items && parsedData.items.length > 0) {
       const newLines: InvoiceLine[] = [];
+      const newItemsToRegister: Item[] = [];
 
-      parsedData.items.forEach(extractedItem => {
+      parsedData.items.forEach((extractedItem, idx) => {
         const cleanExtractedName = (extractedItem.name || "").toLowerCase().trim();
         const cleanExtractedHsn = (extractedItem.hsn || "").trim();
 
@@ -247,17 +295,42 @@ export default function InvoicingView({
             gstRate: extractedItem.gstRate !== undefined ? extractedItem.gstRate : matchedDbItem.gstRate
           });
         } else {
-          const fallbackItem = items[0];
+          // Register this new item from the bill with accurate details
+          const newItemId = `item_scanned_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`;
+          const newItem: Item = {
+            id: newItemId,
+            name: extractedItem.name || `Scanned Item ${idx + 1}`,
+            hsn: extractedItem.hsn || "",
+            purchasePrice: extractedItem.rate || 0,
+            salePrice: Math.round((extractedItem.rate || 0) * 1.15),
+            stockQuantity: 0,
+            minStockAlert: 5,
+            gstRate: extractedItem.gstRate !== undefined ? extractedItem.gstRate : 18,
+            unit: extractedItem.unit || "Nos"
+          };
+          newItemsToRegister.push(newItem);
+
           newLines.push({
-            itemId: fallbackItem ? fallbackItem.id : "",
+            itemId: newItem.id,
             quantity: extractedItem.quantity || 1,
             customPrice: extractedItem.rate || 0,
             discount: extractedItem.discount || 0,
             discountType: 'percent',
-            gstRate: extractedItem.gstRate || 18
+            gstRate: newItem.gstRate
           });
+
+          // Save new item to database in background
+          fetch("/api/items", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(newItem)
+          }).catch(() => {});
         }
       });
+
+      if (newItemsToRegister.length > 0) {
+        setAddedItems(prev => [...prev, ...newItemsToRegister]);
+      }
 
       if (newLines.length > 0) {
         setInvoiceLines(newLines);
@@ -271,7 +344,7 @@ export default function InvoicingView({
     });
 
     playPOSSound("success");
-    setScanNotification(`सप्लायर बिल #${parsedData.invoiceNumber} (${parsedData.supplierName || 'Supplier'}) यशस्वीरीत्या स्कॅन झाले. सर्व तपशील तपासून सेव्ह करा.`);
+    setScanNotification(`सप्लायर बिल #${parsedData.invoiceNumber} (${parsedData.supplierName || 'सप्लायर'}) मधील ${parsedData.items.length} वस्तू यशस्वीरीत्या लोड झाल्या. सर्व तपशील तपासून सेव्ह करा.`);
     setTimeout(() => setScanNotification(""), 8000);
   };
 

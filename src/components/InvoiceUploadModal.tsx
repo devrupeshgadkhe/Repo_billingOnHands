@@ -32,7 +32,10 @@ export interface ParsedInvoiceData {
   supplierName: string;
   supplierGstin?: string;
   supplierAddress?: string;
+  supplierState?: string;
   supplierPhone?: string;
+  supplierEmail?: string;
+  buyerGstin?: string;
   invoiceNumber: string;
   invoiceDate: string;
   items: ParsedItem[];
@@ -149,65 +152,9 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
         return;
       }
 
-      // If response was not 200, use graceful client fallback
-      const cleanBase = (selectedFile.name || "").replace(/\.[^/.]+$/, "").replace(/[_\-\.]+/g, " ");
-      const fallbackInvoice: ParsedInvoiceData = {
-        supplierName: "Vikas Wireman Industries",
-        supplierGstin: "27ABCDE1234F1Z5",
-        supplierAddress: "Industrial Area, Main Market",
-        supplierPhone: "9876543210",
-        invoiceNumber: "TAX-" + Math.floor(100000 + Math.random() * 900000),
-        invoiceDate: new Date().toISOString().split("T")[0],
-        items: [
-          {
-            name: "Industrial LED Floodlight 100W",
-            hsn: "8471",
-            quantity: 5,
-            unit: "PCS",
-            rate: 1800,
-            discount: 0,
-            gstRate: 18,
-            taxableAmount: 9000,
-            totalAmount: 10620
-          }
-        ],
-        subtotal: 9000,
-        taxAmount: 1620,
-        grandTotal: 10620
-      };
-      setProcessingStep("वस्तू व तपशील भरले जात आहेत...");
-      onInvoiceParsed(fallbackInvoice);
-      onClose();
-    } catch (_err: any) {
-      // Graceful offline fallback: ensure the invoice is populated even if network is completely down
-      if (selectedFile) {
-        const fallbackInvoice: ParsedInvoiceData = {
-          supplierName: "Vikas Wireman Industries",
-          supplierGstin: "27ABCDE1234F1Z5",
-          supplierAddress: "Industrial Area, Main Market",
-          supplierPhone: "9876543210",
-          invoiceNumber: "TAX-" + Math.floor(100000 + Math.random() * 900000),
-          invoiceDate: new Date().toISOString().split("T")[0],
-          items: [
-            {
-              name: "Industrial LED Floodlight 100W",
-              hsn: "8471",
-              quantity: 5,
-              unit: "PCS",
-              rate: 1800,
-              discount: 0,
-              gstRate: 18,
-              taxableAmount: 9000,
-              totalAmount: 10620
-            }
-          ],
-          subtotal: 9000,
-          taxAmount: 1620,
-          grandTotal: 10620
-        };
-        onInvoiceParsed(fallbackInvoice);
-        onClose();
-      }
+      setErrorMessage(result.error || "बिलाचे वाचन करताना अडचण आली. कृपया बिलाचा स्पष्ट व प्रकाश असलेला फोटो निवडा.");
+    } catch (err: any) {
+      setErrorMessage(err?.message || "सर्व्हरशी संपर्क होऊ शकला नाही. कृपया पुन्हा प्रयत्न करा.");
     } finally {
       setIsProcessing(false);
       setProcessingStep("");
