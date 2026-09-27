@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import {
   Upload,
   FileText,
@@ -13,8 +13,17 @@ import {
   X,
   CheckCircle2,
   Loader2,
-  FileCheck
+  FileCheck,
+  Building2,
+  Package,
+  Calendar,
+  Hash,
+  ArrowRight,
+  RotateCcw,
+  Check,
+  Plus
 } from "lucide-react";
+import { Party, Item } from "../types.js";
 
 export interface ParsedItem {
   name: string;
@@ -49,13 +58,17 @@ interface InvoiceUploadModalProps {
   onClose: () => void;
   onInvoiceParsed: (data: ParsedInvoiceData) => void;
   onQuotaExceeded?: () => void;
+  existingParties?: Party[];
+  existingItems?: Item[];
 }
 
 export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
   isOpen,
   onClose,
   onInvoiceParsed,
-  onQuotaExceeded
+  onQuotaExceeded,
+  existingParties = [],
+  existingItems = []
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -63,6 +76,8 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [modalStep, setModalStep] = useState<"upload" | "review">("upload");
+  const [reviewedData, setReviewedData] = useState<ParsedInvoiceData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -75,8 +90,8 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
       return;
     }
 
-    if (file.size > 12 * 1024 * 1024) {
-      setErrorMessage("फाईलचा आकार खूप मोठा आहे (जास्तीत जास्त १२ MB).");
+    if (file.size > 15 * 1024 * 1024) {
+      setErrorMessage("फाईलचा आकार खूप मोठा आहे (जास्तीत जास्त १५ MB).");
       return;
     }
 
@@ -86,7 +101,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
       const url = URL.createObjectURL(file);
       setPreviewUrl(url);
     } else {
-      setPreviewUrl(null); // PDF icon will be shown
+      setPreviewUrl(null);
     }
   };
 
@@ -146,10 +161,14 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
       const result = await response.json();
 
       if (response.ok && result.invoice) {
-        setProcessingStep("वस्तू व तपशील भरले जात आहेत...");
-        onInvoiceParsed(result.invoice);
-        onClose();
+        setProcessingStep("तपशील लोड झाले. पडताळणी स्क्रीन उघडत आहे...");
+        setReviewedData(result.invoice);
+        setModalStep("review");
         return;
+      }
+
+      if (response.status === 429 || response.status === 403) {
+        onQuotaExceeded?.();
       }
 
       setErrorMessage(result.error || "बिलाचे वाचन करताना अडचण आली. कृपया बिलाचा स्पष्ट व प्रकाश असलेला फोटो निवडा.");
@@ -168,14 +187,97 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
       setPreviewUrl(null);
     }
     setErrorMessage(null);
+    setModalStep("upload");
+    setReviewedData(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
+  // Determine if supplier exists in database
+  const matchedSupplier = useMemo(() => {
+    if (!reviewedData) return null;
+    const cleanGst = (reviewedData.supplierGstin || "").trim().toUpperCase();
+    if (cleanGst) {
+      const byGst = existingParties.find(
+        p => p.type === "supplier" && p.gstin && p.gstin.trim().toUpperCase() === cleanGst
+      );
+      if (byGst) return byGst;
+    }
+    const cleanName = (reviewedData.supplierName || "").trim().toLowerCase();
+    if (cleanName) {
+      const byName = existingParties.find(
+        p => p.type === "supplier" && (
+          p.name.toLowerCase().includes(cleanName) ||
+          cleanName.includes(p.name.toLowerCase())
+        )
+      );
+      if (byName) return byName;
+    }
+    return null;
+  }, [reviewedData, existingParties]);
+
+  // Check which items exist in inventory
+  const itemStatuses = useMemo(() => {
+    if (!reviewedData || !reviewedData.items) return [];
+    return reviewedData.items.map(item => {
+      const cleanName = (item.name || "").trim().toLowerCase();
+      const cleanHsn = (item.hsn || "").trim();
+      const matched = existingItems.find(dbItem => {
+        const dbName = dbItem.name.toLowerCase().trim();
+        return (
+          dbName === cleanName ||
+          dbName.includes(cleanName) ||
+          cleanName.includes(dbName) ||
+          (cleanHsn && dbItem.hsn && dbItem.hsn.trim() === cleanHsn)
+        );
+      });
+      return {
+        item,
+        exists: Boolean(matched),
+        matchedItem: matched || null
+      };
+    });
+  }, [reviewedData, existingItems]);
+
+  const handleUpdateItem = (index: number, field: keyof ParsedItem, val: any) => {
+    if (!reviewedData) return;
+    const updated = [...reviewedData.items];
+    updated[index] = { ...updated[index], [field]: val };
+
+    // Recompute total amount for line
+    const qty = Number(updated[index].quantity) || 1;
+    const rate = Number(updated[index].rate) || 0;
+    const gstRate = Number(updated[index].gstRate) || 0;
+    const taxable = qty * rate;
+    const tax = (taxable * gstRate) / 100;
+    updated[index].taxableAmount = taxable;
+    updated[index].totalAmount = Math.round((taxable + tax) * 100) / 100;
+
+    const subtotal = updated.reduce((sum, it) => sum + (it.taxableAmount || (it.quantity * it.rate)), 0);
+    const taxAmount = updated.reduce((sum, it) => sum + (((it.taxableAmount || (it.quantity * it.rate)) * (it.gstRate || 0)) / 100), 0);
+    const grandTotal = Math.round((subtotal + taxAmount) * 100) / 100;
+
+    setReviewedData({
+      ...reviewedData,
+      items: updated,
+      subtotal,
+      taxAmount,
+      grandTotal
+    });
+  };
+
+  const handleConfirmAndApply = () => {
+    if (!reviewedData) return;
+    onInvoiceParsed(reviewedData);
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+      <div className={`bg-white rounded-2xl shadow-2xl w-full border border-slate-200 overflow-hidden flex flex-col transition-all duration-200 ${
+        modalStep === "review" ? "max-w-3xl max-h-[92vh]" : "max-w-lg max-h-[90vh]"
+      }`}>
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-emerald-50/50">
           <div className="flex items-center space-x-2.5">
@@ -184,10 +286,12 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-slate-900 text-base">
-                सप्लायर बिल स्कॅन (Scan Bill)
+                {modalStep === "review" ? "सप्लायर बिल तपशील पडताळणी" : "सप्लायर बिल स्कॅन (Scan Bill)"}
               </h3>
               <p className="text-xs text-slate-500">
-                सप्लायर बिलाचा फोटो किंवा PDF अपलोड करा; सर्व तपशील व वस्तू आपोआप भरल्या जातील.
+                {modalStep === "review"
+                  ? "तपशील तपासून घ्या. नवीन सप्लायर व नवीन उत्पादने आपोआप सिस्टीममध्ये जोडली जातील."
+                  : "सप्लायर बिलाचा फोटो किंवा PDF निवडा; सर्व तपशील व वस्तू आपोआप वाचल्या जातील."}
               </p>
             </div>
           </div>
@@ -202,7 +306,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-5 overflow-y-auto space-y-4">
+        <div className="p-5 overflow-y-auto space-y-4 flex-1">
           {errorMessage && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-start space-x-2">
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -210,149 +314,405 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
             </div>
           )}
 
-          {!selectedFile ? (
-            /* Dropzone */
-            <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center space-y-3 ${
-                isDragOver
-                  ? "border-emerald-500 bg-emerald-50/60 scale-[0.99]"
-                  : "border-slate-300 hover:border-emerald-400 hover:bg-slate-50/80 bg-white"
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,application/pdf"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    handleFileSelect(e.target.files[0]);
-                  }
-                }}
-              />
-              <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-2xs">
-                <Upload className="w-7 h-7" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-slate-800">
-                  इथे फाईल ड्रॅग करा किंवा <span className="text-emerald-600 underline">ब्राउझ करा</span>
-                </p>
-                <p className="text-xs text-slate-500">
-                  सपोर्टेड: JPG, PNG, WEBP, किंवा PDF (कमाल 12 MB)
-                </p>
-              </div>
-              <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-400 font-medium">
-                <span className="flex items-center gap-1">
-                  <ImageIcon className="w-3.5 h-3.5 text-slate-400" /> कॅमेरा फोटो
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <FileText className="w-3.5 h-3.5 text-slate-400" /> सप्लायर PDF बिल
-                </span>
-              </div>
-            </div>
-          ) : (
-            /* Selected File Preview */
-            <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                  <FileCheck className="w-4 h-4 text-emerald-600" />
-                  <span>निवडलेली फाईल:</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={isProcessing}
-                  className="text-xs text-slate-500 hover:text-rose-600 font-semibold cursor-pointer transition disabled:opacity-50"
+          {modalStep === "upload" ? (
+            /* UPLOAD STEP */
+            <>
+              {!selectedFile ? (
+                /* Dropzone */
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center space-y-3 ${
+                    isDragOver
+                      ? "border-emerald-500 bg-emerald-50/60 scale-[0.99]"
+                      : "border-slate-300 hover:border-emerald-400 hover:bg-slate-50/80 bg-white"
+                  }`}
                 >
-                  बदला / खोडा
-                </button>
-              </div>
-
-              <div className="flex items-center space-x-3 bg-white p-3 rounded-xl border border-slate-200">
-                {previewUrl ? (
-                  <img
-                    src={previewUrl}
-                    alt="Invoice Preview"
-                    className="w-16 h-16 object-cover rounded-lg border border-slate-200 shrink-0"
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleFileSelect(e.target.files[0]);
+                      }
+                    }}
                   />
-                ) : (
-                  <div className="w-16 h-16 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 flex flex-col items-center justify-center shrink-0">
-                    <FileText className="w-7 h-7" />
-                    <span className="text-[9px] font-bold uppercase mt-0.5">PDF</span>
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-2xs">
+                    <Upload className="w-7 h-7" />
                   </div>
-                )}
-                <div className="overflow-hidden flex-1">
-                  <p className="text-xs font-bold text-slate-800 truncate">{selectedFile.name}</p>
-                  <p className="text-[11px] text-slate-500">
-                    {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • {selectedFile.type || "Document"}
-                  </p>
-                  <span className="inline-flex items-center text-[10px] text-emerald-700 font-semibold mt-1">
-                    <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> स्कॅनिंगसाठी तयार
-                  </span>
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-slate-800">
+                      इथे फाईल ड्रॅग करा किंवा <span className="text-emerald-600 underline">ब्राउझ करा</span>
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      सपोर्टेड: JPG, PNG, WEBP, किंवा PDF (कमाल १५ MB)
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-400 font-medium">
+                    <span className="flex items-center gap-1">
+                      <ImageIcon className="w-3.5 h-3.5 text-slate-400" /> कॅमेरा फोटो
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <FileText className="w-3.5 h-3.5 text-slate-400" /> सप्लायर PDF बिल
+                    </span>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* Selected File Preview */
+                <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <FileCheck className="w-4 h-4 text-emerald-600" />
+                      <span>निवडलेली फाईल:</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      disabled={isProcessing}
+                      className="text-xs text-slate-500 hover:text-rose-600 font-semibold cursor-pointer transition disabled:opacity-50"
+                    >
+                      बदला / खोडा
+                    </button>
+                  </div>
 
-              {isProcessing && (
-                <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-2">
-                  <div className="flex items-center space-x-2 text-xs font-bold text-emerald-900">
-                    <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-                    <span>{processingStep}</span>
+                  <div className="flex items-center space-x-3 bg-white p-3 rounded-xl border border-slate-200">
+                    {previewUrl ? (
+                      <img
+                        src={previewUrl}
+                        alt="Invoice Preview"
+                        className="w-16 h-16 object-cover rounded-lg border border-slate-200 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 flex flex-col items-center justify-center shrink-0">
+                        <FileText className="w-7 h-7" />
+                        <span className="text-[9px] font-bold uppercase mt-0.5">PDF</span>
+                      </div>
+                    )}
+                    <div className="overflow-hidden flex-1">
+                      <p className="text-xs font-bold text-slate-800 truncate">{selectedFile.name}</p>
+                      <p className="text-[11px] text-slate-500">
+                        {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • {selectedFile.type || "Document"}
+                      </p>
+                      <span className="inline-flex items-center text-[10px] text-emerald-700 font-semibold mt-1">
+                        <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> स्कॅनिंगसाठी तयार
+                      </span>
+                    </div>
                   </div>
-                  <div className="w-full bg-emerald-200/60 rounded-full h-1.5 overflow-hidden">
-                    <div className="bg-emerald-600 h-1.5 rounded-full animate-pulse w-3/4"></div>
-                  </div>
-                  <p className="text-[10px] text-emerald-700">
-                    बिलावरील नाव, GST नंबर, वस्तू, दर आणि टॅक्स भरले जात आहेत...
-                  </p>
+
+                  {isProcessing && (
+                    <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl space-y-2">
+                      <div className="flex items-center space-x-2 text-xs font-bold text-emerald-900">
+                        <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                        <span>{processingStep}</span>
+                      </div>
+                      <div className="w-full bg-emerald-200/60 rounded-full h-1.5 overflow-hidden">
+                        <div className="bg-emerald-600 h-1.5 rounded-full animate-pulse w-3/4"></div>
+                      </div>
+                      <p className="text-[10px] text-emerald-700">
+                        बिलावरील नाव, GST नंबर, वस्तू, दर आणि टॅक्स अचूकपणे वाचले जात आहेत...
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {/* Feature hints */}
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
-            <p className="font-semibold text-slate-800">💡 टीप:</p>
-            <p>
-              • स्कॅन झाल्यानंतर सर्व तपशील परचेस बिल फॉर्ममध्ये आपोआप भरले जातील.
-              <br />
-              • तुम्ही सेव्ह करण्यापूर्वी सर्व रक्कम, दर व वस्तू तपासून आवश्यक बदल करू शकता.
-            </p>
-          </div>
+              {/* Feature hints */}
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
+                <p className="font-semibold text-slate-800">💡 वैशिष्ट्ये:</p>
+                <p>
+                  • स्कॅन झाल्यानंतर थेट बिलात भरण्यापूर्वी तुम्हाला <strong>तपासणी व पडताळणी स्क्रीन</strong> दिसेल.
+                  <br />
+                  • <strong>नवीन सप्लायर:</strong> सिस्टीममध्ये आधीपासून नसल्यास GSTIN व संपर्कासह आपोआप जोडला जाईल.
+                  <br />
+                  • <strong>नवीन उत्पादने:</strong> इन्व्हेंटरीमध्ये आपोआप नोंदवली जातील.
+                </p>
+              </div>
+            </>
+          ) : (
+            /* REVIEW STEP */
+            reviewedData && (
+              <div className="space-y-4">
+                {/* Supplier Information Card */}
+                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50/70 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Building2 className="w-4 h-4 text-emerald-600" />
+                      <span>सप्लायर माहिती (Supplier Details):</span>
+                    </span>
+                    {matchedSupplier ? (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-700" />
+                        <span>नोंदणीकृत सप्लायर</span>
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300 flex items-center gap-1">
+                        <Plus className="w-3 h-3 text-indigo-700" />
+                        <span>नवीन सप्लायर (आपोआप सेव्ह होईल)</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">नाव (Supplier Name)</label>
+                      <input
+                        type="text"
+                        value={reviewedData.supplierName}
+                        onChange={(e) => setReviewedData({ ...reviewedData, supplierName: e.target.value })}
+                        className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">GSTIN (जीएसटी नंबर)</label>
+                      <input
+                        type="text"
+                        value={reviewedData.supplierGstin || ""}
+                        placeholder="GSTIN उपलब्ध नाही"
+                        onChange={(e) => setReviewedData({ ...reviewedData, supplierGstin: e.target.value.toUpperCase() })}
+                        className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">फोन नंबर (Phone)</label>
+                      <input
+                        type="text"
+                        value={reviewedData.supplierPhone || ""}
+                        placeholder="उदा. 9876543210"
+                        onChange={(e) => setReviewedData({ ...reviewedData, supplierPhone: e.target.value })}
+                        className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">पत्ता (Address)</label>
+                      <input
+                        type="text"
+                        value={reviewedData.supplierAddress || ""}
+                        placeholder="सप्लायर पत्ता"
+                        onChange={(e) => setReviewedData({ ...reviewedData, supplierAddress: e.target.value })}
+                        className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">राज्य (State)</label>
+                      <input
+                        type="text"
+                        value={reviewedData.supplierState || ""}
+                        placeholder="उदा. Maharashtra"
+                        onChange={(e) => setReviewedData({ ...reviewedData, supplierState: e.target.value })}
+                        className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bill Meta Details (Invoice No, Date) */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                      <Hash className="w-3 h-3 text-slate-400" />
+                      <span>बिल क्रमांक (Bill No)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={reviewedData.invoiceNumber}
+                      onChange={(e) => setReviewedData({ ...reviewedData, invoiceNumber: e.target.value })}
+                      className="w-full mt-0.5 px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-slate-400" />
+                      <span>बिल तारीख (Date)</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={reviewedData.invoiceDate}
+                      onChange={(e) => setReviewedData({ ...reviewedData, invoiceDate: e.target.value })}
+                      className="w-full mt-0.5 px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase block">करपात्र रक्कम (Taxable)</span>
+                    <span className="font-bold text-slate-800 text-sm block mt-1">₹{reviewedData.subtotal.toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase block">एकूण रक्कम (Grand Total)</span>
+                    <span className="font-extrabold text-emerald-700 text-base block mt-0.5">₹{reviewedData.grandTotal.toFixed(2)}</span>
+                  </div>
+                </div>
+
+                {/* Items Review Table */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="bg-slate-100/90 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                      <Package className="w-4 h-4 text-emerald-600" />
+                      <span>वस्तूंची यादी ({reviewedData.items.length} आयटम्स):</span>
+                    </span>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      दर व संख्या तपासून आवश्यक बदल करू शकता
+                    </span>
+                  </div>
+
+                  <div className="overflow-x-auto max-h-56">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase font-bold sticky top-0">
+                        <tr>
+                          <th className="py-2 px-3">उत्पादन नाव</th>
+                          <th className="py-2 px-2">HSN</th>
+                          <th className="py-2 px-2 w-20">संख्या (Qty)</th>
+                          <th className="py-2 px-2 w-24">खरेदी दर (Rate)</th>
+                          <th className="py-2 px-2 w-20">GST %</th>
+                          <th className="py-2 px-3 text-right">एकूण (Total)</th>
+                          <th className="py-2 px-3 text-center">स्थिती (Status)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {itemStatuses.map(({ item, exists }, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-2 px-3">
+                              <input
+                                type="text"
+                                value={item.name}
+                                onChange={(e) => handleUpdateItem(idx, "name", e.target.value)}
+                                className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs font-medium focus:ring-1 focus:ring-emerald-500"
+                              />
+                            </td>
+                            <td className="py-2 px-2">
+                              <input
+                                type="text"
+                                value={item.hsn || ""}
+                                placeholder="HSN"
+                                onChange={(e) => handleUpdateItem(idx, "hsn", e.target.value)}
+                                className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded text-xs font-mono"
+                              />
+                            </td>
+                            <td className="py-2 px-2">
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="any"
+                                value={item.quantity}
+                                onChange={(e) => handleUpdateItem(idx, "quantity", parseFloat(e.target.value) || 0)}
+                                className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded text-xs font-bold text-center"
+                              />
+                            </td>
+                            <td className="py-2 px-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="any"
+                                value={item.rate}
+                                onChange={(e) => handleUpdateItem(idx, "rate", parseFloat(e.target.value) || 0)}
+                                className="w-20 px-1.5 py-1 bg-white border border-slate-200 rounded text-xs font-bold"
+                              />
+                            </td>
+                            <td className="py-2 px-2">
+                              <select
+                                value={item.gstRate}
+                                onChange={(e) => handleUpdateItem(idx, "gstRate", parseInt(e.target.value, 10))}
+                                className="w-16 px-1 py-1 bg-white border border-slate-200 rounded text-xs font-medium"
+                              >
+                                <option value={0}>0%</option>
+                                <option value={5}>5%</option>
+                                <option value={12}>12%</option>
+                                <option value={18}>18%</option>
+                                <option value={28}>28%</option>
+                              </select>
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-slate-800">
+                              ₹{item.totalAmount.toFixed(2)}
+                            </td>
+                            <td className="py-2 px-3 text-center">
+                              {exists ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                  नोंदणीकृत
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                  + नवीन
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )
+          )}
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 flex items-center justify-end space-x-2 bg-slate-50">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isProcessing}
-            className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer disabled:opacity-50"
-          >
-            रद्द करा
-          </button>
-          <button
-            type="button"
-            onClick={handleExtract}
-            disabled={!selectedFile || isProcessing}
-            className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isProcessing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>स्कॅन होत आहे...</span>
-              </>
-            ) : (
-              <>
-                <ScanLine className="w-4 h-4" />
-                <span>स्कॅन करा (Scan Bill)</span>
-              </>
-            )}
-          </button>
+        <div className="p-4 border-t border-slate-100 flex items-center justify-between bg-slate-50">
+          {modalStep === "review" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setModalStep("upload")}
+                className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                <span>पुन्हा स्कॅन करा</span>
+              </button>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
+                >
+                  रद्द करा
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmAndApply}
+                  className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>तपशील कन्फर्म करा आणि बिलात भरा</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div></div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={isProcessing}
+                  className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer disabled:opacity-50"
+                >
+                  रद्द करा
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExtract}
+                  disabled={!selectedFile || isProcessing}
+                  className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>स्कॅन होत आहे...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ScanLine className="w-4 h-4" />
+                      <span>स्कॅन करा (Scan Bill)</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -1,0 +1,244 @@
+{
+  "business": {
+    "name": "Apex Electro-Tech Systems",
+    "gstin": "27AAAAA1111A1Z1",
+    "address": "Suite 405, Tech Green Boulevard, Bandra East",
+    "state": "Maharashtra",
+    "phone": "+91 98765 43210",
+    "email": "billing@apexelectro.com",
+    "signatureText": "For Apex Electro-Tech Systems"
+  },
+  "items": [
+    {
+      "id": "item_1",
+      "name": "Industrial LED Floodlight 100W",
+      "hsn": "9405",
+      "purchasePrice": 1800,
+      "salePrice": 2450,
+      "stockQuantity": 45,
+      "minStockAlert": 10,
+      "gstRate": 18,
+      "unit": "PCS"
+    },
+    {
+      "id": "item_2",
+      "name": "Heptacore Insulated Copper Cable (100m)",
+      "hsn": "8544",
+      "purchasePrice": 3200,
+      "salePrice": 4100,
+      "stockQuantity": 12,
+      "minStockAlert": 5,
+      "gstRate": 18,
+      "unit": "BOX"
+    },
+    {
+      "id": "item_3",
+      "name": "Modular Switch Board 8-Way panel",
+      "hsn": "8538",
+      "purchasePrice": 220,
+      "salePrice": 350,
+      "stockQuantity": 150,
+      "minStockAlert": 30,
+      "gstRate": 12,
+      "unit": "PCS"
+    },
+    {
+      "id": "item_4",
+      "name": "Digital Energy Tariff Meter Sub-station",
+      "hsn": "9028",
+      "purchasePrice": 4500,
+      "salePrice": 6200,
+      "stockQuantity": 6,
+      "minStockAlert": 8,
+      "gstRate": 18,
+      "unit": "SET"
+    },
+    {
+      "id": "item_5",
+      "name": "High Grade PVC Conduit Tube (3m)",
+      "hsn": "3917",
+      "purchasePrice": 45,
+      "salePrice": 75,
+      "stockQuantity": 420,
+      "minStockAlert": 100,
+      "gstRate": 5,
+      "unit": "MTR"
+    }
+  ],
+  "parties": [
+    {
+      "id": "party_1",
+      "name": "Karan Johar Electronics",
+      "type": "customer",
+      "phone": "+91 99300 11223",
+      "email": "accounts@karanelectro.in",
+      "address": "Industrial Galaship, Kurla West, Mumbai",
+      "state": "Maharashtra",
+      "gstin": "27BBBCC1234F1Z3",
+      "initialBalance": 0,
+      "currentBalance": 12800
+    },
+    {
+      "id": "party_2",
+      "name": "Vikas Wireman Industries",
+      "type": "supplier",
+      "phone": "+91 88877 66554",
+      "email": "sales@vikaswires.com",
+      "address": "Plot 42, GIDC Industrial Estate, Surat",
+      "state": "Gujarat",
+      "gstin": "24AAAVW5566K1ZN",
+      "initialBalance": 0,
+      "currentBalance": 45000
+    },
+    {
+      "id": "party_3",
+      "name": "Balaji Retail Outlets Ltd",
+      "type": "customer",
+      "phone": "+91 96543 21098",
+      "email": "procure@balajiworld.com",
+      "address": "Shop No. 12, Central Arcade, MG Road, Bengaluru",
+      "state": "Karnataka",
+      "gstin": "29CCCBB4321A1ZE",
+      "initialBalance": 0,
+      "currentBalance": 0
+    }
+  ],
+  "invoices": [
+    {
+      "id": "inv_1",
+      "invoiceNumber": "INV-2026-001",
+      "date": "2026-06-02",
+      "partyId": "party_1",
+      "partyName": "Karan Johar Electronics",
+      "partyGstin": "27BBBCC1234F1Z3",
+      "type": "sale",
+      "items": [
+        {
+          "itemId": "item_1",
+          "itemName": "Industrial LED Floodlight 100W",
+          "hsn": "9405",
+          "quantity": 4,
+          "price": 2450,
+          "gstRate": 18,
+          "amountBeforeTax": 9800,
+          "taxAmount": 1764,
+          "cgst": 882,
+          "sgst": 882,
+          "igst": 0,
+          "totalAmount": 11564
+        },
+        {
+          "itemId": "item_3",
+          "itemName": "Modular Switch Board 8-Way panel",
+          "hsn": "8538",
+          "quantity": 10,
+          "price": 350,
+          "gstRate": 12,
+          "amountBeforeTax": 3500,
+          "taxAmount": 420,
+          "cgst": 210,
+          "sgst": 210,
+          "igst": 0,
+          "totalAmount": 3920
+        }
+      ],
+      "subtotal": 13300,
+      "taxAmount": 2184,
+      "cgstTotal": 1092,
+      "sgstTotal": 1092,
+      "igstTotal": 0,
+      "totalAmount": 15484,
+      "paymentType": "bank",
+      "paidAmount": 15484,
+      "remainingAmount": 0,
+      "notes": "Goods delivered in good condition."
+    },
+    {
+      "id": "inv_2",
+      "invoiceNumber": "INV-2026-002",
+      "date": "2026-06-10",
+      "partyId": "party_3",
+      "partyName": "Balaji Retail Outlets Ltd",
+      "partyGstin": "29CCCBB4321A1ZE",
+      "type": "sale",
+      "items": [
+        {
+          "itemId": "item_2",
+          "itemName": "Heptacore Insulated Copper Cable (100m)",
+          "hsn": "8544",
+          "quantity": 2,
+          "price": 4100,
+          "gstRate": 18,
+          "amountBeforeTax": 8200,
+          "taxAmount": 1476,
+          "cgst": 0,
+          "sgst": 0,
+          "igst": 1476,
+          "totalAmount": 9676
+        }
+      ],
+      "subtotal": 8200,
+      "taxAmount": 1476,
+      "cgstTotal": 0,
+      "sgstTotal": 0,
+      "igstTotal": 1476,
+      "totalAmount": 9676,
+      "paymentType": "unpaid",
+      "paidAmount": 0,
+      "remainingAmount": 9676,
+      "notes": "Interstate supply to Karnataka store."
+    },
+    {
+      "id": "inv_3",
+      "invoiceNumber": "PUR-2026-001",
+      "date": "2026-06-12",
+      "partyId": "party_2",
+      "partyName": "Vikas Wireman Industries",
+      "partyGstin": "24AAAVW5566K1ZN",
+      "type": "purchase",
+      "items": [
+        {
+          "itemId": "item_2",
+          "itemName": "Heptacore Insulated Copper Cable (100m)",
+          "hsn": "8544",
+          "quantity": 5,
+          "price": 3200,
+          "gstRate": 18,
+          "amountBeforeTax": 16000,
+          "taxAmount": 2880,
+          "cgst": 0,
+          "sgst": 0,
+          "igst": 2880,
+          "totalAmount": 18880
+        }
+      ],
+      "subtotal": 16000,
+      "taxAmount": 2880,
+      "cgstTotal": 0,
+      "sgstTotal": 0,
+      "igstTotal": 2880,
+      "totalAmount": 18880,
+      "paymentType": "unpaid",
+      "paidAmount": 0,
+      "remainingAmount": 18880,
+      "notes": "Stock procurement of cables."
+    }
+  ],
+  "transactions": [],
+  "users": [
+    {
+      "username": "admin",
+      "passwordHash": "admin123",
+      "name": "Store Manager",
+      "role": "owner"
+    },
+    {
+      "username": "staff",
+      "passwordHash": "staff123",
+      "name": "Associate Manager",
+      "role": "staff"
+    }
+  ],
+  "challans": [],
+  "quotations": []
+}

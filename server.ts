@@ -6,6 +6,8 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import dotenv from "dotenv";
+dotenv.config({ override: true });
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus } from "./src/types.js";
 
@@ -27,9 +29,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Safe resolution for Gemini API key (supports environment, data/gemini_key.txt, or local .env)
 export function getGeminiApiKey(): string {
-  if (process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("MY_GEMINI_API_KEY")) {
-    return process.env.GEMINI_API_KEY.trim();
-  }
+  // First check local dedicated key files
   const candidateFiles = [
     path.join(DB_DIR, "gemini_key.txt"),
     path.join(process.cwd(), "gemini_key.txt"),
@@ -44,14 +44,28 @@ export function getGeminiApiKey(): string {
         const text = fs.readFileSync(f, "utf8");
         if (f.endsWith(".json")) {
           const cfg = JSON.parse(text);
-          if (cfg.apiKey && typeof cfg.apiKey === "string") return cfg.apiKey.trim();
+          if (cfg.apiKey && typeof cfg.apiKey === "string" && cfg.apiKey.trim().length > 15) {
+            return cfg.apiKey.trim();
+          }
         }
-        const match = text.match(/GEMINI_API_KEY\s*=\s*["']?([^"'\r\n]+)["']?/) || text.match(/^(AIzaSy[A-Za-z0-9_-]+)/m);
-        if (match && match[1] && !match[1].includes("MY_GEMINI_API_KEY")) {
-          return match[1].trim();
+        if (f.endsWith("gemini_key.txt") && text.trim().length > 15) {
+          return text.trim();
+        }
+        const envMatch = text.match(/GEMINI_API_KEY\s*=\s*["']?([^"'\r\n]+)["']?/);
+        if (envMatch && envMatch[1] && !envMatch[1].includes("MY_GEMINI_API_KEY")) {
+          return envMatch[1].trim();
+        }
+        const bareMatch = text.match(/^(?:AIzaSy|AQ\.)[A-Za-z0-9_.-]+/m);
+        if (bareMatch && bareMatch[0]) {
+          return bareMatch[0].trim();
         }
       }
     } catch {}
+  }
+
+  // Fallback to process.env
+  if (process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("MY_GEMINI_API_KEY")) {
+    return process.env.GEMINI_API_KEY.trim();
   }
   return "";
 }

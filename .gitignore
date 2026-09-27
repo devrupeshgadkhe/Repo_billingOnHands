@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+data/gemini_key.txt
+gemini_key.txt
+scanner_config.json
