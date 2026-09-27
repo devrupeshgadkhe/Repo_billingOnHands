@@ -14,8 +14,8 @@ try {
   try {
     execSync('git fetch --tags origin', { stdio: 'ignore' });
   } catch (fe) {}
-  const tagsOutput = execSync('git tag -l "v*"', { encoding: 'utf8' }).trim();
-  const tags = tagsOutput.split('\n').map(t => t.trim().replace(/^v/, '')).filter(Boolean);
+  const tagsOutput = execSync('git tag -l "v*"', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+  const tags = tagsOutput.split('\n').map(t => t.trim().replace(/\r/g, '').replace(/^v/, '')).filter(Boolean);
   
   if (tags.length > 0) {
     tags.sort((a, b) => {
@@ -62,6 +62,8 @@ if (highestTagVersion) {
 } else {
   nextVersion = baseVersion || '1.0.0';
 }
+
+nextVersion = String(nextVersion).replace(/[^0-9.]/g, '').trim();
 
 pkg.version = nextVersion;
 fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');

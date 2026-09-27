@@ -18,7 +18,6 @@ import {
   Package,
   Calendar,
   Hash,
-  ArrowRight,
   RotateCcw,
   Check,
   Plus
@@ -70,6 +69,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
   existingParties = [],
   existingItems = []
 }) => {
+  // 1. All useState hooks (must run unconditionally on every render)
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -78,9 +78,63 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [modalStep, setModalStep] = useState<"upload" | "review">("upload");
   const [reviewedData, setReviewedData] = useState<ParsedInvoiceData | null>(null);
+
+  // 2. All useRef hooks
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (!isOpen) return null;
+  // 3. All useMemo hooks (must run unconditionally before any early returns)
+  const matchedSupplier = useMemo(() => {
+    if (!reviewedData || !Array.isArray(existingParties)) return null;
+    const cleanGst = (reviewedData.supplierGstin || "").trim().toUpperCase();
+    if (cleanGst) {
+      const byGst = existingParties.find(
+        p => p && p.type === "supplier" && p.gstin && p.gstin.trim().toUpperCase() === cleanGst
+      );
+      if (byGst) return byGst;
+    }
+    const cleanName = (reviewedData.supplierName || "").trim().toLowerCase();
+    if (cleanName) {
+      const byName = existingParties.find(
+        p => p && p.type === "supplier" && p.name && (
+          p.name.toLowerCase().includes(cleanName) ||
+          cleanName.includes(p.name.toLowerCase())
+        )
+      );
+      if (byName) return byName;
+    }
+    return null;
+  }, [reviewedData, existingParties]);
+
+  const itemStatuses = useMemo(() => {
+    if (!reviewedData || !Array.isArray(reviewedData.items)) return [];
+    const safeExisting = Array.isArray(existingItems) ? existingItems : [];
+    return reviewedData.items.map(item => {
+      if (!item) return { item: { name: "", rate: 0, quantity: 1, gstRate: 0, totalAmount: 0 }, exists: false, matchedItem: null };
+      const cleanName = (item.name || "").trim().toLowerCase();
+      const cleanHsn = (item.hsn || "").trim();
+      const matched = safeExisting.find(dbItem => {
+        if (!dbItem || !dbItem.name) return false;
+        const dbName = dbItem.name.toLowerCase().trim();
+        return (
+          dbName === cleanName ||
+          dbName.includes(cleanName) ||
+          cleanName.includes(dbName) ||
+          (cleanHsn && dbItem.hsn && dbItem.hsn.trim() === cleanHsn)
+        );
+      });
+      return {
+        item,
+        exists: Boolean(matched),
+        matchedItem: matched || null
+      };
+    });
+  }, [reviewedData, existingItems]);
+
+  // Safe formatting helper to prevent any .toFixed() crash
+  const formatNum = (val: any): string => {
+    const num = Number(val);
+    return isNaN(num) ? "0.00" : num.toFixed(2);
+  };
 
   const handleFileSelect = (file: File) => {
     setErrorMessage(null);
@@ -90,8 +144,8 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
       return;
     }
 
-    if (file.size > 15 * 1024 * 1024) {
-      setErrorMessage("फाईलचा आकार खूप मोठा आहे (जास्तीत जास्त १५ MB).");
+    if (file.size > 25 * 1024 * 1024) {
+      setErrorMessage("फाईलचा आकार खूप मोठा आहे (जास्तीत जास्त २५ MB).");
       return;
     }
 
@@ -134,7 +188,6 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
     setProcessingStep("फाईल तयार करत आहे...");
 
     try {
-      // Convert file to base64
       const base64Data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => {
@@ -162,7 +215,20 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
 
       if (response.ok && result.invoice) {
         setProcessingStep("तपशील लोड झाले. पडताळणी स्क्रीन उघडत आहे...");
-        setReviewedData(result.invoice);
+        // Sanitize invoice numbers and fields to guarantee no undefined
+        const inv = result.invoice;
+        inv.subtotal = Number(inv.subtotal) || 0;
+        inv.taxAmount = Number(inv.taxAmount) || 0;
+        inv.grandTotal = Number(inv.grandTotal) || 0;
+        inv.items = Array.isArray(inv.items) ? inv.items.map((it: any) => ({
+          ...it,
+          quantity: Number(it.quantity) || 1,
+          rate: Number(it.rate) || 0,
+          gstRate: Number(it.gstRate) || 0,
+          totalAmount: Number(it.totalAmount) || ((Number(it.quantity) || 1) * (Number(it.rate) || 0))
+        })) : [];
+
+        setReviewedData(inv);
         setModalStep("review");
         return;
       }
@@ -194,58 +260,11 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
     }
   };
 
-  // Determine if supplier exists in database
-  const matchedSupplier = useMemo(() => {
-    if (!reviewedData) return null;
-    const cleanGst = (reviewedData.supplierGstin || "").trim().toUpperCase();
-    if (cleanGst) {
-      const byGst = existingParties.find(
-        p => p.type === "supplier" && p.gstin && p.gstin.trim().toUpperCase() === cleanGst
-      );
-      if (byGst) return byGst;
-    }
-    const cleanName = (reviewedData.supplierName || "").trim().toLowerCase();
-    if (cleanName) {
-      const byName = existingParties.find(
-        p => p.type === "supplier" && (
-          p.name.toLowerCase().includes(cleanName) ||
-          cleanName.includes(p.name.toLowerCase())
-        )
-      );
-      if (byName) return byName;
-    }
-    return null;
-  }, [reviewedData, existingParties]);
-
-  // Check which items exist in inventory
-  const itemStatuses = useMemo(() => {
-    if (!reviewedData || !reviewedData.items) return [];
-    return reviewedData.items.map(item => {
-      const cleanName = (item.name || "").trim().toLowerCase();
-      const cleanHsn = (item.hsn || "").trim();
-      const matched = existingItems.find(dbItem => {
-        const dbName = dbItem.name.toLowerCase().trim();
-        return (
-          dbName === cleanName ||
-          dbName.includes(cleanName) ||
-          cleanName.includes(dbName) ||
-          (cleanHsn && dbItem.hsn && dbItem.hsn.trim() === cleanHsn)
-        );
-      });
-      return {
-        item,
-        exists: Boolean(matched),
-        matchedItem: matched || null
-      };
-    });
-  }, [reviewedData, existingItems]);
-
   const handleUpdateItem = (index: number, field: keyof ParsedItem, val: any) => {
-    if (!reviewedData) return;
+    if (!reviewedData || !reviewedData.items) return;
     const updated = [...reviewedData.items];
     updated[index] = { ...updated[index], [field]: val };
 
-    // Recompute total amount for line
     const qty = Number(updated[index].quantity) || 1;
     const rate = Number(updated[index].rate) || 0;
     const gstRate = Number(updated[index].gstRate) || 0;
@@ -270,18 +289,24 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
   const handleConfirmAndApply = () => {
     if (!reviewedData) return;
     onInvoiceParsed(reviewedData);
+    handleReset();
     onClose();
   };
 
+  // 4. Early return strictly AFTER all hooks are called
+  if (!isOpen) {
+    return null;
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className={`bg-white rounded-2xl shadow-2xl w-full border border-slate-200 overflow-hidden flex flex-col transition-all duration-200 ${
         modalStep === "review" ? "max-w-3xl max-h-[92vh]" : "max-w-lg max-h-[90vh]"
       }`}>
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-slate-50 to-emerald-50/50">
           <div className="flex items-center space-x-2.5">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm">
               <ScanLine className="w-5 h-5" />
             </div>
             <div>
@@ -341,7 +366,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                       }
                     }}
                   />
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-2xs">
+                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-sm">
                     <Upload className="w-7 h-7" />
                   </div>
                   <div className="space-y-1">
@@ -349,7 +374,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                       इथे फाईल ड्रॅग करा किंवा <span className="text-emerald-600 underline">ब्राउझ करा</span>
                     </p>
                     <p className="text-xs text-slate-500">
-                      सपोर्टेड: JPG, PNG, WEBP, किंवा PDF (कमाल १५ MB)
+                      सपोर्टेड: JPG, PNG, WEBP, किंवा PDF (कमाल २५ MB)
                     </p>
                   </div>
                   <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-400 font-medium">
@@ -462,7 +487,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                       <label className="text-[10px] font-bold text-slate-500 uppercase">नाव (Supplier Name)</label>
                       <input
                         type="text"
-                        value={reviewedData.supplierName}
+                        value={reviewedData.supplierName || ""}
                         onChange={(e) => setReviewedData({ ...reviewedData, supplierName: e.target.value })}
                         className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-1 focus:ring-emerald-500"
                       />
@@ -519,7 +544,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                     </label>
                     <input
                       type="text"
-                      value={reviewedData.invoiceNumber}
+                      value={reviewedData.invoiceNumber || ""}
                       onChange={(e) => setReviewedData({ ...reviewedData, invoiceNumber: e.target.value })}
                       className="w-full mt-0.5 px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800"
                     />
@@ -531,18 +556,18 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                     </label>
                     <input
                       type="date"
-                      value={reviewedData.invoiceDate}
+                      value={reviewedData.invoiceDate || ""}
                       onChange={(e) => setReviewedData({ ...reviewedData, invoiceDate: e.target.value })}
                       className="w-full mt-0.5 px-2 py-1 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800"
                     />
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase block">करपात्र रक्कम (Taxable)</span>
-                    <span className="font-bold text-slate-800 text-sm block mt-1">₹{reviewedData.subtotal.toFixed(2)}</span>
+                    <span className="font-bold text-slate-800 text-sm block mt-1">₹{formatNum(reviewedData.subtotal)}</span>
                   </div>
                   <div>
                     <span className="text-[10px] font-bold text-slate-500 uppercase block">एकूण रक्कम (Grand Total)</span>
-                    <span className="font-extrabold text-emerald-700 text-base block mt-0.5">₹{reviewedData.grandTotal.toFixed(2)}</span>
+                    <span className="font-extrabold text-emerald-700 text-base block mt-0.5">₹{formatNum(reviewedData.grandTotal)}</span>
                   </div>
                 </div>
 
@@ -551,7 +576,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   <div className="bg-slate-100/90 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <Package className="w-4 h-4 text-emerald-600" />
-                      <span>वस्तूंची यादी ({reviewedData.items.length} आयटम्स):</span>
+                      <span>वस्तूंची यादी ({reviewedData.items?.length || 0} आयटम्स):</span>
                     </span>
                     <span className="text-[11px] text-slate-500 font-medium">
                       दर व संख्या तपासून आवश्यक बदल करू शकता
@@ -577,7 +602,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                             <td className="py-2 px-3">
                               <input
                                 type="text"
-                                value={item.name}
+                                value={item.name || ""}
                                 onChange={(e) => handleUpdateItem(idx, "name", e.target.value)}
                                 className="w-full px-2 py-1 bg-white border border-slate-200 rounded text-xs font-medium focus:ring-1 focus:ring-emerald-500"
                               />
@@ -596,7 +621,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                                 type="number"
                                 min="0.01"
                                 step="any"
-                                value={item.quantity}
+                                value={item.quantity || 1}
                                 onChange={(e) => handleUpdateItem(idx, "quantity", parseFloat(e.target.value) || 0)}
                                 className="w-16 px-1.5 py-1 bg-white border border-slate-200 rounded text-xs font-bold text-center"
                               />
@@ -606,14 +631,14 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                                 type="number"
                                 min="0"
                                 step="any"
-                                value={item.rate}
+                                value={item.rate || 0}
                                 onChange={(e) => handleUpdateItem(idx, "rate", parseFloat(e.target.value) || 0)}
                                 className="w-20 px-1.5 py-1 bg-white border border-slate-200 rounded text-xs font-bold"
                               />
                             </td>
                             <td className="py-2 px-2">
                               <select
-                                value={item.gstRate}
+                                value={item.gstRate !== undefined ? item.gstRate : 18}
                                 onChange={(e) => handleUpdateItem(idx, "gstRate", parseInt(e.target.value, 10))}
                                 className="w-16 px-1 py-1 bg-white border border-slate-200 rounded text-xs font-medium"
                               >
@@ -625,7 +650,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                               </select>
                             </td>
                             <td className="py-2 px-3 text-right font-bold text-slate-800">
-                              ₹{item.totalAmount.toFixed(2)}
+                              ₹{formatNum(item.totalAmount)}
                             </td>
                             <td className="py-2 px-3 text-center">
                               {exists ? (
@@ -673,7 +698,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                 <button
                   type="button"
                   onClick={handleConfirmAndApply}
-                  className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer"
+                  className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5 cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
                   <span>तपशील कन्फर्म करा आणि बिलात भरा</span>
@@ -696,7 +721,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   type="button"
                   onClick={handleExtract}
                   disabled={!selectedFile || isProcessing}
-                  className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isProcessing ? (
                     <>

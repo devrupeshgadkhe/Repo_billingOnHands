@@ -35,7 +35,8 @@ jobs:
         run: |
           echo "Executing automated version upgrade..."
           node scripts/auto-version.cjs
-          VERSION=$(node -p "require('./package.json').version")
+          RAW_VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(echo "$RAW_VERSION" | tr -d '\r\n[:space:]')
           TAG="v$VERSION"
           echo "Target Release Version: $VERSION"
           echo "Target Release Tag: $TAG"
@@ -49,15 +50,19 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add package.json src/version.ts
           git commit -m "chore(release): auto-upgrade version to $APP_TAG [skip ci]" || echo "No changes to commit"
-          git pull --rebase origin ${{ github.ref_name }} || true
-          git push origin HEAD:${{ github.ref_name }} || echo "Direct push skipped; tag release will proceed"
+          BRANCH="${{ github.ref_name }}"
+          if [ -n "$BRANCH" ]; then
+            git pull --rebase origin "$BRANCH" || true
+            git push origin "HEAD:$BRANCH" || echo "Direct push skipped; tag release will proceed"
+          fi
 
       - name: Ensure Git Tag Exists for Release
         shell: bash
         run: |
-          echo "Tagging release with $APP_TAG..."
-          git tag -f -a "$APP_TAG" -m "Release $APP_TAG"
-          git push origin "$APP_TAG" --force || true
+          CLEAN_TAG=$(echo "$APP_TAG" | tr -d '\r\n[:space:]')
+          echo "Tagging release with $CLEAN_TAG..."
+          git tag -f -a "$CLEAN_TAG" -m "Release $CLEAN_TAG"
+          git push origin "$CLEAN_TAG" --force || true
 
       - name: Build Web Application and Express Backend
         run: npm run build
@@ -81,20 +86,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          CLEAN_TAG=$(echo "$APP_TAG" | tr -d '\r\n[:space:]')
+          echo "Target Clean Tag: $CLEAN_TAG"
           echo "Checking generated desktop files in dist-desktop/:"
           ls -lh dist-desktop/
 
-          echo "Ensuring GitHub Release exists for $APP_TAG..."
-          gh release view "$APP_TAG" || gh release create "$APP_TAG" \
-            --title "Billing On Hand $APP_TAG" \
-            --notes "Billing On Hand $APP_TAG - Offline Retail & GST ERP Desktop Setup"
+          echo "Ensuring GitHub Release exists for $CLEAN_TAG..."
+          if ! gh release view "$CLEAN_TAG" >/dev/null 2>&1; then
+            gh release create "$CLEAN_TAG" --title "Billing On Hand $CLEAN_TAG" --notes "Billing On Hand $CLEAN_TAG - Offline Retail & GST ERP Desktop Setup"
+          fi
 
           echo "Uploading installer (.exe), blockmap, and update metadata to GitHub..."
           for file in dist-desktop/*.exe dist-desktop/*.blockmap dist-desktop/latest.yml; do
             if [ -f "$file" ]; then
               echo "Uploading $file..."
               for attempt in 1 2 3; do
-                if gh release upload "$APP_TAG" "$file" --clobber; then
+                if gh release upload "$CLEAN_TAG" "$file" --clobber; then
                   echo "Successfully uploaded $file"
                   break
                 else
@@ -106,7 +113,7 @@ jobs:
           done
 
           echo "Setting release as official and public..."
-          gh release edit "$APP_TAG" --draft=false --latest || true
+          gh release edit "$CLEAN_TAG" --draft=false --latest || true
 
           echo "Final GitHub Release Assets Verification:"
-          gh release view "$APP_TAG"
+          gh release view "$CLEAN_TAG"

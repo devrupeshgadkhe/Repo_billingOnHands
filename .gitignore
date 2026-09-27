@@ -8,4 +8,7 @@ coverage/
 !.env.example
 data/gemini_key.txt
 gemini_key.txt
-scanner_config.json
+data/backups/
+**/scanner_config.json
+*.key
+build/

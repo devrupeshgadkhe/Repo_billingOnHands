@@ -208,12 +208,13 @@ export default function InvoicingView({
 
   useEffect(() => {
     let isMounted = true;
-    if (type === "purchase") {
+    const checkQuota = () => {
+      if (type !== "purchase") return;
       fetch("/api/ai/quota-status")
         .then(res => res.json())
         .then(data => {
-          if (isMounted) {
-            setIsScanAvailable(!!data.available);
+          if (isMounted && data && typeof data.available === "boolean") {
+            setIsScanAvailable(data.available);
           }
         })
         .catch(() => {
@@ -221,9 +222,17 @@ export default function InvoicingView({
             setIsScanAvailable(false);
           }
         });
-    }
+    };
+
+    checkQuota();
+    // Warm-up retry for Windows desktop app when local Express server initializes
+    const t1 = setTimeout(checkQuota, 1500);
+    const t2 = setTimeout(checkQuota, 3500);
+
     return () => {
       isMounted = false;
+      clearTimeout(t1);
+      clearTimeout(t2);
     };
   }, [type]);
 
