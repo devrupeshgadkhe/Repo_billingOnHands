@@ -455,119 +455,127 @@ Always return a JSON object strictly conforming to this structure:
 
   try {
     return await munimjiPool.executeWithFallback("processMunimjiCommand", async (client, modelName) => {
-      // Normalize browser-recorded audio MIME types before sending to Gemini.
-      const cleanMime = (req.mimeType || "audio/webm").split(";")[0].trim() || "audio/webm";
+      // Browser MediaRecorder normally returns WebM/Opus. Gemini officially supports
+      // WebM and Opus, so keep the browser's native recording format instead of
+      // transcoding it on Windows. Strip codec parameters because the API expects
+      // the base MIME type.
+      const cleanMime = (req.mimeType || "audio/webm").split(";")[0].trim().toLowerCase() || "audio/webm";
       const hasAudio = Boolean(req.audioBase64 && req.audioBase64.length > 50);
       let commandText = (req.text || "").trim();
 
-            // Keep speech recognition separate from Munimji's business reasoning.
-      // Gemini's dedicated Transcribe model is used through the Files API.
-      // This is more reliable for WebM/Opus recordings than asking a general
-      // multimodal model to both transcribe and produce JSON in one call.
+      // Keep speech recognition and business reasoning in ONE Gemini multimodal request.
+      // This removes the previous dedicated-transcription failure point.
+      let uploadedAudioFile: any = null;
+      let audioPart: any = null;
+
       if (hasAudio && !commandText) {
-        const tempAudioPath = path.join(
-          os.tmpdir(),
-          `billing-on-hand-munimji-${Date.now()}-${Math.random().toString(36).slice(2)}.webm`
-        );
-        let uploadedFile: any = null;
+        const audioBytes = Math.floor((req.audioBase64 as string).length * 0.75);
+        const inlineLimitBytes = 15 * 1024 * 1024;
 
-        try {
-          console.info("[Munimji STT] Starting dedicated Gemini 3.5 Transcribe.", {
-            model: "gemini-3.5-transcribe",
-            mimeType: cleanMime,
-            audioBytes: Math.floor((req.audioBase64 as string).length * 0.75)
-          });
+        console.info("[Munimji Voice] Preparing audio for multimodal Gemini request.", {
+          mimeType: cleanMime,
+          audioBytes,
+          mode: audioBytes <= inlineLimitBytes ? "inline" : "files-api"
+        });
 
-          fs.writeFileSync(tempAudioPath, Buffer.from(req.audioBase64 as string, "base64"));
-
-          uploadedFile = await client.files.upload({
-            file: tempAudioPath,
-            config: { mimeType: cleanMime }
-          });
-
-          if (!uploadedFile?.name) {
-            throw new Error("Gemini Files API did not return an uploaded audio file.");
-          }
-
-          const transcription = await client.models.generateContent({
-            model: "gemini-3.5-transcribe",
-            contents: [uploadedFile]
-          });
-
-          commandText = (transcription.text || "").trim();
-          if (!commandText) {
-            throw new Error("Gemini 3.5 Transcribe returned an empty transcript.");
-          }
-
-          console.info("[Munimji STT] Transcription succeeded.", {
-            model: "gemini-3.5-transcribe",
-            transcript: commandText
-          });
-        } catch (transcriptionError: any) {
-          console.error("[Munimji STT] Dedicated transcription failed.", {
-            message: transcriptionError?.message || String(transcriptionError),
-            status: transcriptionError?.status,
-            code: transcriptionError?.code,
-            mimeType: cleanMime
-          });
-          throw new Error(`Voice transcription failed: ${transcriptionError?.message || "Gemini could not transcribe the audio."}`);
-        } finally {
-          try {
-            if (uploadedFile?.name && typeof (client.files as any)?.delete === "function") {
-              await (client.files as any).delete({ name: uploadedFile.name });
+        if (audioBytes <= inlineLimitBytes) {
+          audioPart = {
+            inlineData: {
+              mimeType: cleanMime,
+              data: req.audioBase64
             }
-          } catch (cleanupError: any) {
-            console.warn("[Munimji STT] Remote audio cleanup notice:", cleanupError?.message || cleanupError);
-          }
-
-          try {
-            if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath);
-          } catch {}
-        }
-      }
-      const parts: any[] = [{
-        text: `Merchant Command: "${commandText}"\n${dbContext}`
-      }];
-
-      const response = await client.models.generateContent({
-        model: modelName,
-        contents: { parts },
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-        }
-      });
-
-      const rawText = response.text || "{}";
-      let parsed: any;
-      try {
-        parsed = JSON.parse(rawText.trim());
-      } catch {
-        const match = rawText.match(/\{[\s\S]*\}/);
-        if (match) {
-          parsed = JSON.parse(match[0]);
+          };
         } else {
-          throw new Error("Invalid response format from Munimji brain.");
-        }
-      }
-
-      if (commandText && !parsed.userTranscript) parsed.userTranscript = commandText;
-
-      // Generate Gemini TTS speech audio for Munimji's response
-      if (parsed && parsed.replyText) {
-        try {
-          const speech = await generateMunimjiSpeechAudio(client, parsed.replyText, req.language);
-          if (speech) {
-            parsed.audioBase64 = speech.audioBase64;
-            parsed.audioMimeType = speech.mimeType;
+          const tempAudioPath = path.join(
+            os.tmpdir(),
+            `billing-on-hand-munimji-${Date.now()}-${Math.random().toString(36).slice(2)}.webm`
+          );
+          try {
+            fs.writeFileSync(tempAudioPath, Buffer.from(req.audioBase64 as string, "base64"));
+            uploadedAudioFile = await client.files.upload({
+              file: tempAudioPath,
+              config: { mimeType: cleanMime }
+            });
+            if (!uploadedAudioFile?.uri || !uploadedAudioFile?.mimeType) {
+              throw new Error("Gemini Files API did not return a usable audio URI.");
+            }
+            audioPart = {
+              fileData: {
+                fileUri: uploadedAudioFile.uri,
+                mimeType: uploadedAudioFile.mimeType
+              }
+            };
+          } finally {
+            try { if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath); } catch {}
           }
-        } catch (ttsErr) {
-          console.info("[Munimji TTS generation notice]:", ttsErr);
         }
       }
 
-      return parsed as MunimjiCommandResponse;
+      const parts: any[] = [];
+      if (hasAudio && !commandText && audioPart) {
+        parts.push({
+          text: [
+            "The user has provided a voice command as the following audio.",
+            "First transcribe the spoken words accurately in the language actually spoken (Marathi, Hindi, English, or mixed speech).",
+            "Then interpret that transcript as the Merchant Command.",
+            "Set userTranscript to the transcription. Do not invent words that were not spoken.",
+            `Merchant Command (voice transcript): [transcribe the attached audio]\n${dbContext}`
+          ].join("\n")
+        });
+        parts.push(audioPart);
+      } else {
+        parts.push({
+          text: `Merchant Command: "${commandText}"\n${dbContext}`
+        });
+      }
+      try {
+        const response = await client.models.generateContent({
+          model: modelName,
+          contents: { parts },
+          config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+          }
+        });
+
+        const rawText = response.text || "{}";
+        let parsed: any;
+        try {
+          parsed = JSON.parse(rawText.trim());
+        } catch {
+          const match = rawText.match(/\{[\s\S]*\}/);
+          if (match) parsed = JSON.parse(match[0]);
+          else throw new Error("Invalid response format from Munimji brain.");
+        }
+
+        if (hasAudio && !commandText && !parsed?.userTranscript?.trim()) {
+          throw new Error("Gemini understood the audio request but returned no transcript.");
+        }
+        if (commandText && !parsed.userTranscript) parsed.userTranscript = commandText;
+
+        if (parsed?.replyText) {
+          try {
+            const speech = await generateMunimjiSpeechAudio(client, parsed.replyText, req.language);
+            if (speech) {
+              parsed.audioBase64 = speech.audioBase64;
+              parsed.audioMimeType = speech.mimeType;
+            }
+          } catch (ttsErr) {
+            console.info("[Munimji TTS generation notice]:", ttsErr);
+          }
+        }
+
+        return parsed as MunimjiCommandResponse;
+      } finally {
+        if (uploadedAudioFile?.name && typeof (client.files as any)?.delete === "function") {
+          try {
+            await (client.files as any).delete({ name: uploadedAudioFile.name });
+          } catch (cleanupError: any) {
+            console.warn("[Munimji Voice] Remote audio cleanup notice:", cleanupError?.message || cleanupError);
+          }
+        }
+      }
     }).then(({ result, keyUsed, modelUsed }) => {
       return {
         ...result,
