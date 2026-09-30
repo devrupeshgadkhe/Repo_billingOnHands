@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="mr">
+<head>
+  <meta charset="UTF-8">
+  <title>डिजिटल मुनीमजी (Digital Munimji) - आर्किटेक्चरल ब्ल्यूप्रिंट</title>
+  <style>
+    @media print {
+      body { font-size: 12pt; color: #111; background: #fff; }
+      .no-print { display: none; }
+      .page-break { page-break-before: always; }
+      @page { margin: 1.5cm; size: A4; }
+    }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      line-height: 1.6;
+      color: #2d3748;
+      background-color: #f7fafc;
+      margin: 0;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 48px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      border: 1px solid #e2e8f0;
+    }
+    .header {
+      border-bottom: 3px solid #3182ce;
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .badge {
+      background: #ebf8ff;
+      color: #2b6cb0;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-weight: bold;
+      font-size: 13px;
+      border: 1px solid #bee3f8;
+    }
+    h1 { color: #1a365d; margin: 0 0 8px 0; font-size: 28px; }
+    h2 { color: #2b6cb0; border-left: 4px solid #3182ce; padding-left: 12px; margin-top: 36px; font-size: 20px; }
+    h3 { color: #2d3748; margin-top: 20px; font-size: 16px; }
+    p, li { font-size: 14.5px; }
+    .card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px;
+      margin-bottom: 20px;
+    }
+    .highlight-card {
+      background: #fffaf0;
+      border: 1px solid #feebc8;
+      border-left: 4px solid #dd6b20;
+      padding: 16px;
+      border-radius: 6px;
+      margin: 16px 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 14px;
+    }
+    th, td {
+      border: 1px solid #cbd5e0;
+      padding: 10px 14px;
+      text-align: left;
+    }
+    th {
+      background: #edf2f7;
+      color: #2d3748;
+      font-weight: 600;
+    }
+    pre {
+      background: #1a202c;
+      color: #e2e8f0;
+      padding: 16px;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .print-btn {
+      background: #3182ce;
+      color: #ffffff;
+      border: none;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .print-btn:hover { background: #2b6cb0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="no-print" style="text-align: right; margin-bottom: 20px;">
+      <button class="print-btn" onclick="window.print()">🖨️ Save as PDF / Print Report</button>
+    </div>
+
+    <div class="header">
+      <div>
+        <h1>डिजिटल मुनीमजी (Digital Munimji)</h1>
+        <div style="color: #718096; font-size: 14px;">Next-Gen Voice & Autonomous Business Assistant Architecture</div>
+      </div>
+      <div class="badge">PROD ARCHITECTURE v1.0</div>
+    </div>
+
+    <h2>१. ध्येय आणि ओळख (Executive Summary)</h2>
+    <p>
+      <strong>"डिजिटल मुनीमजी"</strong> हा सामान्य बिलिंग सॉफ्टवेअरला एका संवादात्मक, मानवी विश्वासाच्या आणि बुद्धिमत्ता असलेल्या <strong>"सुपर-असिस्टंट"</strong> मध्ये रूपांतरित करणारा सर्वसमावेशक आराखडा आहे.
+    </p>
+    <div class="highlight-card">
+      <strong>✨ १००% मोफत आणि अखंड कार्यपद्धती (Zero-Cost & Zero Downtime):</strong><br>
+      ब्राउझरचे मोफत Web Speech API (मराठी/हिंदी/इंग्रजी) + जेमिनी फ्लॅशचे मल्टिपल की-पूल रोटेशन वापरून मासिक ₹० खर्चात अखंड सेवा.
+    </div>
+
+    <h2>२. मुख्य कार्यक्षमता (Core Functional Capabilities)</h2>
+    <ul>
+      <li><strong>१. तोंडी संभाषणातून बिलिंग:</strong> "महेशला ५ किलो बासमती तांदूळ आणि २ लिटर तेल कॅशवर बिल कर" म्हटल्यावर स्क्रीनवर पावती तयार होणे.</li>
+      <li><strong>२. चिल्लर vs ठोक किंमत सल्लागार:</strong> नवीन विक्रेता दुकानात बसला तरी "साखरेचा काय भाव आहे?" विचारताच चिल्लर भाव, ५० किलो गोणीचा ठोक भाव आणि तोटा टाळणारी किमान मर्यादा सांगणे.</li>
+      <li><strong>३. सप्लायर दर तुलना:</strong> मागील खरेदी इतिहासावरून कोणता सप्लायर स्वस्त देतो हे एका सेकंदात तक्त्यासह दाखवणे.</li>
+      <li><strong>४. "पाणी कुठे मुरतंय?" (Business Leakage Audit):</strong> अडकलेली उधारी, गोदामात सडणारा डेड-स्टॉक आणि कमी नफ्याच्या वस्तूंची यादी उघडकीस आणणे.</li>
+      <li><strong>५. डायनॅमिक सिस्टीम रजिस्ट्री:</strong> सॉफ्टवेअरमध्ये नवीन फीचर जोडताच मुनीमजी आपोआप अपग्रेड होणे.</li>
+      <li><strong>६. मुनीमजी सेल्फ-टेस्टिंग एजंट:</strong> बिलिंग, जीएसटी आणि स्टॉकची गणिते स्वतः व्हर्च्युअल टेस्ट करून आरोग्य अहवाल देणे.</li>
+    </ul>
+
+    <h2>३. उच्चस्तरीय सिस्टीम रचना (Architecture Diagram)</h2>
+    <pre>
+[ दुकानदार/कॅशियर (मराठी/हिंदी/इंग्रजी बोलणे) ]
+         │ (मायक्रोफोन)
+         ▼
+[ Web Speech Recognition ] (Browser Native, Free)
+         │
+         ▼
+[ Gemini Multi-Key Failover Pool (Key1 ➔ Key2 ➔ Key3) ]
+         │ (Structured Intent / Action Extraction)
+         ▼
+[ Munimji Autonomous Core Engines ]
+   ├── Voice Billing Engine
+   ├── Price Discovery (Retail/Wholesale)
+   ├── Supplier Price Comparator
+   ├── Business Leakage & Analytics
+   └── Dynamic Capability Registry & QA Agent
+         │
+         ▼
+[ Dedicated Floating Assistant Drawer ]
+   ├── Real-time Audio Wave & Transcript
+   ├── Interactive Mini-Bill Card [Approve & Print]
+   ├── Price Intelligence & Margin Card
+   └── SpeechSynthesis (मुनीमजीचा उत्तर देणारा आवाज)
+    </pre>
+
+    <h2>४. अंमलबजावणीचे टप्पे (Implementation Roadmap)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>टप्पा</th>
+          <th>उद्दिष्ट</th>
+          <th>कार्य</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Phase 1</strong></td>
+          <td>मल्टि-की पूल & सर्व्हर कोर</td>
+          <td>सर्व्हरवर जेमिनी की-रोटेशन पूल आणि सुरक्षित इंटेंट-हँडलर तयार करणे.</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 2</strong></td>
+          <td>मुनीमजी UI ड्रॉवर & व्हॉइस</td>
+          <td>फ्लोटिंग मुनीमजी आयकॉन, वेव्हफॉर्म, मराठी/हिंदी/इंग्रजी स्पीच आणि चॅट कार्ड्स.</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 3</strong></td>
+          <td>सेल्स, खरेदी & दर मार्गदर्शक</td>
+          <td>आवाजावरून बिलिंग, चिल्लर/ठोक किमतींचा सल्ला आणि सप्लायर तुलना.</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 4</strong></td>
+          <td>बिझनेस लीकेज & हेल्थ कार्ड</td>
+          <td>उधारी गळती, डेड स्टॉक आणि मार्जिन ॲनालिसिसचे अल्गोरिदम्स.</td>
+        </tr>
+        <tr>
+          <td><strong>Phase 5</strong></td>
+          <td>रजिस्ट्री & सेल्फ-टेस्टिंग</td>
+          <td>डायनॅमिक कॅपॅबिलिटी रजिस्ट्री आणि व्हर्च्युअल मॉड्यूल टेस्टिंग टेस्टसूट.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #e2e8f0; color: #a0aec0; font-size: 12px; display: flex; justify-content: space-between;">
+      <span>तयार दिनांक: २९ सप्टेंबर २०२६</span>
+      <span>AI Studio Build - Digital Munimji Project</span>
+    </div>
+  </div>
+</body>
+</html>

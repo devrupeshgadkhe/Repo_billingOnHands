@@ -1,0 +1,15 @@
+{
+  "updatedAt": "2026-09-30T08:10:43.649Z",
+  "keys": [
+    {
+      "id": "key_1",
+      "email": "merchant@gmail.com",
+      "key": "AQ.YOUR_GEMINI_API_KEY_HERE",
+      "label": "Primary Merchant Key",
+      "active": true,
+      "totalCalls": 0,
+      "successCalls": 0,
+      "failedCalls": 0
+    }
+  ]
+}
