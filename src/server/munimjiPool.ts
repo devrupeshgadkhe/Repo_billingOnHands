@@ -221,14 +221,13 @@ class MunimjiPoolManager {
             break;
           }
 
-          console.warn(`[Munimji Pool] Warning on ${keyEntry.label} with ${model}:`, err?.message || err);
-
-          // Check if error is Rate Limit / Quota Exhaustion (429)
           if (status === 429 || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
-            // Apply 60s cooldown or mark exhausted, and immediately jump to NEXT KEY
             keyEntry.cooldownUntil = Date.now() + 60000;
-            break; // Break inner model loop, try next key
+            console.info(`[Munimji Pool] Gemini quota/rate limit reached. Switching to Local Smart Heuristic Engine.`);
+            break; // Break inner model loop, try next key or fallback
           }
+
+          console.warn(`[Munimji Pool] Warning on ${keyEntry.label} with ${model}:`, err?.message || err);
 
           // If 503 (High demand / Model busy), continue inner loop to try next model with same key!
           if (status === 503 || errMsg.includes("high demand") || errMsg.includes("unavailable") || errMsg.includes("overloaded")) {
