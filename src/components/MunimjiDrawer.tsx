@@ -257,7 +257,6 @@ export default function MunimjiDrawer({
 
   // References for MediaRecorder & Audio Context (Electron-Safe Native Recording)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const speechRecognitionRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -301,64 +300,34 @@ export default function MunimjiDrawer({
     ]);
   };
 
-  // Preload and cache natural Indian speech synthesis voices
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const transcriptRef = useRef<string>("");
-
-  useEffect(() => {
-    const updateVoices = () => {
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        const v = window.speechSynthesis.getVoices();
-        if (v && v.length > 0) {
-          setAvailableVoices(v);
-        }
-      }
-    };
-    updateVoices();
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = updateVoices;
-    }
-  }, []);
-
-  /**
-   * Clean text for realistic Indian Munimji speech synthesis (strips markdown, formats currency & units)
-   */
-  const cleanTextForIndianSpeech = (raw: string, lang: MunimjiLang): string => {
-    let txt = raw || "";
-    txt = txt.replace(/[*_#•\-\[\]]/g, " ");
-    if (lang === "mr" || lang === "hi") {
-      txt = txt.replace(/₹\s*([0-9,]+)/g, "$1 रुपये");
-      txt = txt.replace(/([0-9]+)\s*%/g, "$1 टक्के");
-      txt = txt.replace(/\bPCS\b/gi, "नग");
-      txt = txt.replace(/\bBOX\b/gi, "बॉक्स");
-      txt = txt.replace(/\bKG\b/gi, "किलो");
-      txt = txt.replace(/\bLTR\b/gi, "लिटर");
-      txt = txt.replace(/100W/gi, "शंभर वॅट");
-      txt = txt.replace(/LED/gi, "एलईडी");
-    } else {
-      txt = txt.replace(/₹\s*([0-9,]+)/g, "$1 rupees");
-      txt = txt.replace(/([0-9]+)\s*%/g, "$1 percent");
-    }
-    txt = txt.replace(/['"`]/g, "");
-    txt = txt.replace(/\s+/g, " ");
-    return txt.trim();
+  const stopMunimjiVoice = () => {
+    const audio = munimjiAudioRef.current;
+    if (!audio) return;
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.src = "";
+    } catch {}
+    munimjiAudioRef.current = null;
   };
 
   /**
-   * Speak reply text aloud with a warm, realistic Indian Munimji voice
-   */
-  /**
-   * Play Gemini TTS generated natural human speech audio output
+   * Play Gemini TTS generated natural human speech audio output.
    */
   const playMunimjiVoice = (audioBase64?: string, audioMimeType?: string) => {
     if (!voiceSpeechEnabled || !audioBase64) return;
+    stopMunimjiVoice();
     try {
       const mime = audioMimeType || "audio/wav";
-      const audioUrl = `data:${mime};base64,${audioBase64}`;
-      const audio = new Audio(audioUrl);
+      const audio = new Audio(`data:${mime};base64,${audioBase64}`);
+      munimjiAudioRef.current = audio;
+      audio.onended = () => {
+        if (munimjiAudioRef.current === audio) munimjiAudioRef.current = null;
+      };
       audio.play().catch(err => console.warn("[Digital Munimji Audio Notice]:", err));
     } catch (err) {
       console.warn("[Digital Munimji Audio Playback Error]:", err);
+      munimjiAudioRef.current = null;
     }
   };
 
@@ -369,9 +338,7 @@ export default function MunimjiDrawer({
     try {
       console.info("🎙️ [VOICE]: Requesting microphone permission from navigator.mediaDevices...");
       setMicPermissionError(false);
-      transcriptRef.current = "";
       setLiveInterimText("");
-      setIsRecording(true);
 
       let stream: MediaStream;
       try {
@@ -388,37 +355,7 @@ export default function MunimjiDrawer({
       }
 
       console.info("✅ [VOICE]: Microphone stream acquired successfully!", stream.id);
-
-      // Web Speech API for Real-time live speech-to-text interim preview while speaking (Skip in Electron to prevent API key restrictions)
-      const isElectronApp = Boolean((window as any).electronAPI?.isElectron);
-      if (!isElectronApp) {
-        try {
-          const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-          if (SpeechRec) {
-            const recognition = new SpeechRec();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = language === "hi" ? "hi-IN" : language === "en" ? "en-IN" : "mr-IN";
-
-            recognition.onresult = (event: any) => {
-              let current = "";
-              for (let i = event.resultIndex; i < event.results.length; i++) {
-                current += event.results[i][0].transcript;
-              }
-              if (current.trim()) {
-                transcriptRef.current = current.trim();
-                setLiveInterimText(current.trim());
-              }
-            };
-
-            recognition.onerror = (e: any) => console.info("SpeechRecognition notice:", e);
-            recognition.start();
-            speechRecognitionRef.current = recognition;
-          }
-        } catch (speechErr) {
-          console.info("SpeechRecognition init notice:", speechErr);
-        }
-      }
+      setIsRecording(true);
 
       // Visualizer
       try {
@@ -490,13 +427,6 @@ export default function MunimjiDrawer({
     setIsRecording(false);
     setAudioVolume(0);
 
-    if (speechRecognitionRef.current) {
-      try {
-        speechRecognitionRef.current.stop();
-      } catch {}
-      speechRecognitionRef.current = null;
-    }
-
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
@@ -528,11 +458,11 @@ export default function MunimjiDrawer({
           reader.onloadend = async () => {
             const base64Data = (reader.result as string)?.split(",")[1];
             if (base64Data) {
-              const capturedText = transcriptRef.current && transcriptRef.current.trim() ? transcriptRef.current.trim() : undefined;
-              const previewText = capturedText ? `🎙️ ${capturedText}` : (language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश");
-              console.info("🎙️ [VOICE]: Audio base64 payload ready, sending command to backend with transcript:", capturedText || "None");
+              const previewText = language === "en"
+                ? "🎙️ Voice Audio Command"
+                : (language === "hi" ? "🎙️ ऑडियो आदेश" : "🎙️ ऑडिओ आवाज आदेश");
+              console.info("🎙️ [VOICE]: Audio payload ready; Gemini will perform speech recognition and command understanding.");
               await handleProcessCommand({
-                text: capturedText,
                 audioBase64: base64Data,
                 mimeType: audioBlob.type || "audio/webm",
                 userSpokenPreview: previewText
@@ -540,7 +470,6 @@ export default function MunimjiDrawer({
             } else {
               console.warn("⚠️ [VOICE WARNING]: Failed to extract base64 from audio blob.");
             }
-            transcriptRef.current = "";
             setLiveInterimText("");
           };
         } else {
@@ -797,7 +726,7 @@ export default function MunimjiDrawer({
             <button
               onClick={() => {
                 if (voiceSpeechEnabled) {
-                  window.speechSynthesis?.cancel();
+                  stopMunimjiVoice();
                 }
                 setVoiceSpeechEnabled(!voiceSpeechEnabled);
               }}
