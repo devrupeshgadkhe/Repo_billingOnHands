@@ -13,3 +13,4 @@ data/backups/
 **/scanner_config.json
 *.key
 build/
+.github/workflows/
