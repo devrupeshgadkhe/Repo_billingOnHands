@@ -592,55 +592,57 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
   if (query.includes("भाव") || query.includes("दर") || query.includes("किंमत") || query.includes("price") || query.includes("rate") || query.includes("चिल्लर") || query.includes("होलसेल") || query.includes("खुदरा") || query.includes("थोक")) {
     let matchedItem = db.items.find(it => 
       query.includes(it.name.toLowerCase()) || 
-      (query.includes("साखर") && it.name.toLowerCase().includes("साखर")) ||
-      (query.includes("शक्कर") && it.name.toLowerCase().includes("साखर")) ||
-      (query.includes("sugar") && it.name.toLowerCase().includes("sugar")) ||
-      (query.includes("केबल") && it.name.toLowerCase().includes("copper cable")) ||
-      (query.includes("cable") && it.name.toLowerCase().includes("copper cable")) ||
-      (query.includes("लाईट") && it.name.toLowerCase().includes("floodlight")) ||
-      (query.includes("light") && it.name.toLowerCase().includes("floodlight"))
+      it.name.toLowerCase().split(' ').some(w => w.length > 3 && query.includes(w))
     );
-    if (!matchedItem && db.items.length > 0) {
-      matchedItem = db.items[0];
-    }
 
-    if (matchedItem) {
-      const wholesalePrice = Math.round(matchedItem.salePrice * 0.92);
-      const bottomLinePrice = Math.round(matchedItem.purchasePrice * 1.06);
-      const marginPercent = Math.round(((matchedItem.salePrice - matchedItem.purchasePrice) / matchedItem.purchasePrice) * 100);
-
-      let replyText = `मालक, '${matchedItem.name}' चा चिल्लर विक्री भाव ₹${matchedItem.salePrice} आहे आणि ठोक भाव ₹${wholesalePrice} आहे. आपली खरेदी किंमत ₹${matchedItem.purchasePrice} असून, तोटा टाळण्यासाठी किमान मर्यादा ₹${bottomLinePrice} आहे.`;
-      let title = `${matchedItem.name} - किंमत सल्लागार`;
-
+    if (!matchedItem) {
+      let replyText = `मालक, तुम्ही विचारलेली वस्तू आमच्या दुकानाच्या स्टॉक डेटाबेसमध्ये उपलब्ध नाही. कृपया आमच्याकडे असलेल्या उपलब्ध वस्तूंची नावे तपासा.`;
       if (lang === "hi") {
-        replyText = `सेठजी, '${matchedItem.name}' का खुदरा भाव ₹${matchedItem.salePrice} है और थोक भाव ₹${wholesalePrice} है। हमारी खरीद ₹${matchedItem.purchasePrice} है और नुकसान से बचने के लिए न्यूनतम सीमा ₹${bottomLinePrice} है।`;
-        title = `${matchedItem.name} - भाव सलाहकार`;
+        replyText = `सेठजी, आपके द्वारा पूछी गई वस्तु हमारे दुकान के स्टॉक डेटाबेस में उपलब्ध नहीं है। कृपया हमारे पास उपलब्ध सामान की सूची देखें।`;
       } else if (lang === "en") {
-        replyText = `Sir, retail price for '${matchedItem.name}' is ₹${matchedItem.salePrice} and wholesale rate is ₹${wholesalePrice}. Your cost price is ₹${matchedItem.purchasePrice}, and absolute floor price to avoid loss is ₹${bottomLinePrice}.`;
-        title = `${matchedItem.name} - Price Intelligence`;
+        replyText = `Sir, the item you inquired about is not available in our store inventory database. Please check our available stock items.`;
       }
-
       return {
-        intent: "PRICE_QUERY",
-        replyText,
-        displayCards: [
-          {
-            type: "price_guide",
-            title,
-            data: {
-              itemName: matchedItem.name,
-              stockOnHand: matchedItem.stockQuantity,
-              unit: matchedItem.unit,
-              retailPrice: matchedItem.salePrice,
-              wholesalePrice,
-              purchasePrice: matchedItem.purchasePrice,
-              bottomLinePrice,
-              retailMargin: `${marginPercent}%`
-            }
-          }
-        ]
+        intent: "GENERAL_CHAT",
+        replyText
       };
     }
+
+    const wholesalePrice = Math.round(matchedItem.salePrice * 0.92);
+    const bottomLinePrice = Math.round(matchedItem.purchasePrice * 1.06);
+    const marginPercent = Math.round(((matchedItem.salePrice - matchedItem.purchasePrice) / matchedItem.purchasePrice) * 100);
+
+    let replyText = `मालक, '${matchedItem.name}' चा चिल्लर विक्री भाव ₹${matchedItem.salePrice} आहे आणि ठोक भाव ₹${wholesalePrice} आहे. आपली खरेदी किंमत ₹${matchedItem.purchasePrice} असून, तोटा टाळण्यासाठी किमान मर्यादा ₹${bottomLinePrice} आहे.`;
+    let title = `${matchedItem.name} - किंमत सल्लागार`;
+
+    if (lang === "hi") {
+      replyText = `सेठजी, '${matchedItem.name}' का खुदरा भाव ₹${matchedItem.salePrice} है और थोक भाव ₹${wholesalePrice} है। हमारी खरीद ₹${matchedItem.purchasePrice} है और नुकसान से बचने के लिए न्यूनतम सीमा ₹${bottomLinePrice} है।`;
+      title = `${matchedItem.name} - भाव सलाहकार`;
+    } else if (lang === "en") {
+      replyText = `Sir, retail price for '${matchedItem.name}' is ₹${matchedItem.salePrice} and wholesale rate is ₹${wholesalePrice}. Your cost price is ₹${matchedItem.purchasePrice}, and absolute floor price to avoid loss is ₹${bottomLinePrice}.`;
+      title = `${matchedItem.name} - Price Intelligence`;
+    }
+
+    return {
+      intent: "PRICE_QUERY",
+      replyText,
+      displayCards: [
+        {
+          type: "price_guide",
+          title,
+          data: {
+            itemName: matchedItem.name,
+            stockOnHand: matchedItem.stockQuantity,
+            unit: matchedItem.unit,
+            retailPrice: matchedItem.salePrice,
+            wholesalePrice,
+            purchasePrice: matchedItem.purchasePrice,
+            bottomLinePrice,
+            retailMargin: `${marginPercent}%`
+          }
+        }
+      ]
+    };
   }
 
   // 5. SALES BILL (बिल / विक्री / पावती / उधारी / रोख / नकद / bill)
@@ -667,25 +669,33 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
 
     let billItem = db.items.find(it => 
       query.includes(it.name.toLowerCase()) || 
-      (query.includes("केबल") && it.name.toLowerCase().includes("copper cable")) ||
-      (query.includes("साखर") && it.name.toLowerCase().includes("साखर")) ||
-      (query.includes("शक्कर") && it.name.toLowerCase().includes("साखर")) ||
-      (query.includes("sugar") && it.name.toLowerCase().includes("sugar")) ||
-      (query.includes("लाईट") && it.name.toLowerCase().includes("floodlight")) ||
-      (query.includes("light") && it.name.toLowerCase().includes("floodlight"))
-    ) || db.items[0];
+      it.name.toLowerCase().split(' ').some(w => w.length > 3 && query.includes(w))
+    );
 
-    const unitPrice = billItem ? billItem.salePrice : 100;
+    if (!billItem) {
+      let replyText = `मालक, बिल बनवण्यासाठी तुम्ही सांगितलेली वस्तू आमच्या स्टॉक डेटाबेसमध्ये सापडत नाही. कृपया उपलब्ध असलेल्या वस्तूंपैकी अचूक नाव सांगा.`;
+      if (lang === "hi") {
+        replyText = `सेठजी, बिल बनाने के लिए आपके द्वारा बताई गई वस्तु हमारे स्टॉक डेटाबेस में नहीं मिल रही है। कृपया उपलब्ध सामान का नाम स्पष्ट बताएं।`;
+      } else if (lang === "en") {
+        replyText = `Sir, the item specified for billing is not found in our stock database. Please specify a valid item currently available in inventory.`;
+      }
+      return {
+        intent: "GENERAL_CHAT",
+        replyText
+      };
+    }
+
+    const unitPrice = billItem.salePrice;
     const totalAmount = qty * unitPrice;
 
-    let replyText = `मालक, ${customerName} साठी ${qty} ${billItem?.unit || "नग"} '${billItem?.name || "वस्तू"}' चे ₹${totalAmount} चे ${isCredit ? "उधारी" : "रोख"} बिल तयार केले आहे. खात्री करून सेव्ह करा.`;
+    let replyText = `मालक, ${customerName} साठी ${qty} ${billItem.unit || "नग"} '${billItem.name}' चे ₹${totalAmount} चे ${isCredit ? "उधारी" : "रोख"} बिल तयार केले आहे. खात्री करून सेव्ह करा.`;
     let title = `विक्री बिल (Sales Bill) - ${customerName}`;
 
     if (lang === "hi") {
-      replyText = `सेठजी, ${customerName} के लिए ${qty} ${billItem?.unit || "नग"} '${billItem?.name || "सामान"}' का ₹${totalAmount} का ${isCredit ? "उधारी" : "नकद"} बिल तैयार किया गया है। पुष्टि करके सेव करें।`;
+      replyText = `सेठजी, ${customerName} के लिए ${qty} ${billItem.unit || "नग"} '${billItem.name}' का ₹${totalAmount} का ${isCredit ? "उधारी" : "नकद"} बिल तैयार किया गया है। पुष्टि करके सेव करें।`;
       title = `बिक्री बिल (Sales Bill) - ${customerName}`;
     } else if (lang === "en") {
-      replyText = `Sir, prepared a ${isCredit ? "Credit" : "Cash"} sales invoice for ${customerName} with ${qty} ${billItem?.unit || "Unit(s)"} of '${billItem?.name || "Item"}' totaling ₹${totalAmount}. Please verify to confirm.`;
+      replyText = `Sir, prepared a ${isCredit ? "Credit" : "Cash"} sales invoice for ${customerName} with ${qty} ${billItem.unit || "Unit(s)"} of '${billItem.name}' totaling ₹${totalAmount}. Please verify to confirm.`;
       title = `Sales Invoice - ${customerName}`;
     }
 
@@ -701,10 +711,10 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
             paymentMode: isCredit ? "unpaid" : "cash",
             items: [
               {
-                itemId: billItem?.id || "custom_1",
-                name: billItem?.name || "Item",
+                itemId: billItem.id,
+                name: billItem.name,
                 quantity: qty,
-                unit: billItem?.unit || (lang === "en" ? "PCS" : "नग"),
+                unit: billItem.unit || (lang === "en" ? "PCS" : "नग"),
                 price: unitPrice,
                 total: totalAmount
               }
@@ -716,7 +726,7 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
       actionPayload: {
         customerName,
         paymentMode: isCredit ? "unpaid" : "cash",
-        items: [{ itemId: billItem?.id, name: billItem?.name, quantity: qty, price: unitPrice, total: totalAmount }],
+        items: [{ itemId: billItem.id, name: billItem.name, quantity: qty, price: unitPrice, total: totalAmount }],
         totalAmount
       }
     };
