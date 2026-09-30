@@ -528,7 +528,7 @@ export default function MunimjiDrawer({
               text: spokenText || undefined,
               audioBase64: base64Data,
               mimeType: audioBlob.type || "audio/webm",
-              userSpokenPreview: spokenText || (language === "en" ? "Voice Command" : "आवाज आदेश")
+              userSpokenPreview: spokenText || (language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश")
             });
             transcriptRef.current = "";
             setLiveInterimText("");
@@ -556,7 +556,7 @@ export default function MunimjiDrawer({
     mimeType?: string;
     userSpokenPreview?: string;
   }) => {
-    const userText = params.text || params.userSpokenPreview || (language === "en" ? "Voice Command" : "आवाज आदेश");
+    const userText = params.text || params.userSpokenPreview || (language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश");
     
     // Add user message to UI immediately with exact recognized text
     const userMsgId = "user_" + Date.now();
