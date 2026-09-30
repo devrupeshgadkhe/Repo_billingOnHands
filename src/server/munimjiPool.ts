@@ -79,12 +79,15 @@ class MunimjiPoolManager {
   }
 
   public loadKeys(): void {
+    const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    let loaded: KeyEntry[] = [];
+
     try {
       if (fs.existsSync(this.configPath)) {
         const content = fs.readFileSync(this.configPath, "utf8");
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed.keys) && parsed.keys.length > 0) {
-          this.keys = parsed.keys.map((k: any, idx: number) => ({
+          loaded = parsed.keys.map((k: any, idx: number) => ({
             id: k.id || `key_${idx + 1}`,
             email: k.email || "custom@account.com",
             key: k.key,
@@ -97,15 +100,38 @@ class MunimjiPoolManager {
             lastError: k.lastError,
             cooldownUntil: k.cooldownUntil
           }));
-          return;
         }
       }
     } catch (err) {
-      console.warn("[Munimji Pool] Failed to read keys config from file, using bundled defaults:", err);
+      console.warn("[Munimji Pool] Failed to read keys config from file, using environment defaults:", err);
     }
 
-    // Default to bundled keys
-    this.keys = BUNDLED_KEYS.map(k => ({ ...k }));
+    // Always ensure valid process.env.GEMINI_API_KEY is present in the pool at index 0
+    if (envKey && !envKey.includes("YOUR_GEMINI_API_KEY") && envKey.trim().length > 10) {
+      const existingEnvKeyIdx = loaded.findIndex(k => k.key === envKey);
+      if (existingEnvKeyIdx >= 0) {
+        const [envEntry] = loaded.splice(existingEnvKeyIdx, 1);
+        envEntry.active = true;
+        loaded.unshift(envEntry);
+      } else {
+        loaded.unshift({
+          id: "key_env_primary",
+          email: "system@aistudio.env",
+          key: envKey,
+          label: "Primary Environment Key",
+          active: true,
+          totalCalls: 0,
+          successCalls: 0,
+          failedCalls: 0
+        });
+      }
+    }
+
+    if (loaded.length === 0) {
+      loaded = BUNDLED_KEYS.map(k => ({ ...k }));
+    }
+
+    this.keys = loaded;
   }
 
   private saveKeys(): void {
@@ -160,7 +186,27 @@ class MunimjiPoolManager {
     executeFn: (client: GoogleGenAI, modelName: string, keyEntry: KeyEntry) => Promise<T>
   ): Promise<{ result: T; keyUsed: string; modelUsed: string }> {
     const now = Date.now();
-    const candidateKeys = this.keys.filter(k => k.active && k.key && k.key.startsWith("AIza") && !k.key.includes("YOUR_GEMINI_API_KEY"));
+    const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+
+    // Refresh keys if environment key exists but is missing from active pool
+    if (envKey && !envKey.includes("YOUR_GEMINI_API_KEY") && !this.keys.some(k => k.key === envKey && k.active)) {
+      this.loadKeys();
+    }
+
+    const isValidKey = (k: KeyEntry) => Boolean(
+      k.active &&
+      k.key &&
+      k.key.trim().length > 10 &&
+      !k.key.includes("YOUR_GEMINI_API_KEY") &&
+      !k.key.includes("YOUR_KEY")
+    );
+
+    let candidateKeys = this.keys.filter(isValidKey);
+
+    if (candidateKeys.length === 0 && envKey && !envKey.includes("YOUR_GEMINI_API_KEY") && envKey.trim().length > 10) {
+      this.loadKeys();
+      candidateKeys = this.keys.filter(isValidKey);
+    }
 
     if (candidateKeys.length === 0) {
       throw new Error("No active and valid Gemini API keys available. Using Local Smart Heuristic Engine.");
