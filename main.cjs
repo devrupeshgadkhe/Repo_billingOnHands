@@ -378,27 +378,29 @@ app.whenReady().then(() => {
   process.env.ELECTRON_ENV = "true";
   process.env.ELECTRON_USER_DATA = app.getPath("userData");
 
-  // Digital Munimji: Explicitly grant microphone and audio permissions unconditionally in Electron
+  // Digital Munimji: allow only microphone/audio media access in Electron.
+  // Electron exposes microphone permission through the "media" permission with
+  // details.mediaType === "audio". Do not grant unrelated permissions globally.
   if (session && session.defaultSession) {
-    session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-      if (permission === "media" || permission === "microphone" || permission === "audioCapture" || permission === "unknown") {
-        return true;
-      }
-      return true;
-    });
+    const isMicrophoneMediaRequest = (permission, details) =>
+      permission === "media" &&
+      (!details?.mediaType || details.mediaType === "audio");
 
-    session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-      if (permission === "media" || permission === "microphone" || permission === "audioCapture" || permission === "unknown") {
-        return callback(true);
+    session.defaultSession.setPermissionCheckHandler(
+      (_webContents, permission, _requestingOrigin, details) => {
+        return isMicrophoneMediaRequest(permission, details);
       }
-      callback(true);
-    });
+    );
 
-    if (session.defaultSession.setDevicePermissionHandler) {
-      session.defaultSession.setDevicePermissionHandler((details) => {
-        return true;
-      });
-    }
+    session.defaultSession.setPermissionRequestHandler(
+      (_webContents, permission, callback, details) => {
+        if (isMicrophoneMediaRequest(permission, details)) {
+          callback(true);
+          return;
+        }
+        callback(false);
+      }
+    );
   }
 
   if (process.platform === "darwin" && systemPreferences && systemPreferences.askForMediaAccess) {
