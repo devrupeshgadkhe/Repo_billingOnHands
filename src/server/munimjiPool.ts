@@ -840,15 +840,14 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     };
   }
 
-  // 6. GENERAL CHAT (Live Database Grounded)
-  const availableItemsList = (db.items || []).map(i => `${i.name} (स्टॉक: ${i.stockQuantity} ${i.unit}, भाव: ₹${i.salePrice})`).join(", ");
+  // 6. GENERAL CHAT (Clean, Smart, Respectful Response)
   const businessName = db.business?.name || "दुकान";
 
-  let generalReply = `मालक, मी '${businessName}' चा डिजिटल मुनीमजी बोलतोय. आपल्या खऱ्याखुऱ्या डेटाबेसमध्ये सध्या हे प्रॉडक्ट्स उपलब्ध आहेत: ${availableItemsList}. तुम्ही यातील कोणत्याही वस्तूचा भाव विचारू शकता किंवा बिल बनवायला सांगू शकता!`;
+  let generalReply = `राम राम मालक! मी '${businessName}' चा डिजिटल मुनीमजी आहे. सांगा काय सेवा करू? तुम्ही कोणत्याही वस्तूचे बिल बनवायला सांगू शकता, भाव विचारू शकता, किंवा व्यवसायाचा हिशोब विचारू शकता.`;
   if (lang === "hi") {
-    generalReply = `सेठजी, मैं '${businessName}' का डिजिटल मुनीमजी हूँ। हमारे वास्तविक डेटाबेस में ये सामान उपलब्ध हैं: ${availableItemsList}. आप इनमें से किसी का भी भाव पूछ सकते हैं या बिल बनवा सकते हैं!`;
+    generalReply = `राम राम सेठजी! मैं '${businessName}' का डिजिटल मुनीमजी हूँ। बताइए क्या सेवा करूँ? आप किसी भी सामान का बिल बनवा सकते हैं, रेट पूछ सकते हैं, या व्यापार का हिसाब ले सकते हैं।`;
   } else if (lang === "en") {
-    generalReply = `Sir, I am your Digital Munimji for '${businessName}'. Our live database currently has these items: ${availableItemsList}. You can ask prices or create bills for any of these!`;
+    generalReply = `Greetings Sir! I am your Digital Munimji for '${businessName}'. How may I assist you today? You can ask me to create bills, check product prices, or audit business accounts.`;
   }
 
   return {

@@ -428,7 +428,7 @@ export default function MunimjiDrawer({
         }
       };
 
-      recorder.start(250);
+      recorder.start(100);
     } catch (err: any) {
       console.error("[Digital Munimji Microphone Error]:", err);
       setIsRecording(false);
@@ -454,20 +454,30 @@ export default function MunimjiDrawer({
 
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
+      try {
+        if ((recorder as any).requestData) {
+          (recorder as any).requestData();
+        }
+      } catch {}
+
       recorder.onstop = async () => {
         recorder.stream.getTracks().forEach(tr => tr.stop());
 
         const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        if (audioBlob.size > 500) {
+        audioChunksRef.current = [];
+
+        if (audioBlob.size > 0) {
           const reader = new FileReader();
           reader.readAsDataURL(audioBlob);
           reader.onloadend = async () => {
-            const base64Data = (reader.result as string).split(",")[1];
-            await handleProcessCommand({
-              audioBase64: base64Data,
-              mimeType: audioBlob.type || "audio/webm",
-              userSpokenPreview: language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश"
-            });
+            const base64Data = (reader.result as string)?.split(",")[1];
+            if (base64Data) {
+              await handleProcessCommand({
+                audioBase64: base64Data,
+                mimeType: audioBlob.type || "audio/webm",
+                userSpokenPreview: language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश"
+              });
+            }
             transcriptRef.current = "";
             setLiveInterimText("");
           };
@@ -1055,19 +1065,6 @@ export default function MunimjiDrawer({
           )}
 
           <div ref={messagesEndRef} />
-        </div>
-
-        {/* Quick Suggestion Chips */}
-        <div className="px-4 py-2 bg-slate-200/60 border-t border-slate-200 overflow-x-auto whitespace-nowrap flex items-center gap-2">
-          {t.chips.map((chip, cIdx) => (
-            <button
-              key={cIdx}
-              onClick={() => handleProcessCommand({ text: chip.query })}
-              className="text-[11px] font-medium bg-white hover:bg-amber-50 hover:text-amber-800 text-slate-700 px-3 py-1 rounded-full border border-slate-300 shadow-2xs transition-all shrink-0"
-            >
-              {chip.label}
-            </button>
-          ))}
         </div>
 
         {/* Bottom Input & Microphone Controls */}
