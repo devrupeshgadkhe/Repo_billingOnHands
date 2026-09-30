@@ -21,9 +21,9 @@ autoUpdater.disableWebInstaller = true;
 // Bypass code signature check so unsigned releases install smoothly without hanging at 100%
 autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
 
-// Append Chromium command line switches for seamless microphone stream access in Electron
+// Keep Chromium's audio service enabled for stable microphone capture in Electron.
+// Do not bypass Windows/Chromium permission UI with fake-media switches.
 try {
-  app.commandLine.appendSwitch("use-fake-ui-for-media-stream");
   app.commandLine.appendSwitch("enable-features", "AudioServiceOutOfProcess");
 } catch {}
 
