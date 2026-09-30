@@ -366,6 +366,8 @@ export default function MunimjiDrawer({
    */
   const startRecording = async () => {
     try {
+      console.info("🎙️ [VOICE]: Requesting microphone permission from navigator.mediaDevices...");
+      setMicPermissionError(false);
       transcriptRef.current = "";
       setLiveInterimText("");
       setIsRecording(true);
@@ -377,6 +379,8 @@ export default function MunimjiDrawer({
           autoGainControl: true
         }
       });
+
+      console.info("✅ [VOICE]: Microphone stream acquired successfully!", stream.id);
 
       // Visualizer
       try {
@@ -419,18 +423,22 @@ export default function MunimjiDrawer({
         }
       }
 
+      console.info("🎙️ [VOICE]: Selected recording mimeType:", selectedMime || "default");
+
       const recorder = selectedMime ? new MediaRecorder(stream, { mimeType: selectedMime }) : new MediaRecorder(stream);
       mediaRecorderRef.current = recorder;
 
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+          console.info("🎙️ [VOICE]: Audio chunk captured, size:", event.data.size, "bytes");
         }
       };
 
       recorder.start(100);
+      console.info("🎙️ [VOICE]: MediaRecorder started with 100ms timeslice.");
     } catch (err: any) {
-      console.error("[Digital Munimji Microphone Error]:", err);
+      console.error("❌ [VOICE ERROR]: Failed to access microphone:", err?.name || err, err?.message || err);
       setIsRecording(false);
       setMicPermissionError(true);
     }
@@ -440,6 +448,7 @@ export default function MunimjiDrawer({
    * STOP RECORDING AND SEND AUDIO TO GEMINI API
    */
   const stopRecording = () => {
+    console.info("🎙️ [VOICE]: Stopping recording...");
     setIsRecording(false);
     setAudioVolume(0);
 
@@ -466,21 +475,28 @@ export default function MunimjiDrawer({
         const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
         audioChunksRef.current = [];
 
+        console.info("🎙️ [VOICE]: Final recorded audio blob created. Total size:", audioBlob.size, "bytes");
+
         if (audioBlob.size > 0) {
           const reader = new FileReader();
           reader.readAsDataURL(audioBlob);
           reader.onloadend = async () => {
             const base64Data = (reader.result as string)?.split(",")[1];
             if (base64Data) {
+              console.info("🎙️ [VOICE]: Audio base64 payload ready, sending command to backend...");
               await handleProcessCommand({
                 audioBase64: base64Data,
                 mimeType: audioBlob.type || "audio/webm",
                 userSpokenPreview: language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश"
               });
+            } else {
+              console.warn("⚠️ [VOICE WARNING]: Failed to extract base64 from audio blob.");
             }
             transcriptRef.current = "";
             setLiveInterimText("");
           };
+        } else {
+          console.warn("⚠️ [VOICE WARNING]: Captured audio blob was empty (0 bytes).");
         }
       };
       recorder.stop();
