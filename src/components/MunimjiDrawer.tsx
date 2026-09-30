@@ -656,7 +656,16 @@ export default function MunimjiDrawer({
         onOpenInvoice(result.invoice);
       }
     } catch (err: any) {
-      alert((language === "en" ? "Action failed: " : "कृती पूर्ण करताना अडचण आली: ") + err.message);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: "err_act_" + Date.now(),
+          sender: "munimji",
+          text: `❌ ${(language === "en" ? "Action failed: " : "कृती पूर्ण करताना अडचण आली: ")} ${err.message || ""}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+        }
+      ]);
+      speakText(language === "en" ? "Action failed Sir." : "कृती पूर्ण करण्यात अडचण आली मालक.");
     } finally {
       setIsProcessing(false);
     }
