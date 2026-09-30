@@ -373,42 +373,51 @@ export default function MunimjiDrawer({
       setLiveInterimText("");
       setIsRecording(true);
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true
-        }
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
+      } catch (advancedErr) {
+        console.warn("⚠️ [VOICE WARNING]: Advanced audio constraints failed, trying basic audio stream...", advancedErr);
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
 
       console.info("✅ [VOICE]: Microphone stream acquired successfully!", stream.id);
 
-      // Web Speech API for Real-time live speech-to-text interim preview while speaking
-      try {
-        const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (SpeechRec) {
-          const recognition = new SpeechRec();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = language === "hi" ? "hi-IN" : language === "en" ? "en-IN" : "mr-IN";
+      // Web Speech API for Real-time live speech-to-text interim preview while speaking (Skip in Electron to prevent API key restrictions)
+      const isElectronApp = Boolean((window as any).electronAPI?.isElectron);
+      if (!isElectronApp) {
+        try {
+          const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+          if (SpeechRec) {
+            const recognition = new SpeechRec();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = language === "hi" ? "hi-IN" : language === "en" ? "en-IN" : "mr-IN";
 
-          recognition.onresult = (event: any) => {
-            let current = "";
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-              current += event.results[i][0].transcript;
-            }
-            if (current.trim()) {
-              transcriptRef.current = current.trim();
-              setLiveInterimText(current.trim());
-            }
-          };
+            recognition.onresult = (event: any) => {
+              let current = "";
+              for (let i = event.resultIndex; i < event.results.length; i++) {
+                current += event.results[i][0].transcript;
+              }
+              if (current.trim()) {
+                transcriptRef.current = current.trim();
+                setLiveInterimText(current.trim());
+              }
+            };
 
-          recognition.onerror = (e: any) => console.info("SpeechRecognition notice:", e);
-          recognition.start();
-          speechRecognitionRef.current = recognition;
+            recognition.onerror = (e: any) => console.info("SpeechRecognition notice:", e);
+            recognition.start();
+            speechRecognitionRef.current = recognition;
+          }
+        } catch (speechErr) {
+          console.info("SpeechRecognition init notice:", speechErr);
         }
-      } catch (speechErr) {
-        console.info("SpeechRecognition init notice:", speechErr);
       }
 
       // Visualizer

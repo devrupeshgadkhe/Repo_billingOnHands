@@ -21,6 +21,12 @@ autoUpdater.disableWebInstaller = true;
 // Bypass code signature check so unsigned releases install smoothly without hanging at 100%
 autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
 
+// Append Chromium command line switches for seamless microphone stream access in Electron
+try {
+  app.commandLine.appendSwitch("use-fake-ui-for-media-stream");
+  app.commandLine.appendSwitch("enable-features", "AudioServiceOutOfProcess");
+} catch {}
+
 // Dynamic free port resolution to allow multiple instances or handle blocked ports gracefully
 function getFreePort(startPort, callback) {
   const server = net.createServer();
@@ -375,18 +381,24 @@ app.whenReady().then(() => {
   // Digital Munimji: Explicitly grant microphone and audio permissions unconditionally in Electron
   if (session && session.defaultSession) {
     session.defaultSession.setPermissionCheckHandler((webContents, permission) => {
-      if (permission === "media" || permission === "microphone" || permission === "audioCapture") {
+      if (permission === "media" || permission === "microphone" || permission === "audioCapture" || permission === "unknown") {
         return true;
       }
-      return false;
+      return true;
     });
 
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => {
-      if (permission === "media" || permission === "microphone" || permission === "audioCapture") {
+      if (permission === "media" || permission === "microphone" || permission === "audioCapture" || permission === "unknown") {
         return callback(true);
       }
-      callback(false);
+      callback(true);
     });
+
+    if (session.defaultSession.setDevicePermissionHandler) {
+      session.defaultSession.setDevicePermissionHandler((details) => {
+        return true;
+      });
+    }
   }
 
   if (process.platform === "darwin" && systemPreferences && systemPreferences.askForMediaAccess) {
