@@ -456,17 +456,26 @@ Always return a JSON object strictly conforming to this structure:
     return await munimjiPool.executeWithFallback("processMunimjiCommand", async (client, modelName) => {
       const parts: any[] = [];
 
-      // Support direct audio input (Electron-safe WebM/WAV)
-      if (req.audioBase64 && req.mimeType) {
+      // Sanitize mimeType (strip parameters like ;codecs=opus to prevent Gemini 400 errors)
+      let cleanMime = (req.mimeType || "audio/webm").split(";")[0].trim();
+      if (cleanMime === "audio/opus") cleanMime = "audio/ogg";
+
+      if (req.audioBase64 && req.audioBase64.length > 50) {
         parts.push({
           inlineData: {
-            mimeType: req.mimeType,
+            mimeType: cleanMime,
             data: req.audioBase64
           }
         });
-        parts.push({
-          text: `Listen to this merchant voice recording and execute the appropriate Munimji action.\n${dbContext}`
-        });
+        if (req.text && req.text.trim()) {
+          parts.push({
+            text: `Merchant Spoken Command Transcript: "${req.text.trim()}"\nVerify with attached merchant voice audio recording and execute the appropriate Munimji action.\n${dbContext}`
+          });
+        } else {
+          parts.push({
+            text: `Listen to this merchant voice recording and execute the appropriate Munimji action.\n${dbContext}`
+          });
+        }
       } else {
         // Direct text transcript
         parts.push({

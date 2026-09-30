@@ -257,6 +257,7 @@ export default function MunimjiDrawer({
 
   // References for MediaRecorder & Audio Context (Electron-Safe Native Recording)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -382,6 +383,34 @@ export default function MunimjiDrawer({
 
       console.info("✅ [VOICE]: Microphone stream acquired successfully!", stream.id);
 
+      // Web Speech API for Real-time live speech-to-text interim preview while speaking
+      try {
+        const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (SpeechRec) {
+          const recognition = new SpeechRec();
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.lang = language === "hi" ? "hi-IN" : language === "en" ? "en-IN" : "mr-IN";
+
+          recognition.onresult = (event: any) => {
+            let current = "";
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+              current += event.results[i][0].transcript;
+            }
+            if (current.trim()) {
+              transcriptRef.current = current.trim();
+              setLiveInterimText(current.trim());
+            }
+          };
+
+          recognition.onerror = (e: any) => console.info("SpeechRecognition notice:", e);
+          recognition.start();
+          speechRecognitionRef.current = recognition;
+        }
+      } catch (speechErr) {
+        console.info("SpeechRecognition init notice:", speechErr);
+      }
+
       // Visualizer
       try {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -452,6 +481,13 @@ export default function MunimjiDrawer({
     setIsRecording(false);
     setAudioVolume(0);
 
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch {}
+      speechRecognitionRef.current = null;
+    }
+
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
       animFrameRef.current = null;
@@ -483,11 +519,14 @@ export default function MunimjiDrawer({
           reader.onloadend = async () => {
             const base64Data = (reader.result as string)?.split(",")[1];
             if (base64Data) {
-              console.info("🎙️ [VOICE]: Audio base64 payload ready, sending command to backend...");
+              const capturedText = transcriptRef.current && transcriptRef.current.trim() ? transcriptRef.current.trim() : undefined;
+              const previewText = capturedText ? `🎙️ ${capturedText}` : (language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश");
+              console.info("🎙️ [VOICE]: Audio base64 payload ready, sending command to backend with transcript:", capturedText || "None");
               await handleProcessCommand({
+                text: capturedText,
                 audioBase64: base64Data,
                 mimeType: audioBlob.type || "audio/webm",
-                userSpokenPreview: language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश"
+                userSpokenPreview: previewText
               });
             } else {
               console.warn("⚠️ [VOICE WARNING]: Failed to extract base64 from audio blob.");
