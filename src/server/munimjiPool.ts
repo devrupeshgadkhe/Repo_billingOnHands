@@ -573,56 +573,65 @@ export async function generateMunimjiSpeechAudio(
 ): Promise<{ audioBase64: string; mimeType: string } | null> {
   if (!textToSpeak || !textToSpeak.trim()) return null;
 
-  const langName = language === "mr" ? "Marathi" : language === "hi" ? "Hindi" : "English";
-  const speechInstruction = `Speak as a warm, mature Indian male shop accountant, like an experienced Maharashtrian Munimji speaking naturally to the shop owner.
-Use natural conversational ${langName} pronunciation and pacing.
-Sound calm, helpful, confident and human. Use natural pauses between sentences.
-Do not sound like a robot, GPS, IVR, news reader, or generic AI assistant.
-Avoid exaggerated acting. Keep the delivery natural and conversational.`;
+  const languageName = language === "mr" ? "Marathi" : language === "hi" ? "Hindi" : "English";
+  const style = `Warm, mature Indian male shop accountant and experienced Munimji.
+Natural conversational delivery, like speaking directly to the shop owner in a real retail shop.
+Calm, confident, respectful and human; never robotic, synthetic, GPS-like, IVR-like or news-reader-like.
+Speak natural conversational ${languageName} with clear pronunciation, gentle pauses and varied intonation.
+Do not add words or commentary that are not present in the transcript.
+Keep the delivery practical and friendly, not theatrical or exaggerated.`;
 
-  const ttsModels = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.8-flash"];
+  // Gemini 3.8 TTS is the current production TTS family. Flash-Lite is
+  // optimized for conversational voice-agent workloads; Flash is the
+  // higher-fidelity fallback.
+  const ttsModels = [
+    "gemini-3.8-flash-lite-tts",
+    "gemini-3.8-flash-tts",
+    "gemini-3.1-flash-tts-preview",
+    "gemini-2.5-flash-preview-tts"
+  ];
 
   for (const model of ttsModels) {
     try {
-      const isDedicatedTtsModel = model.endsWith("-tts");
-      const config: any = {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: "Puck"
-            }
-          }
-        }
-      };
-
-      if (!isDedicatedTtsModel) {
-        config.systemInstruction = speechInstruction;
-      }
+      const isModernTts = model.startsWith("gemini-3.8-");
+      const speechConfig = isModernTts
+        ? { voiceConfig: { voice: "Gacrux" } }
+        : { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Gacrux" } } };
 
       const response = await client.models.generateContent({
         model,
-        contents: {
-          parts: [{ text: textToSpeak }]
-        },
-        config
+        contents: [{
+          role: "user",
+          parts: [{
+            text: textToSpeak.trim(),
+            speech_metadata: { style }
+          }]
+        }] as any,
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig
+        } as any
       });
 
-      const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
-      if (candidatePart?.inlineData?.data) {
-        let rawBase64 = candidatePart.inlineData.data;
-        let mimeType = candidatePart.inlineData.mimeType || "audio/mp3";
+      const candidateParts = response.candidates?.[0]?.content?.parts || [];
+      const audioPart = candidateParts.find((part: any) => part?.inlineData?.data);
+      if (!audioPart?.inlineData?.data) {
+        throw new Error("Gemini TTS returned no audio data.");
+      }
 
-        if (mimeType.includes("pcm")) {
-          rawBase64 = pcmToWav(rawBase64, 24000);
-          mimeType = "audio/wav";
-        }
+      const rawBase64 = audioPart.inlineData.data;
+      const mimeType = audioPart.inlineData.mimeType || "audio/wav";
 
+      // Gemini 3.8 returns standard WAV by default. Older fallback models
+      // can return raw PCM/L16, so wrap only those formats in a WAV header.
+      if (/pcm|audio\/l16/i.test(mimeType)) {
         return {
-          audioBase64: rawBase64,
-          mimeType
+          audioBase64: pcmToWav(rawBase64, 24000, 1, 16),
+          mimeType: "audio/wav"
         };
       }
+
+      return { audioBase64: rawBase64, mimeType };
     } catch (err: any) {
       console.info(`[Munimji TTS Notice ${model}]:`, err?.message || err);
     }
