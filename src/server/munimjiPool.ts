@@ -8,6 +8,7 @@
 
 import fs from "fs";
 import path from "path";
+import os from "os";
 import { GoogleGenAI, Type, ThinkingLevel, Modality } from "@google/genai";
 import { DatabaseState, Item, Party, Invoice } from "../types.js";
 
@@ -459,55 +460,71 @@ Always return a JSON object strictly conforming to this structure:
       const hasAudio = Boolean(req.audioBase64 && req.audioBase64.length > 50);
       let commandText = (req.text || "").trim();
 
-      // Keep speech recognition separate from Munimji's business reasoning.
-      // This avoids relying on implicit audio transcription inside a JSON-mode
-      // business-command response, and returns a transcript to the UI explicitly.
+            // Keep speech recognition separate from Munimji's business reasoning.
+      // Gemini's dedicated Transcribe model is used through the Files API.
+      // This is more reliable for WebM/Opus recordings than asking a general
+      // multimodal model to both transcribe and produce JSON in one call.
       if (hasAudio && !commandText) {
-        const audioPart = {
-          inlineData: {
-            mimeType: cleanMime,
-            data: req.audioBase64 as string
-          }
-        };
-        const transcriptionPrompt = {
-          text: "Transcribe the speech in this audio verbatim. The speaker may use Marathi, Hindi, English, or a mixture of these languages. Preserve the original language and wording; do not translate, summarize, answer the speaker, or add commentary. Return only the recognized spoken words."
-        };
+        const tempAudioPath = path.join(
+          os.tmpdir(),
+          `billing-on-hand-munimji-${Date.now()}-${Math.random().toString(36).slice(2)}.webm`
+        );
+        let uploadedFile: any = null;
 
         try {
-          const transcription = await client.models.generateContent({
-            model: "gemini-3.5-transcribe",
-            contents: { parts: [audioPart, transcriptionPrompt] }
-          });
-          commandText = (transcription.text || "").trim();
-          if (!commandText) throw new Error("Gemini transcription returned empty text.");
-          console.info("[Munimji STT] Dedicated transcription succeeded.", {
+          console.info("[Munimji STT] Starting dedicated Gemini 3.5 Transcribe.", {
             model: "gemini-3.5-transcribe",
             mimeType: cleanMime,
-            transcriptLength: commandText.length
+            audioBytes: Math.floor((req.audioBase64 as string).length * 0.75)
+          });
+
+          fs.writeFileSync(tempAudioPath, Buffer.from(req.audioBase64 as string, "base64"));
+
+          uploadedFile = await client.files.upload({
+            file: tempAudioPath,
+            config: { mimeType: cleanMime }
+          });
+
+          if (!uploadedFile?.name) {
+            throw new Error("Gemini Files API did not return an uploaded audio file.");
+          }
+
+          const transcription = await client.models.generateContent({
+            model: "gemini-3.5-transcribe",
+            contents: [uploadedFile]
+          });
+
+          commandText = (transcription.text || "").trim();
+          if (!commandText) {
+            throw new Error("Gemini 3.5 Transcribe returned an empty transcript.");
+          }
+
+          console.info("[Munimji STT] Transcription succeeded.", {
+            model: "gemini-3.5-transcribe",
+            transcript: commandText
           });
         } catch (transcriptionError: any) {
-          console.warn("[Munimji STT] Dedicated transcription failed; trying multimodal fallback.", {
+          console.error("[Munimji STT] Dedicated transcription failed.", {
             message: transcriptionError?.message || String(transcriptionError),
+            status: transcriptionError?.status,
+            code: transcriptionError?.code,
             mimeType: cleanMime
           });
-          const fallbackTranscription = await client.models.generateContent({
-            model: modelName,
-            contents: {
-              parts: [
-                audioPart,
-                { text: "Transcribe the spoken words only, verbatim, in the original language (Marathi, Hindi, English, or mixed). Do not execute the command, answer it, translate it, or return JSON. Output only the transcript." }
-              ]
+          throw new Error(`Voice transcription failed: ${transcriptionError?.message || "Gemini could not transcribe the audio."}`);
+        } finally {
+          try {
+            if (uploadedFile?.name && typeof (client.files as any)?.delete === "function") {
+              await (client.files as any).delete({ name: uploadedFile.name });
             }
-          });
-          commandText = (fallbackTranscription.text || "").trim();
-          if (!commandText) throw new Error("Both Gemini transcription attempts returned empty text.");
-          console.info("[Munimji STT] Multimodal transcription fallback succeeded.", {
-            model: modelName,
-            transcriptLength: commandText.length
-          });
+          } catch (cleanupError: any) {
+            console.warn("[Munimji STT] Remote audio cleanup notice:", cleanupError?.message || cleanupError);
+          }
+
+          try {
+            if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath);
+          } catch {}
         }
       }
-
       const parts: any[] = [{
         text: `Merchant Command: "${commandText}"\n${dbContext}`
       }];
