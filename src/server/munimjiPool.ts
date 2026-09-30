@@ -8,7 +8,7 @@
 
 import fs from "fs";
 import path from "path";
-import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel, Modality } from "@google/genai";
 import { DatabaseState, Item, Party, Invoice } from "../types.js";
 
 export interface KeyEntry {
@@ -318,6 +318,8 @@ export interface MunimjiCommandResponse {
     data: any;
   }[];
   actionPayload?: any;
+  audioBase64?: string;
+  audioMimeType?: string;
   keyUsed?: string;
   modelUsed?: string;
 }
@@ -449,6 +451,19 @@ Always return a JSON object strictly conforming to this structure:
         }
       }
 
+      // Generate Gemini TTS speech audio for Munimji's response
+      if (parsed && parsed.replyText) {
+        try {
+          const speech = await generateMunimjiSpeechAudio(client, parsed.replyText, req.language);
+          if (speech) {
+            parsed.audioBase64 = speech.audioBase64;
+            parsed.audioMimeType = speech.mimeType;
+          }
+        } catch (ttsErr) {
+          console.info("[Munimji TTS generation notice]:", ttsErr);
+        }
+      }
+
       return parsed as MunimjiCommandResponse;
     }).then(({ result, keyUsed, modelUsed }) => {
       return {
@@ -461,6 +476,98 @@ Always return a JSON object strictly conforming to this structure:
     console.warn("[Munimji Pool] Cloud keys error or unavailable. Activating Local Smart Heuristic Fallback Engine:", err.message);
     return fallbackLocalMunimjiProcessor(req, dbState);
   }
+}
+
+/**
+ * Helper to wrap raw 16-bit PCM audio in a valid WAV header
+ */
+function pcmToWav(pcmBase64: string, sampleRate = 24000, numChannels = 1, bitDepth = 16): string {
+  try {
+    const pcmBuffer = Buffer.from(pcmBase64, 'base64');
+    const wavHeader = Buffer.alloc(44);
+
+    wavHeader.write('RIFF', 0);
+    wavHeader.writeUInt32LE(36 + pcmBuffer.length, 4);
+    wavHeader.write('WAVE', 8);
+
+    wavHeader.write('fmt ', 12);
+    wavHeader.writeUInt32LE(16, 16);
+    wavHeader.writeUInt16LE(1, 20);
+    wavHeader.writeUInt16LE(numChannels, 22);
+    wavHeader.writeUInt32LE(sampleRate, 24);
+    wavHeader.writeUInt32LE(sampleRate * numChannels * (bitDepth / 8), 28);
+    wavHeader.writeUInt16LE(numChannels * (bitDepth / 8), 32);
+    wavHeader.writeUInt16LE(bitDepth, 34);
+
+    wavHeader.write('data', 36);
+    wavHeader.writeUInt32LE(pcmBuffer.length, 40);
+
+    return Buffer.concat([wavHeader, pcmBuffer]).toString('base64');
+  } catch {
+    return pcmBase64;
+  }
+}
+
+/**
+ * Generates natural human speech audio for Munimji's replyText using Gemini TTS
+ */
+export async function generateMunimjiSpeechAudio(
+  client: GoogleGenAI,
+  textToSpeak: string,
+  language: "mr" | "hi" | "en" = "mr"
+): Promise<{ audioBase64: string; mimeType: string } | null> {
+  if (!textToSpeak || !textToSpeak.trim()) return null;
+
+  const langName = language === "mr" ? "Marathi" : language === "hi" ? "Hindi" : "English";
+  const speechInstruction = `Speak as a warm, mature Indian male shop accountant, like an experienced Maharashtrian Munimji speaking naturally to the shop owner.
+Use natural conversational ${langName} pronunciation and pacing.
+Sound calm, helpful, confident and human. Use natural pauses between sentences.
+Do not sound like a robot, GPS, IVR, news reader, or generic AI assistant.
+Avoid exaggerated acting. Keep the delivery natural and conversational.`;
+
+  const ttsModels = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+
+  for (const model of ttsModels) {
+    try {
+      const response = await client.models.generateContent({
+        model,
+        contents: {
+          parts: [{ text: textToSpeak }]
+        },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: "Puck"
+              }
+            }
+          },
+          systemInstruction: speechInstruction
+        }
+      });
+
+      const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
+      if (candidatePart?.inlineData?.data) {
+        let rawBase64 = candidatePart.inlineData.data;
+        let mimeType = candidatePart.inlineData.mimeType || "audio/mp3";
+
+        if (mimeType.includes("pcm")) {
+          rawBase64 = pcmToWav(rawBase64, 24000);
+          mimeType = "audio/wav";
+        }
+
+        return {
+          audioBase64: rawBase64,
+          mimeType
+        };
+      }
+    } catch (err: any) {
+      console.info(`[Munimji TTS Notice ${model}]:`, err?.message || err);
+    }
+  }
+
+  return null;
 }
 
 /**

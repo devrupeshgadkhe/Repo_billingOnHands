@@ -261,7 +261,6 @@ export default function MunimjiDrawer({
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
-  const speechRecognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   // Scroll to bottom on new messages
@@ -347,42 +346,23 @@ export default function MunimjiDrawer({
   /**
    * Speak reply text aloud with a warm, realistic Indian Munimji voice
    */
-  const speakText = (text: string) => {
-    if (!voiceSpeechEnabled || !window.speechSynthesis) return;
-
-    window.speechSynthesis.cancel();
-    const cleanSpeech = cleanTextForIndianSpeech(text, language);
-    const utterance = new SpeechSynthesisUtterance(cleanSpeech);
-
-    // Grounded, warm, respected Indian accountant cadence (pitch 0.90, rate 0.92)
-    utterance.pitch = 0.90;
-    utterance.rate = 0.92;
-
-    const voices = availableVoices.length > 0 ? availableVoices : (window.speechSynthesis.getVoices() || []);
-    let bestVoice: SpeechSynthesisVoice | null = null;
-
-    if (language === "mr") {
-      bestVoice = voices.find(v => (v.lang === "mr-IN" || v.lang.startsWith("mr")) && (v.name.includes("Google") || v.name.includes("Natural") || v.name.includes("Swara") || v.name.includes("Online"))) ||
-                  voices.find(v => v.lang === "mr-IN" || v.lang.startsWith("mr")) ||
-                  voices.find(v => (v.lang === "hi-IN" || v.lang.startsWith("hi")) && (v.name.includes("Google") || v.name.includes("Hemant") || v.name.includes("Kalpana") || v.name.includes("Natural"))) ||
-                  voices.find(v => v.lang === "hi-IN" || v.lang.startsWith("hi")) || null;
-    } else if (language === "hi") {
-      bestVoice = voices.find(v => (v.lang === "hi-IN" || v.lang.startsWith("hi")) && (v.name.includes("Google") || v.name.includes("Hemant") || v.name.includes("Kalpana") || v.name.includes("Natural") || v.name.includes("Online"))) ||
-                  voices.find(v => v.lang === "hi-IN" || v.lang.startsWith("hi")) || null;
-    } else {
-      bestVoice = voices.find(v => (v.lang === "en-IN" || v.name.includes("India") || v.name.includes("Neerja") || v.name.includes("Prabhat")) && (v.name.includes("Natural") || v.name.includes("Google"))) ||
-                  voices.find(v => v.lang === "en-IN" || v.name.includes("India")) || null;
+  /**
+   * Play Gemini TTS generated natural human speech audio output
+   */
+  const playMunimjiVoice = (audioBase64?: string, audioMimeType?: string) => {
+    if (!voiceSpeechEnabled || !audioBase64) return;
+    try {
+      const mime = audioMimeType || "audio/wav";
+      const audioUrl = `data:${mime};base64,${audioBase64}`;
+      const audio = new Audio(audioUrl);
+      audio.play().catch(err => console.warn("[Digital Munimji Audio Notice]:", err));
+    } catch (err) {
+      console.warn("[Digital Munimji Audio Playback Error]:", err);
     }
-
-    if (bestVoice) {
-      utterance.voice = bestVoice;
-    }
-
-    window.speechSynthesis.speak(utterance);
   };
 
   /**
-   * START ELECTRON-SAFE NATIVE AUDIO RECORDING & CONTINUOUS SPEECH RECOGNITION
+   * START ELECTRON-SAFE NATIVE AUDIO RECORDING (MediaRecorder)
    */
   const startRecording = async () => {
     try {
@@ -449,47 +429,15 @@ export default function MunimjiDrawer({
       };
 
       recorder.start(250);
-
-      // Browser SpeechRecognition in parallel for live continuous transcription
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        try {
-          const recognition = new SpeechRecognition();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = t.speechVoiceLang;
-
-          recognition.onresult = (event: any) => {
-            let finalStr = "";
-            let interimStr = "";
-            for (let i = 0; i < event.results.length; ++i) {
-              if (event.results[i].isFinal) {
-                finalStr += event.results[i][0].transcript + " ";
-              } else {
-                interimStr += event.results[i][0].transcript;
-              }
-            }
-            const accumulated = (finalStr + interimStr).trim();
-            if (accumulated) {
-              transcriptRef.current = accumulated;
-              setLiveInterimText(accumulated);
-            }
-          };
-
-          recognition.onerror = () => {};
-          recognition.start();
-          speechRecognitionRef.current = recognition;
-        } catch {}
-      }
     } catch (err: any) {
-      console.warn("Microphone access notice:", err?.message || err);
+      console.error("[Digital Munimji Microphone Error]:", err);
       setIsRecording(false);
       setMicPermissionError(true);
     }
   };
 
   /**
-   * STOP RECORDING AND SEND AUDIO / TEXT TO MUNIMJI
+   * STOP RECORDING AND SEND AUDIO TO GEMINI API
    */
   const stopRecording = () => {
     setIsRecording(false);
@@ -504,46 +452,28 @@ export default function MunimjiDrawer({
       audioContextRef.current = null;
     }
 
-    if (speechRecognitionRef.current) {
-      try {
-        speechRecognitionRef.current.stop();
-      } catch {}
-      speechRecognitionRef.current = null;
-    }
-
-    const spokenText = transcriptRef.current.trim() || liveInterimText.trim();
-
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       recorder.onstop = async () => {
         recorder.stream.getTracks().forEach(tr => tr.stop());
 
         const audioBlob = new Blob(audioChunksRef.current, { type: recorder.mimeType || "audio/webm" });
-        if (audioBlob.size > 800) {
+        if (audioBlob.size > 500) {
           const reader = new FileReader();
           reader.readAsDataURL(audioBlob);
           reader.onloadend = async () => {
             const base64Data = (reader.result as string).split(",")[1];
             await handleProcessCommand({
-              text: spokenText || undefined,
               audioBase64: base64Data,
               mimeType: audioBlob.type || "audio/webm",
-              userSpokenPreview: spokenText || (language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश")
+              userSpokenPreview: language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश"
             });
             transcriptRef.current = "";
             setLiveInterimText("");
           };
-        } else if (spokenText) {
-          await handleProcessCommand({ text: spokenText });
-          transcriptRef.current = "";
-          setLiveInterimText("");
         }
       };
       recorder.stop();
-    } else if (spokenText) {
-      handleProcessCommand({ text: spokenText });
-      transcriptRef.current = "";
-      setLiveInterimText("");
     }
   };
 
@@ -601,8 +531,8 @@ export default function MunimjiDrawer({
         }
       ]);
 
-      if (response.replyText) {
-        speakText(response.replyText);
+      if (response.audioBase64) {
+        playMunimjiVoice(response.audioBase64, response.audioMimeType);
       }
     } catch (err: any) {
       console.error("Munimji processing error:", err);
@@ -650,7 +580,6 @@ export default function MunimjiDrawer({
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         }
       ]);
-      speakText(result.message || (language === "en" ? "Completed successfully Sir!" : "काम पूर्ण झाले मालक!"));
 
       if (result.invoice && onOpenInvoice) {
         onOpenInvoice(result.invoice);
@@ -665,7 +594,6 @@ export default function MunimjiDrawer({
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         }
       ]);
-      speakText(language === "en" ? "Action failed Sir." : "कृती पूर्ण करण्यात अडचण आली मालक.");
     } finally {
       setIsProcessing(false);
     }
@@ -829,10 +757,10 @@ export default function MunimjiDrawer({
               </div>
               <p className="text-[11px] text-amber-800 leading-relaxed mb-2">
                 {language === "en"
-                  ? "Microphone access is currently blocked by your browser. Please click the Lock / Tune icon in your address bar to Allow microphone, or use text and quick buttons below."
+                  ? "Microphone access is blocked. Please allow microphone access for this desktop application in Windows Privacy & Security settings."
                   : (language === "hi"
-                    ? "ब्राउज़र में माइक अनुमति ब्लॉक है। कृपया एड्रेस बार में लॉक/सेटिंग्स आइकन पर क्लिक करके 'Microphone: Allow' करें, या नीचे लिखकर पूछें।"
-                    : "ब्राउझरमध्ये माईक परवानगी ब्लॉक झाली आहे. कृपया ॲड्रेस बारमधील कुलूप (Lock) आयकॉनवर क्लिक करून 'Microphone: Allow' करा, किंवा खाली टाईप करून आदेश द्या.")}
+                    ? "माइक एक्सेस ब्लॉक है। कृपया विंडोज गोपनीयता और सुरक्षा सेटिंग्स (Windows Privacy & Security Settings) में इस डेस्कटॉप ऐप के लिए माइक एक्सेस की अनुमति दें।"
+                    : "मायक्रोफोन ॲक्सेस ब्लॉक झाला आहे. कृपया विंडोज प्रायव्हसी आणि सिक्युरिटी सेटिंग्ज (Windows Privacy & Security Settings) मध्ये या डेस्कटॉप ॲपसाठी मायक्रोफोनला परवानगी द्या.")}
               </p>
               <div className="flex items-center gap-2">
                 <button

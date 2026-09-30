@@ -18,6 +18,8 @@ export interface MunimjiResponse {
   replyText: string;
   displayCards?: MunimjiDisplayCard[];
   actionPayload?: any;
+  audioBase64?: string;
+  audioMimeType?: string;
   keyUsed?: string;
   modelUsed?: string;
   error?: string;

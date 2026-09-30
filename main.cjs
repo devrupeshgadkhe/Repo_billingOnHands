@@ -9,10 +9,6 @@ const path = require("path");
 const net = require("net");
 const { autoUpdater } = require("electron-updater");
 
-// Digital Munimji: Enable microphone and audio recording in Electron without permission prompts
-app.commandLine.appendSwitch("use-fake-ui-for-media-stream");
-app.commandLine.appendSwitch("enable-speech-dispatcher");
-
 // Configure Auto-Updater
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
