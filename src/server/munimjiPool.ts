@@ -160,10 +160,10 @@ class MunimjiPoolManager {
     executeFn: (client: GoogleGenAI, modelName: string, keyEntry: KeyEntry) => Promise<T>
   ): Promise<{ result: T; keyUsed: string; modelUsed: string }> {
     const now = Date.now();
-    const candidateKeys = this.keys.filter(k => k.active);
+    const candidateKeys = this.keys.filter(k => k.active && k.key && k.key.startsWith("AIza") && !k.key.includes("YOUR_GEMINI_API_KEY"));
 
     if (candidateKeys.length === 0) {
-      throw new Error("No active Gemini API keys available in Digital Munimji pool.");
+      throw new Error("No active and valid Gemini API keys available. Using Local Smart Heuristic Engine.");
     }
 
     let lastError: any = null;
@@ -215,6 +215,12 @@ class MunimjiPoolManager {
           const status = err?.status || err?.code;
           keyEntry.lastError = `${model}: ${err?.message || err}`;
 
+          if (status === 401 || errMsg.includes("unauthenticated") || status === 403 || errMsg.includes("permission_denied")) {
+            keyEntry.active = false;
+            console.info(`[Munimji Pool] Key ${keyEntry.label} unauthorized or inactive. Switching to Local Smart Engine.`);
+            break;
+          }
+
           console.warn(`[Munimji Pool] Warning on ${keyEntry.label} with ${model}:`, err?.message || err);
 
           // Check if error is Rate Limit / Quota Exhaustion (429)
@@ -228,19 +234,13 @@ class MunimjiPoolManager {
           if (status === 503 || errMsg.includes("high demand") || errMsg.includes("unavailable") || errMsg.includes("overloaded")) {
             continue; // Try next model on this key
           }
-
-          // For 403 (Invalid or revoked key), disable key and try next
-          if (status === 403 || errMsg.includes("permission_denied") || errMsg.includes("leaked")) {
-            keyEntry.active = false;
-            break;
-          }
         }
       }
     }
 
     this.saveKeys();
     throw new Error(
-      `All ${candidateKeys.length} Gemini API keys and models exhausted. Last error: ${lastError?.message || lastError}`
+      `All Gemini API keys exhausted or unauthenticated. Using Local Smart Engine. Last error: ${lastError?.message || lastError}`
     );
   }
 
