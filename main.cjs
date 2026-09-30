@@ -387,18 +387,29 @@ app.whenReady().then(() => {
       (!details?.mediaType || details.mediaType === "audio");
 
     session.defaultSession.setPermissionCheckHandler(
-      (_webContents, permission, _requestingOrigin, details) => {
-        return isMicrophoneMediaRequest(permission, details);
+      (_webContents, permission, requestingOrigin, details) => {
+        const allowed = isMicrophoneMediaRequest(permission, details);
+        if (permission === "media") {
+          console.log("[Electron][Microphone] Permission check:", {
+            allowed,
+            permission,
+            requestingOrigin,
+            mediaType: details?.mediaType
+          });
+        }
+        return allowed;
       }
     );
 
     session.defaultSession.setPermissionRequestHandler(
       (_webContents, permission, callback, details) => {
-        if (isMicrophoneMediaRequest(permission, details)) {
-          callback(true);
-          return;
-        }
-        callback(false);
+        const allowed = isMicrophoneMediaRequest(permission, details);
+        console.log("[Electron][Microphone] Permission request:", {
+          allowed,
+          permission,
+          mediaType: details?.mediaType
+        });
+        callback(allowed);
       }
     );
   }
