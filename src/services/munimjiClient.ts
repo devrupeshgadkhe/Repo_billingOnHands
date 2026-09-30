@@ -69,17 +69,30 @@ export async function sendMunimjiCommand(params: {
   currentScreen?: string;
   language?: "mr" | "hi" | "en";
 }): Promise<MunimjiResponse> {
-  const res = await fetch("/api/munimji/process", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(params)
-  });
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 35000);
 
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.error || "मुनीमजीशी संपर्क करताना त्रुटी आली.");
+  try {
+    const res = await fetch("/api/munimji/process", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+      signal: controller.signal
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "मुनीमजीशी संपर्क करताना त्रुटी आली.");
+    }
+    return data;
+  } catch (err: any) {
+    if (err?.name === "AbortError") {
+      throw new Error("मुनीमजीचा आवाज प्रक्रिया वेळेत पूर्ण झाला नाही. कृपया पुन्हा बोला.");
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(timeout);
   }
-  return data;
 }
 
 export async function executeMunimjiAction(actionType: string, payload: any): Promise<any> {
