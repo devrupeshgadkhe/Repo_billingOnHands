@@ -46,8 +46,8 @@ export interface PoolStatus {
 
 // Model Fallback Priority Chain
 export const MUNIMJI_MODELS = [
-  "gemini-2.5-flash",      // Priority 1: High throughput, robust multimodal quota
-  "gemini-2.5-flash-lite", // Priority 2: Fast lightweight model
+  "gemini-3.8-flash",      // Priority 1: High throughput, robust multimodal quota
+  "gemini-3.5-flash-lite", // Priority 2: Fast lightweight model
   "gemini-flash-latest"    // Priority 3: Fallback general flash
 ];
 
@@ -580,7 +580,7 @@ Sound calm, helpful, confident and human. Use natural pauses between sentences.
 Do not sound like a robot, GPS, IVR, news reader, or generic AI assistant.
 Avoid exaggerated acting. Keep the delivery natural and conversational.`;
 
-  const ttsModels = ["gemini-2.5-flash", "gemini-2.5-flash-lite"];
+  const ttsModels = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts", "gemini-3.8-flash"];
 
   for (const model of ttsModels) {
     try {

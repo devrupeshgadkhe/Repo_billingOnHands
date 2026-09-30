@@ -1791,8 +1791,8 @@ let aiQuotaState: AiQuotaState = {
 
 // Candidate models in prioritized order for dynamic auto-switching
 const CANDIDATE_SCANNER_MODELS = [
-  "gemini-2.5-flash",      // Priority 1: High throughput, robust multimodal quota
-  "gemini-2.5-flash-lite", // Priority 2: Fast lightweight model
+  "gemini-3.8-flash",      // Priority 1: High throughput, robust multimodal quota
+  "gemini-3.5-flash-lite", // Priority 2: Fast lightweight model
   "gemini-flash-latest"    // Priority 3: General fallback
 ];
 
