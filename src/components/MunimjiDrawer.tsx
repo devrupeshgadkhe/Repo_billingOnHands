@@ -257,6 +257,7 @@ export default function MunimjiDrawer({
 
   // References for MediaRecorder & Audio Context (Electron-Safe Native Recording)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const munimjiAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -336,9 +337,29 @@ export default function MunimjiDrawer({
    */
   const startRecording = async () => {
     try {
-      console.info("🎙️ [VOICE]: Requesting microphone permission from navigator.mediaDevices...");
+      console.info("🎙️ [VOICE]: Starting microphone diagnostics...", {
+        isElectron: Boolean((window as any).electronAPI?.isElectron),
+        origin: window.location.origin,
+        secureContext: window.isSecureContext,
+        mediaDevicesAvailable: Boolean(navigator.mediaDevices),
+        getUserMediaAvailable: Boolean(navigator.mediaDevices?.getUserMedia),
+        mediaRecorderAvailable: typeof MediaRecorder !== "undefined"
+      });
       setMicPermissionError(false);
       setLiveInterimText("");
+
+      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Microphone capture is unavailable in this Electron page. The app must load from a trusted local origin.");
+      }
+
+      try {
+        if (navigator.permissions?.query) {
+          const permission = await navigator.permissions.query({ name: "microphone" as PermissionName });
+          console.info("🎙️ [VOICE]: Browser microphone permission state:", permission.state);
+        }
+      } catch (permissionErr) {
+        console.info("🎙️ [VOICE]: Permission-state query unavailable in Electron:", permissionErr);
+      }
 
       let stream: MediaStream;
       try {
@@ -413,7 +434,14 @@ export default function MunimjiDrawer({
       recorder.start(100);
       console.info("🎙️ [VOICE]: MediaRecorder started with 100ms timeslice.");
     } catch (err: any) {
-      console.error("❌ [VOICE ERROR]: Failed to access microphone:", err?.name || err, err?.message || err);
+      console.error("❌ [VOICE ERROR]: Failed to access microphone:", {
+        name: err?.name,
+        message: err?.message,
+        code: err?.code,
+        origin: window.location.origin,
+        secureContext: window.isSecureContext,
+        electron: Boolean((window as any).electronAPI?.isElectron)
+      });
       setIsRecording(false);
       setMicPermissionError(true);
     }
