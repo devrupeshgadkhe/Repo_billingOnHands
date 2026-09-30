@@ -584,22 +584,28 @@ Avoid exaggerated acting. Keep the delivery natural and conversational.`;
 
   for (const model of ttsModels) {
     try {
+      const isDedicatedTtsModel = model.endsWith("-tts");
+      const config: any = {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: "Puck"
+            }
+          }
+        }
+      };
+
+      if (!isDedicatedTtsModel) {
+        config.systemInstruction = speechInstruction;
+      }
+
       const response = await client.models.generateContent({
         model,
         contents: {
           parts: [{ text: textToSpeak }]
         },
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: "Puck"
-              }
-            }
-          },
-          systemInstruction: speechInstruction
-        }
+        config
       });
 
       const candidatePart = response.candidates?.[0]?.content?.parts?.[0];
