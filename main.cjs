@@ -382,9 +382,15 @@ app.whenReady().then(() => {
   // Electron exposes microphone permission through the "media" permission with
   // details.mediaType === "audio". Do not grant unrelated permissions globally.
   if (session && session.defaultSession) {
-    const isMicrophoneMediaRequest = (permission, details) =>
-      permission === "media" &&
-      (!details?.mediaType || details.mediaType === "audio");
+    const isMicrophoneMediaRequest = (permission, details) => {
+      if (permission !== "media") return false;
+      // Electron versions expose requested media as mediaTypes (array) or mediaType (singular).
+      const mediaTypes = Array.isArray(details && details.mediaTypes) ? details.mediaTypes : [];
+      const mediaType = details && details.mediaType;
+      if (mediaType) return mediaType === "audio";
+      if (mediaTypes.length) return mediaTypes.includes("audio") && !mediaTypes.includes("video");
+      return true;
+    };
 
     session.defaultSession.setPermissionCheckHandler(
       (_webContents, permission, requestingOrigin, details) => {
@@ -407,7 +413,8 @@ app.whenReady().then(() => {
         console.log("[Electron][Microphone] Permission request:", {
           allowed,
           permission,
-          mediaType: details?.mediaType
+          mediaType: details?.mediaType,
+          mediaTypes: details?.mediaTypes
         });
         callback(allowed);
       }
