@@ -509,7 +509,7 @@ Always return a JSON object strictly conforming to this structure:
       }
 
       const parts: any[] = [{
-        text: `Merchant Command: "${commandText}"\\n${dbContext}`
+        text: `Merchant Command: "${commandText}"\n${dbContext}`
       }];
 
       const response = await client.models.generateContent({
