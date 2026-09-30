@@ -454,34 +454,63 @@ Always return a JSON object strictly conforming to this structure:
 
   try {
     return await munimjiPool.executeWithFallback("processMunimjiCommand", async (client, modelName) => {
-      const parts: any[] = [];
+      // Normalize browser-recorded audio MIME types before sending to Gemini.
+      const cleanMime = (req.mimeType || "audio/webm").split(";")[0].trim() || "audio/webm";
+      const hasAudio = Boolean(req.audioBase64 && req.audioBase64.length > 50);
+      let commandText = (req.text || "").trim();
 
-      // Sanitize mimeType (strip parameters like ;codecs=opus to prevent Gemini 400 errors)
-      let cleanMime = (req.mimeType || "audio/webm").split(";")[0].trim();
-      if (cleanMime === "audio/opus") cleanMime = "audio/ogg";
-
-      if (req.audioBase64 && req.audioBase64.length > 50) {
-        parts.push({
+      // Keep speech recognition separate from Munimji's business reasoning.
+      // This avoids relying on implicit audio transcription inside a JSON-mode
+      // business-command response, and returns a transcript to the UI explicitly.
+      if (hasAudio && !commandText) {
+        const audioPart = {
           inlineData: {
             mimeType: cleanMime,
-            data: req.audioBase64
+            data: req.audioBase64 as string
           }
-        });
-        if (req.text && req.text.trim()) {
-          parts.push({
-            text: `Merchant Spoken Command Transcript: "${req.text.trim()}"\nVerify with attached merchant voice audio recording and execute the appropriate Munimji action.\n${dbContext}`
+        };
+        const transcriptionPrompt = {
+          text: "Transcribe the speech in this audio verbatim. The speaker may use Marathi, Hindi, English, or a mixture of these languages. Preserve the original language and wording; do not translate, summarize, answer the speaker, or add commentary. Return only the recognized spoken words."
+        };
+
+        try {
+          const transcription = await client.models.generateContent({
+            model: "gemini-3.5-transcribe",
+            contents: { parts: [audioPart, transcriptionPrompt] }
           });
-        } else {
-          parts.push({
-            text: `Listen to this merchant voice recording and execute the appropriate Munimji action.\n${dbContext}`
+          commandText = (transcription.text || "").trim();
+          if (!commandText) throw new Error("Gemini transcription returned empty text.");
+          console.info("[Munimji STT] Dedicated transcription succeeded.", {
+            model: "gemini-3.5-transcribe",
+            mimeType: cleanMime,
+            transcriptLength: commandText.length
+          });
+        } catch (transcriptionError: any) {
+          console.warn("[Munimji STT] Dedicated transcription failed; trying multimodal fallback.", {
+            message: transcriptionError?.message || String(transcriptionError),
+            mimeType: cleanMime
+          });
+          const fallbackTranscription = await client.models.generateContent({
+            model: modelName,
+            contents: {
+              parts: [
+                audioPart,
+                { text: "Transcribe the spoken words only, verbatim, in the original language (Marathi, Hindi, English, or mixed). Do not execute the command, answer it, translate it, or return JSON. Output only the transcript." }
+              ]
+            }
+          });
+          commandText = (fallbackTranscription.text || "").trim();
+          if (!commandText) throw new Error("Both Gemini transcription attempts returned empty text.");
+          console.info("[Munimji STT] Multimodal transcription fallback succeeded.", {
+            model: modelName,
+            transcriptLength: commandText.length
           });
         }
-      } else {
-        // Direct text transcript
-        parts.push({
-          text: `Merchant Command: "${req.text || ''}"\n${dbContext}`
-        });
       }
+
+      const parts: any[] = [{
+        text: `Merchant Command: "${commandText}"\\n${dbContext}`
+      }];
 
       const response = await client.models.generateContent({
         model: modelName,
@@ -505,6 +534,8 @@ Always return a JSON object strictly conforming to this structure:
           throw new Error("Invalid response format from Munimji brain.");
         }
       }
+
+      if (commandText && !parsed.userTranscript) parsed.userTranscript = commandText;
 
       // Generate Gemini TTS speech audio for Munimji's response
       if (parsed && parsed.replyText) {
