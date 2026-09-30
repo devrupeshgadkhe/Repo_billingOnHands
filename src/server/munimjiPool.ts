@@ -387,6 +387,8 @@ Your responsibilities:
 7. 'SYSTEM_SELF_TEST': When user asks to test software modules ("बिलिंग मॉड्यूल टेस्ट कर", "जीएसटी बरोबर चालतंय का").
 8. 'GENERAL_CHAT': Polite, helpful Marathi/Hindi/English conversation as a loyal Munimji.
 
+STRICT DATABASE GROUNDING RULE: You are strictly connected to the live database provided in STORE CONTEXT. Every response, price, stock count, and bill item MUST be derived exclusively from the live database items and parties. Never use generic or fake items. If a requested item does not exist in the store inventory, explicitly state that it is not available in our store database.
+
 Always return a JSON object strictly conforming to this structure:
 {
   "intent": "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "GENERAL_CHAT",
@@ -732,12 +734,15 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     };
   }
 
-  // 6. GENERAL CHAT
-  let generalReply = `होय मालक! मी तुमचा डिजिटल मुनीमजी. तुम्ही मला दुकानातील वस्तूंचा भाव विचारू शकता, ग्राहकाचे नाव घेऊन बिल बनवायला सांगू शकता, किंवा स्वस्त सप्लायर कोणता हे विचारू शकता!`;
+  // 6. GENERAL CHAT (Live Database Grounded)
+  const availableItemsList = (db.items || []).map(i => `${i.name} (स्टॉक: ${i.stockQuantity} ${i.unit}, भाव: ₹${i.salePrice})`).join(", ");
+  const businessName = db.business?.name || "दुकान";
+
+  let generalReply = `मालक, मी '${businessName}' चा डिजिटल मुनीमजी बोलतोय. आपल्या खऱ्याखुऱ्या डेटाबेसमध्ये सध्या हे प्रॉडक्ट्स उपलब्ध आहेत: ${availableItemsList}. तुम्ही यातील कोणत्याही वस्तूचा भाव विचारू शकता किंवा बिल बनवायला सांगू शकता!`;
   if (lang === "hi") {
-    generalReply = `जी सेठजी! मैं आपका डिजिटल मुनीमजी हूँ। आप मुझसे सामान का भाव पूछ सकते हैं, ग्राहक के नाम से बिल बनवा सकते हैं, या सस्ते सप्लायर की जानकारी ले सकते हैं!`;
+    generalReply = `सेठजी, मैं '${businessName}' का डिजिटल मुनीमजी हूँ। हमारे वास्तविक डेटाबेस में ये सामान उपलब्ध हैं: ${availableItemsList}. आप इनमें से किसी का भी भाव पूछ सकते हैं या बिल बनवा सकते हैं!`;
   } else if (lang === "en") {
-    generalReply = `Hello Sir! I am your Digital Munimji. You can ask for product prices, dictate customer bills, compare supplier rates, or check business leaks!`;
+    generalReply = `Sir, I am your Digital Munimji for '${businessName}'. Our live database currently has these items: ${availableItemsList}. You can ask prices or create bills for any of these!`;
   }
 
   return {
