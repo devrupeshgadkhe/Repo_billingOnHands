@@ -625,21 +625,97 @@ export default function MunimjiDrawer({
     return txt.trim();
   };
 
+  // Keep active Audio or Utterance in refs so GC doesn't abort playback
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
   /**
-   * Speak reply text aloud with a warm, realistic Indian Munimji voice
+   * Speak reply text aloud with a warm, realistic Indian Male Munimji voice
+   * Fallback to Web Speech API with male voice tuning if Gemini TTS audio is unavailable.
    */
-  /**
-   * Play Gemini TTS generated natural human speech audio output
-   */
-  const playMunimjiVoice = (audioBase64?: string, audioMimeType?: string) => {
-    if (!voiceSpeechEnabled || !audioBase64) return;
+  const speakWithBrowserMaleVoice = (rawText: string, lang: MunimjiLang) => {
+    if (!voiceSpeechEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
+
     try {
-      const mime = audioMimeType || "audio/wav";
-      const audioUrl = `data:${mime};base64,${audioBase64}`;
-      const audio = new Audio(audioUrl);
-      audio.play().catch(err => console.warn("[Digital Munimji Audio Notice]:", err));
+      window.speechSynthesis.cancel();
+
+      const cleaned = cleanTextForIndianSpeech(rawText, lang);
+      if (!cleaned) return;
+
+      const utterance = new SpeechSynthesisUtterance(cleaned);
+      activeUtteranceRef.current = utterance;
+
+      const langCode = lang === "mr" ? "mr-IN" : (lang === "hi" ? "hi-IN" : "en-IN");
+      utterance.lang = langCode;
+
+      // Select realistic Indian male voice if available in system
+      const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
+      const maleVoice = voices.find(v => 
+        (v.lang.startsWith(langCode.slice(0, 2)) || v.lang === "en-IN" || v.lang === "hi-IN") &&
+        (v.name.toLowerCase().includes("male") || v.name.toLowerCase().includes("ravi") || v.name.toLowerCase().includes("madhav") || v.name.toLowerCase().includes("hemant") || v.name.toLowerCase().includes("prabhat") || v.name.toLowerCase().includes("manoj") || v.name.toLowerCase().includes("david") || v.name.toLowerCase().includes("george"))
+      ) || voices.find(v => v.lang.startsWith(langCode.slice(0, 2))) || voices.find(v => v.lang.startsWith("hi")) || voices[0];
+
+      if (maleVoice) {
+        utterance.voice = maleVoice;
+      }
+
+      // Male pitch & rate for mature Indian Munimji accountant
+      utterance.pitch = 0.88; // deeper mature male pitch
+      utterance.rate = 0.95;  // calm, steady cadence
+      utterance.volume = 1.0;
+
+      utterance.onend = () => {
+        activeUtteranceRef.current = null;
+      };
+      utterance.onerror = (e) => {
+        console.warn("[SpeechSynthesis notice]:", e);
+        activeUtteranceRef.current = null;
+      };
+
+      window.speechSynthesis.speak(utterance);
+
+      // Chrome/Electron speech synthesis pause bug fix
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume();
+      }
     } catch (err) {
-      console.warn("[Digital Munimji Audio Playback Error]:", err);
+      console.warn("[SpeechSynthesis error]:", err);
+    }
+  };
+
+  /**
+   * Play Gemini Male TTS audio with seamless fallback to Browser Male Speech Synthesis
+   */
+  const playMunimjiVoice = (audioBase64?: string, audioMimeType?: string, fallbackText?: string) => {
+    if (!voiceSpeechEnabled) return;
+
+    if (activeAudioRef.current) {
+      try {
+        activeAudioRef.current.pause();
+        activeAudioRef.current.currentTime = 0;
+      } catch {}
+      activeAudioRef.current = null;
+    }
+
+    if (audioBase64 && audioBase64.length > 100) {
+      try {
+        const mime = audioMimeType || "audio/wav";
+        const audioUrl = `data:${mime};base64,${audioBase64}`;
+        const audio = new Audio(audioUrl);
+        activeAudioRef.current = audio;
+
+        audio.play().catch((err) => {
+          console.warn("[Gemini Audio Playback error, falling back to male voice]:", err);
+          if (fallbackText) speakWithBrowserMaleVoice(fallbackText, language);
+        });
+        return;
+      } catch (err) {
+        console.warn("[Audio init error]:", err);
+      }
+    }
+
+    if (fallbackText) {
+      speakWithBrowserMaleVoice(fallbackText, language);
     }
   };
 
@@ -886,8 +962,11 @@ export default function MunimjiDrawer({
         }
       ]);
 
-      if (response.audioBase64) {
-        playMunimjiVoice(response.audioBase64, response.audioMimeType);
+      if (response.replyText) {
+        playMunimjiVoice(response.audioBase64, response.audioMimeType, response.replyText);
+      }
+      if (response.actionPayload) {
+        await onRefreshDb();
       }
     } catch (err: any) {
       console.error("Munimji processing error:", err);

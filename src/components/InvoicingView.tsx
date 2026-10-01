@@ -1011,28 +1011,38 @@ export default function InvoicingView({
     e.preventDefault();
     setErrorText("");
 
-    if (!selectedPartyId) {
-      setErrorText("Please select or assign a Customer before completing the sale.");
-      return;
+    // For Cash/Bank counter sales, default automatically to Walk-in Customer if not selected
+    let effectivePartyId = selectedPartyId;
+    if (!effectivePartyId) {
+      if (paymentType === "cash" || paymentType === "bank") {
+        effectivePartyId = "walkin_customer";
+      } else {
+        setErrorText("उधारी बिलासाठी कृपया ग्राहकाचे खाते निवडा किंवा तयार करा. (Please select customer for credit sale)");
+        return;
+      }
     }
 
     const validLines = computedInvoiceDetails.lines;
     if (validLines.length === 0) {
-      setErrorText("Please add at least one item to the cart.");
+      setErrorText("कृपया बिलामध्ये किमान एक वस्तू ॲड करा. (Please add at least one item to the cart)");
       return;
     }
 
     // Determine party details
-    let resolvedPartyName = activeParty?.name || "Walk-in Customer";
+    let resolvedPartyName = activeParty?.name || partySearchText.trim() || "Walk-in Customer (Cash Sale)";
     let resolvedPartyGstin = activeParty?.gstin || "";
-    let resolvedPartyId = selectedPartyId;
+    let resolvedPartyId = effectivePartyId;
 
-    if (selectedPartyId === "walkin_customer") {
-      const existingCash = relevantParties.find(p => p.name.toLowerCase().includes("cash") || p.name.toLowerCase().includes("walk-in"));
+    if (effectivePartyId === "walkin_customer") {
+      const existingCash = relevantParties.find(p => p.name.toLowerCase().includes("cash") || p.name.toLowerCase().includes("walk-in") || p.name.toLowerCase().includes("रोख"));
       if (existingCash) {
         resolvedPartyId = existingCash.id;
         resolvedPartyName = existingCash.name;
         resolvedPartyGstin = existingCash.gstin || "";
+      } else {
+        resolvedPartyId = "walkin_customer";
+        resolvedPartyName = partySearchText.trim() ? partySearchText.trim() : "Walk-in Customer (Cash Sale)";
+        resolvedPartyGstin = "";
       }
     }
 

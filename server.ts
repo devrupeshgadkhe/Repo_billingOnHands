@@ -2093,6 +2093,75 @@ app.post("/api/munimji/process", async (req, res) => {
       currentDb
     );
 
+    // Auto-persist stock updates or new item additions directly to the store database
+    if (response.actionPayload) {
+      const payload = response.actionPayload;
+      const db = readDb();
+      if (!db.items) db.items = [];
+      let modified = false;
+
+      if (payload.action === "STOCK_UPDATE" || response.intent === "STOCK_UPDATE") {
+        const itemName = payload.itemName || payload.name;
+        const qty = Number(payload.quantityChange || payload.quantity || payload.stock || 0);
+        const op = payload.operation || "ADD";
+        if (itemName) {
+          const item = db.items.find((it: any) => it.name.toLowerCase().includes(itemName.toLowerCase()));
+          if (item) {
+            if (op === "SET") item.stockQuantity = qty;
+            else if (op === "SUBTRACT") item.stockQuantity = Math.max(0, (item.stockQuantity || 0) - qty);
+            else item.stockQuantity = (item.stockQuantity || 0) + qty;
+            modified = true;
+          } else if (payload.isNewItem || payload.action === "ADD_ITEM") {
+            const newItem = {
+              id: "item_" + Date.now(),
+              name: itemName,
+              hsn: payload.hsn || "9999",
+              purchasePrice: Number(payload.purchasePrice || 0),
+              salePrice: Number(payload.salePrice || 0),
+              stockQuantity: qty,
+              minStockAlert: 5,
+              gstRate: Number(payload.gstRate || 0),
+              unit: payload.unit || "PCS"
+            };
+            db.items.push(newItem);
+            modified = true;
+          }
+        }
+      } else if (payload.action === "ADD_ITEM" || payload.action === "CREATE_ITEM") {
+        const itemName = payload.itemName || payload.name;
+        if (itemName) {
+          const existing = db.items.find((it: any) => it.name.toLowerCase() === itemName.toLowerCase());
+          if (existing) {
+            if (payload.salePrice !== undefined) existing.salePrice = Number(payload.salePrice);
+            if (payload.purchasePrice !== undefined) existing.purchasePrice = Number(payload.purchasePrice);
+            if (payload.stockQuantity !== undefined || payload.stock !== undefined) {
+              existing.stockQuantity = Number(payload.stockQuantity ?? payload.stock);
+            }
+          } else {
+            const newItem = {
+              id: "item_" + Date.now(),
+              name: itemName,
+              hsn: payload.hsn || "9999",
+              purchasePrice: Number(payload.purchasePrice || 0),
+              salePrice: Number(payload.salePrice || 0),
+              stockQuantity: Number(payload.stockQuantity || payload.stock || 0),
+              minStockAlert: Number(payload.minStockAlert || 5),
+              gstRate: Number(payload.gstRate || 0),
+              unit: payload.unit || "PCS"
+            };
+            db.items.push(newItem);
+          }
+          modified = true;
+        }
+      }
+
+      if (modified) {
+        writeDb(db);
+        performAutoBackup(db);
+        console.info("[Munimji Auto-Persistence] Updated live database items successfully.");
+      }
+    }
+
     res.json(response);
   } catch (err: any) {
     console.error("[Munimji Process Error]:", err);
@@ -2103,13 +2172,13 @@ app.post("/api/munimji/process", async (req, res) => {
   }
 });
 
-// Execute approved action directly into database (Sales bill, stock update, price update)
+// Execute approved action directly into database (Sales bill, stock update, price update, new items)
 app.post("/api/munimji/execute-action", (req, res) => {
   try {
     const { actionType, payload } = req.body || {};
     const db = readDb();
 
-    if (actionType === "SALES_BILL") {
+    if (actionType === "SALES_BILL" || actionType === "CREATE_SALES_INVOICE") {
       if (!db.invoices) db.invoices = [];
       const invoice = payload as Invoice;
       if (!invoice.id) invoice.id = "inv_" + Date.now();
@@ -2117,7 +2186,7 @@ app.post("/api/munimji/execute-action", (req, res) => {
       if (!invoice.date) invoice.date = new Date().toISOString().split("T")[0];
 
       // Update party ledger balance
-      if (invoice.partyId && db.parties) {
+      if (invoice.partyId && db.parties && invoice.partyId !== "walkin_customer") {
         const party = db.parties.find(p => p.id === invoice.partyId);
         if (party) {
           if (invoice.paymentType === "unpaid") {
@@ -2147,24 +2216,95 @@ app.post("/api/munimji/execute-action", (req, res) => {
       });
     }
 
-    if (actionType === "STOCK_UPDATE") {
-      const { itemName, quantityChange, operation, reason } = payload || {};
-      if (!itemName || quantityChange === undefined) {
+    if (actionType === "ADD_ITEM" || actionType === "CREATE_ITEM") {
+      if (!db.items) db.items = [];
+      const itemName = payload.itemName || payload.name;
+      if (!itemName) {
+        return res.status(400).json({ error: "वस्तूचे नाव आवश्यक आहे." });
+      }
+
+      const existing = db.items.find(it => it.name.toLowerCase() === itemName.toLowerCase());
+      if (existing) {
+        if (payload.salePrice !== undefined) existing.salePrice = Number(payload.salePrice);
+        if (payload.purchasePrice !== undefined) existing.purchasePrice = Number(payload.purchasePrice);
+        if (payload.stockQuantity !== undefined || payload.stock !== undefined) {
+          existing.stockQuantity = Number(payload.stockQuantity ?? payload.stock);
+        }
+        writeDb(db);
+        performAutoBackup(db);
+        return res.json({
+          success: true,
+          message: `'${existing.name}' आधीपासून अस्तित्वात आहे, त्याचे दर/साठा अपडेट केले.`,
+          item: existing
+        });
+      }
+
+      const newItem = {
+        id: "item_" + Date.now(),
+        name: itemName,
+        hsn: payload.hsn || "9999",
+        purchasePrice: Number(payload.purchasePrice || 0),
+        salePrice: Number(payload.salePrice || 0),
+        stockQuantity: Number(payload.stockQuantity || payload.stock || 0),
+        minStockAlert: Number(payload.minStockAlert || 5),
+        gstRate: Number(payload.gstRate || 0),
+        unit: payload.unit || "PCS"
+      };
+
+      db.items.push(newItem);
+      writeDb(db);
+      performAutoBackup(db);
+
+      return res.json({
+        success: true,
+        message: `'${newItem.name}' ही नवीन वस्तू इन्व्हेंटरी डेटाबेसमध्ये ॲड केली आहे.`,
+        item: newItem
+      });
+    }
+
+    if (actionType === "STOCK_UPDATE" || actionType === "UPDATE_STOCK") {
+      const { itemName, name, quantityChange, quantity, stock, operation } = payload || {};
+      const targetName = itemName || name;
+      const changeQty = quantityChange !== undefined ? quantityChange : (quantity !== undefined ? quantity : stock);
+
+      if (!targetName || changeQty === undefined) {
         return res.status(400).json({ error: "Item name and quantity change are required." });
       }
 
-      const item = (db.items || []).find(it => it.name.toLowerCase().includes(itemName.toLowerCase()));
+      if (!db.items) db.items = [];
+      let item = db.items.find(it => it.name.toLowerCase().includes(targetName.toLowerCase()));
+      
       if (!item) {
-        return res.status(404).json({ error: `दुकानात '${itemName}' ही वस्तू सापडली नाही.` });
+        // Auto-create item if user is adding stock for new product
+        item = {
+          id: "item_" + Date.now(),
+          name: targetName,
+          hsn: "9999",
+          purchasePrice: Number(payload?.purchasePrice || 0),
+          salePrice: Number(payload?.salePrice || 0),
+          stockQuantity: Number(changeQty),
+          minStockAlert: 5,
+          gstRate: Number(payload?.gstRate || 0),
+          unit: payload?.unit || "PCS"
+        };
+        db.items.push(item);
+        writeDb(db);
+        performAutoBackup(db);
+
+        return res.json({
+          success: true,
+          message: `'${item.name}' ही वस्तू नवीन तयार करून तिचा साठा ${item.stockQuantity} ${item.unit} केला.`,
+          item
+        });
       }
 
       const prevStock = item.stockQuantity || 0;
       if (operation === "SET") {
-        item.stockQuantity = Number(quantityChange);
+        item.stockQuantity = Number(changeQty);
       } else if (operation === "SUBTRACT") {
-        item.stockQuantity = Math.max(0, prevStock - Number(quantityChange));
+        item.stockQuantity = Math.max(0, prevStock - Number(changeQty));
       } else {
-        item.stockQuantity = prevStock + Number(quantityChange);
+        item.stockQuantity = prevStock + Number(changeQty);
       }
 
       writeDb(db);
@@ -2172,16 +2312,17 @@ app.post("/api/munimji/execute-action", (req, res) => {
 
       return res.json({
         success: true,
-        message: `'${item.name}' चा साठा अपडेट केला. जुना साठा: ${prevStock}, नवीन साठा: ${item.stockQuantity}.`,
+        message: `'${item.name}' चा साठा अपडेट केला. जुना साठा: ${prevStock}, नवीन साठा: ${item.stockQuantity} ${item.unit || "नग"}.`,
         item
       });
     }
 
-    if (actionType === "PRICE_UPDATE") {
-      const { itemName, salePrice, purchasePrice } = payload || {};
-      const item = (db.items || []).find(it => it.name.toLowerCase().includes(itemName.toLowerCase()));
+    if (actionType === "PRICE_UPDATE" || actionType === "UPDATE_PRICE") {
+      const { itemName, name, salePrice, purchasePrice } = payload || {};
+      const targetName = itemName || name;
+      const item = (db.items || []).find(it => it.name.toLowerCase().includes((targetName || "").toLowerCase()));
       if (!item) {
-        return res.status(404).json({ error: `दुकानात '${itemName}' ही वस्तू सापडली नाही.` });
+        return res.status(404).json({ error: `दुकानात '${targetName}' ही वस्तू सापडली नाही.` });
       }
 
       if (salePrice !== undefined) item.salePrice = Number(salePrice);

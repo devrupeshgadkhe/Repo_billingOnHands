@@ -547,20 +547,23 @@ export default function App() {
   };
 
   const handleApplyMunimjiBill = (billData: any) => {
-    // 1. Match party
-    let matchedPartyId = "";
+    // 1. Match party (defaults to walk-in cash customer for instant 1-click billing)
+    let matchedPartyId = "walkin_customer";
     let matchedPartyName = billData.customerName || "रोख ग्राहक (Cash Customer)";
     let matchedPartyGstin = "";
 
     if (billData.customerName) {
-      const p = dbState?.parties?.find(party => 
-        party.name.toLowerCase().includes(billData.customerName.toLowerCase()) ||
-        billData.customerName.toLowerCase().includes(party.name.toLowerCase())
-      );
-      if (p) {
-        matchedPartyId = p.id;
-        matchedPartyName = p.name;
-        matchedPartyGstin = p.gstin || "";
+      const isCashWord = /cash|walk-in|रोख|काऊंटर|काउन्टर|किरकोळ/i.test(billData.customerName);
+      if (!isCashWord) {
+        const p = dbState?.parties?.find(party => 
+          party.name.toLowerCase().includes(billData.customerName.toLowerCase()) ||
+          billData.customerName.toLowerCase().includes(party.name.toLowerCase())
+        );
+        if (p) {
+          matchedPartyId = p.id;
+          matchedPartyName = p.name;
+          matchedPartyGstin = p.gstin || "";
+        }
       }
     }
 

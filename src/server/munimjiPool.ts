@@ -1047,7 +1047,7 @@ function pcmToWav(pcmBase64: string, sampleRate = 24000, numChannels = 1, bitDep
 }
 
 /**
- * Generates natural human speech audio for Munimji's replyText using Gemini TTS
+ * Generates natural human speech audio for Munimji's replyText using Gemini Male TTS
  */
 export async function generateMunimjiSpeechAudio(
   client: GoogleGenAI,
@@ -1057,22 +1057,28 @@ export async function generateMunimjiSpeechAudio(
   if (!textToSpeak || !textToSpeak.trim()) return null;
 
   const languageName = language === "mr" ? "Marathi" : language === "hi" ? "Hindi" : "English";
-  const style = "Warm, mature Indian male shop accountant. Natural conversational " + languageName + ". Calm, clear, respectful, never robotic. Do not add words."; 
+  const prompt = `You are 'डिजिटल मुनीमजी', a respected, wise Indian male accountant and business advisor. Speak the following text clearly with an authentic, mature Indian male voice in ${languageName}:\n\n${textToSpeak.trim()}`;
 
   try {
     const response = await withTimeout(
       client.models.generateContent({
-        model: "gemini-3.8-flash-lite-tts",
+        model: "gemini-2.5-flash",
         contents: [{
           role: "user",
-          parts: [{ text: textToSpeak.trim(), speech_metadata: { style } }]
-        }] as any,
+          parts: [{ text: prompt }]
+        }],
         config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: { voiceConfig: { voice: "Gacrux" } }
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: "Puck" // High-quality, natural Indian male tone
+              }
+            }
+          }
         } as any
       }),
-      6000,
+      8000,
       "Munimji TTS timed out."
     );
 
