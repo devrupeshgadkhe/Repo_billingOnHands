@@ -584,8 +584,7 @@ Always return a JSON object strictly conforming to this structure:
         text: "Merchant Command: \"" + commandText + "\"\n" + dbContext
       }];
 
-      try {
-        console.info("[Munimji] Processing command with model:", modelName, {
+      console.info("[Munimji] Processing command with model:", modelName, {
           hasAudio,
           transcriptAvailable: Boolean(commandText)
         });
@@ -630,7 +629,6 @@ Always return a JSON object strictly conforming to this structure:
         }
 
         return parsed as MunimjiCommandResponse;
-      }
     }).then(({ result, keyUsed, modelUsed }) => {
       return {
         ...result,
