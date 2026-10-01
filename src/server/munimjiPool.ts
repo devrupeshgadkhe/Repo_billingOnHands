@@ -184,7 +184,8 @@ class MunimjiPoolManager {
    */
   public async executeWithFallback<T>(
     operationName: string,
-    executeFn: (client: GoogleGenAI, modelName: string, keyEntry: KeyEntry) => Promise<T>
+    executeFn: (client: GoogleGenAI, modelName: string, keyEntry: KeyEntry) => Promise<T>,
+    options?: { models?: string[] }
   ): Promise<{ result: T; keyUsed: string; modelUsed: string }> {
     const now = Date.now();
     const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
@@ -235,8 +236,9 @@ class MunimjiPoolManager {
         }
       });
 
-      // Try each model in priority rotation
-      for (const model of MUNIMJI_MODELS) {
+      // Some operations (notably speech-to-text) must use one dedicated model.
+      const modelsToTry = options?.models?.length ? options.models : MUNIMJI_MODELS;
+      for (const model of modelsToTry) {
         try {
           keyEntry.totalCalls++;
           keyEntry.lastUsedAt = new Date().toISOString();
