@@ -70,7 +70,7 @@ export async function sendMunimjiCommand(params: {
   language?: "mr" | "hi" | "en";
 }): Promise<MunimjiResponse> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 35000);
+  const timeout = window.setTimeout(() => controller.abort(), 90000);
 
   try {
     const res = await fetch("/api/munimji/process", {
@@ -87,7 +87,7 @@ export async function sendMunimjiCommand(params: {
     return data;
   } catch (err: any) {
     if (err?.name === "AbortError") {
-      throw new Error("मुनीमजीचा आवाज प्रक्रिया वेळेत पूर्ण झाला नाही. कृपया पुन्हा बोला.");
+      throw new Error("मुनीमजीचा आवाज प्रक्रिया वेळेत पूर्ण झाला नाही. कृपया इंटरनेट कनेक्शन तपासून पुन्हा बोला.");
     }
     throw err;
   } finally {
