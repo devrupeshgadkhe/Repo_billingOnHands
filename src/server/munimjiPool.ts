@@ -596,7 +596,6 @@ Always return a JSON object strictly conforming to this structure:
             console.warn("[Munimji Voice] Remote audio cleanup notice:", cleanupError?.message || cleanupError);
           }
         }
-      }      }
     }).then(({ result, keyUsed, modelUsed }) => {
       return {
         ...result,
