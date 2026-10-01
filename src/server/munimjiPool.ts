@@ -611,10 +611,10 @@ Recent Purchases (Supplier History): ${JSON.stringify(recentPurchases)}
 /**
  * Voice command path.
  *
- * The Electron client already produces a small WebM/Opus recording. Gemini
- * 3.8 Flash natively accepts audio input, so keep voice processing in one
- * multimodal request: audio -> exact transcript + Munimji JSON command.
- * This avoids the fragile two-call STT -> reasoning chain entirely.
+ * Electron's MediaRecorder is working correctly, so the renderer hands us
+ * WebM/Opus bytes. We deliberately bypass the @google/genai audio helper here
+ * and call Gemini's documented REST generateContent endpoint directly.
+ * This removes another Electron/Node SDK layer from the critical voice path.
  */
 async function processMunimjiVoiceCommand(
   req: MunimjiCommandRequest,
@@ -623,7 +623,7 @@ async function processMunimjiVoiceCommand(
 ): Promise<MunimjiCommandResponse> {
   const cleanMime = (req.mimeType || "audio/webm").split(";")[0].trim().toLowerCase() || "audio/webm";
   const audioBase64 = (req.audioBase64 || "").trim();
-  const voiceModels = ["gemini-3.8-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"];
+  const voiceModels = ["gemini-3.8-flash"];
 
   if (audioBase64.length < 50) {
     throw new Error("Voice audio payload is empty or too small.");
@@ -632,88 +632,127 @@ async function processMunimjiVoiceCommand(
   const result = await withTimeout(
     munimjiPool.executeWithFallback(
       "processMunimjiVoiceCommand",
-      async (client, modelName) => {
-        console.info("[Munimji Voice] Sending audio + command understanding to Gemini.", {
-          model: modelName,
-          mimeType: cleanMime,
-          language: req.language || "mr",
-          bytes: Math.floor(audioBase64.length * 0.75)
-        });
+      async (_client, modelName, keyEntry) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
+        const startedAt = Date.now();
 
-        const response = await withTimeout(
-          client.models.generateContent({
-            model: modelName,
-            contents: [
-              {
-                text: [
-                  "Listen to the attached merchant voice recording and process the spoken command.",
-                  "First transcribe exactly what the merchant said in the same spoken language (Marathi, Hindi, English, or mixed language).",
-                  "Then interpret that command using the live STORE CONTEXT and return the required Munimji JSON.",
-                  "The userTranscript field MUST contain only the spoken words, not your answer, summary, or explanation.",
-                  "Do not invent products, customers, prices, quantities, or other database facts.",
-                  "Do not mention that you are listening to audio; just perform the task.",
-                  "Language hint: " + (req.language === "hi" ? "hi-IN" : req.language === "en" ? "en-IN" : "mr-IN") + ".",
-                  "",
-                  dbContext
-                ].join("\n")
-              },
-              {
-                inlineData: {
-                  mimeType: cleanMime,
-                  data: audioBase64
-                }
-              }
-            ],
-            config: {
-              systemInstruction,
-              responseMimeType: "application/json",
-              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-            }
-          }),
-          30000,
-          "Gemini voice command processing timed out."
-        );
-
-        const rawText = (response.text || "").trim() || "{}";
-        let parsed: any;
         try {
-          parsed = JSON.parse(rawText);
-        } catch {
-          const match = rawText.match(/\{[\s\S]*\}/);
-          if (match) parsed = JSON.parse(match[0]);
-          else throw new Error("Gemini returned an invalid voice command response.");
-        }
+          console.info("[Munimji Voice] Direct REST Gemini audio request started.", {
+            model: modelName,
+            key: keyEntry.label,
+            mimeType: cleanMime,
+            language: req.language || "mr",
+            bytes: Math.floor(audioBase64.length * 0.75)
+          });
 
-        if (!parsed?.replyText) {
-          throw new Error("Gemini returned an empty voice command response.");
-        }
-        if (!parsed?.userTranscript || !String(parsed.userTranscript).trim()) {
-          throw new Error("Gemini understood the audio but did not return a transcript.");
-        }
+          const languageCode = req.language === "hi" ? "hi-IN" : req.language === "en" ? "en-IN" : "mr-IN";
+          const body = {
+            contents: [{
+              parts: [
+                {
+                  text: [
+                    "Listen to the attached merchant voice recording and understand the spoken business command.",
+                    "Return ONLY one JSON object matching the Munimji response structure below.",
+                    "The userTranscript field MUST contain the words actually spoken, in the same language (Marathi, Hindi, English, or mixed).",
+                    "Do not summarize the speech, do not translate it, and do not put your reply in userTranscript.",
+                    "Use only the live STORE CONTEXT for products, parties, prices, stock, and amounts.",
+                    "Language hint: " + languageCode + ".",
+                    "Required JSON keys: intent, userTranscript, replyText, displayCards, actionPayload.",
+                    "",
+                    dbContext
+                  ].join("\n")
+                },
+                {
+                  inlineData: {
+                    mimeType: cleanMime,
+                    data: audioBase64
+                  }
+                }
+              ]
+            }],
+            systemInstruction,
+            generationConfig: {
+              responseMimeType: "application/json",
+              maxOutputTokens: 1024
+            }
+          };
 
-        parsed.userTranscript = String(parsed.userTranscript).trim();
-        console.info("[Munimji Voice] Audio command understood.", {
-          model: modelName,
-          transcriptLength: parsed.userTranscript.length,
-          preview: parsed.userTranscript.slice(0, 160),
-          intent: parsed.intent
-        });
+          const response = await fetch(
+            "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(modelName) + ":generateContent",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-goog-api-key": keyEntry.key,
+                "User-Agent": "BillingOnHand-Munimji/1.0"
+              },
+              body: JSON.stringify(body),
+              signal: controller.signal
+            }
+          );
 
-        // TTS remains optional and bounded; it must never make voice recognition fail.
-        if (parsed?.replyText) {
-          const speech = await generateMunimjiSpeechAudio(client, parsed.replyText, req.language);
-          if (speech) {
-            parsed.audioBase64 = speech.audioBase64;
-            parsed.audioMimeType = speech.mimeType;
+          const responseText = await response.text();
+          let payload: any = null;
+          try { payload = responseText ? JSON.parse(responseText) : null; } catch {}
+
+          if (!response.ok) {
+            const apiMessage = payload?.error?.message || responseText || ("Gemini HTTP " + response.status);
+            const error: any = new Error(apiMessage.slice(0, 1200));
+            error.status = response.status;
+            throw error;
           }
-        }
 
-        return parsed as MunimjiCommandResponse;
+          const rawText = String(
+            payload?.candidates?.[0]?.content?.parts?.find((part: any) => typeof part?.text === "string")?.text || ""
+          ).trim();
+
+          if (!rawText) {
+            throw new Error("Gemini returned an empty voice response.");
+          }
+
+          let parsed: any;
+          try {
+            parsed = JSON.parse(rawText);
+          } catch {
+            const match = rawText.match(/\{[\s\S]*\}/);
+            if (match) parsed = JSON.parse(match[0]);
+            else throw new Error("Gemini returned invalid JSON for the voice command.");
+          }
+
+          if (!parsed?.replyText) throw new Error("Gemini returned no replyText for the voice command.");
+          if (!parsed?.userTranscript || !String(parsed.userTranscript).trim()) {
+            throw new Error("Gemini understood the audio but returned no transcript.");
+          }
+
+          parsed.userTranscript = String(parsed.userTranscript).trim();
+          console.info("[Munimji Voice] Direct REST Gemini audio request completed.", {
+            model: modelName,
+            key: keyEntry.label,
+            latencyMs: Date.now() - startedAt,
+            transcriptLength: parsed.userTranscript.length,
+            preview: parsed.userTranscript.slice(0, 160),
+            intent: parsed.intent
+          });
+
+          // Do not make TTS part of the critical voice-input path.
+          // The command must return as soon as STT + reasoning succeeds.
+          return parsed as MunimjiCommandResponse;
+        } catch (err: any) {
+          if (err?.name === "AbortError") {
+            const timeoutError: any = new Error("Gemini REST voice request timed out after 15 seconds.");
+            timeoutError.code = "VOICE_TIMEOUT";
+            throw timeoutError;
+          }
+          throw err;
+        } finally {
+          clearTimeout(timer);
+        }
       },
       { models: voiceModels }
     ),
-    35000,
-    "Gemini voice command processing timed out."
+    60000,
+    "Gemini voice command processing timed out after trying the configured keys."
   );
 
   return {
@@ -722,6 +761,7 @@ async function processMunimjiVoiceCommand(
     modelUsed: result.modelUsed
   };
 }
+
 /**
  * Main command processor for Digital Munimji
  */
