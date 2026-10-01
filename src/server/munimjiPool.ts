@@ -571,15 +571,15 @@ Always return a JSON object strictly conforming to this structure:
 }
 `;
 
+  const hasAudio = Boolean(req.audioBase64 && req.audioBase64.length > 50);
+  let commandText = (req.text || "").trim();
+
+  if (hasAudio && !commandText) {
+    commandText = await transcribeMunimjiAudio(req);
+  }
+
   try {
     return await munimjiPool.executeWithFallback("processMunimjiCommand", async (client, modelName) => {
-      const hasAudio = Boolean(req.audioBase64 && req.audioBase64.length > 50);
-      let commandText = (req.text || "").trim();
-
-      if (hasAudio && !commandText) {
-        commandText = await transcribeMunimjiAudio(req);
-      }
-
       const parts: any[] = [{
         text: "Merchant Command: \"" + commandText + "\"\n" + dbContext
       }];
@@ -639,7 +639,23 @@ Always return a JSON object strictly conforming to this structure:
       };
     });
   } catch (err: any) {
-    console.warn("[Munimji Pool] Cloud keys error or unavailable. Activating Local Smart Heuristic Fallback Engine:", err.message);
+    console.warn("[Munimji Pool] Cloud processing error:", err?.message || err);
+
+    // Never silently route a voice request into the text-only local heuristic.
+    // If STT or cloud processing failed, surface a clear voice error to the UI.
+    if (hasAudio && !req.text) {
+      const lang = req.language || "mr";
+      return {
+        intent: "GENERAL_CHAT",
+        userTranscript: commandText || "",
+        replyText: lang === "hi"
+          ? "आवाज़ को टेक्स्ट में बदलते समय अडचण आली. कृपया इंटरनेट कनेक्शन तपासून पुन्हा बोला."
+          : lang === "en"
+            ? "I could not convert your voice to text. Please check the internet connection and try again."
+            : "आवाजेचा मजकूर बनवताना अडचण आली. कृपया इंटरनेट कनेक्शन तपासून पुन्हा बोला."
+      };
+    }
+
     return fallbackLocalMunimjiProcessor(req, dbState);
   }
 }
