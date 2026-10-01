@@ -79,60 +79,178 @@ class MunimjiPoolManager {
     this.loadKeys();
   }
 
+  private isUsableConfiguredKey(key: unknown): key is string {
+    if (typeof key !== "string") return false;
+    const clean = key.trim();
+    return clean.length > 10 &&
+      !clean.includes("YOUR_GEMINI_API_KEY") &&
+      !clean.includes("YOUR_KEY");
+  }
+
+  private getNextQuotaResetAt(now = Date.now()): number {
+    const reset = new Date(now);
+    reset.setHours(24, 0, 0, 0);
+    return reset.getTime();
+  }
+
+  private getDataDir(): string {
+    return path.dirname(this.configPath);
+  }
+
+  /**
+   * Collect all key sources that can exist in a packaged desktop app.
+   *
+   * The server creates data/gemini_key.txt at startup for the bundled key,
+   * while a user-managed pool can live in gemini_keys_pool.json. We also accept
+   * GEMINI_API_KEY_1..4 / VITE_GEMINI_API_KEY_1..4 and a newline/comma/semicolon
+   * separated GEMINI_API_KEYS variable for development and deployment.
+   */
+  private getExternalConfiguredKeys(): Array<{ key: string; label: string }> {
+    const entries: Array<{ key: string; label: string }> = [];
+    const add = (key: unknown, label: string) => {
+      if (!this.isUsableConfiguredKey(key)) return;
+      entries.push({ key: key.trim(), label });
+    };
+
+    const envNames = [
+      "GEMINI_API_KEY",
+      "GEMINI_API_KEY_1",
+      "GEMINI_API_KEY_2",
+      "GEMINI_API_KEY_3",
+      "GEMINI_API_KEY_4",
+      "VITE_GEMINI_API_KEY",
+      "VITE_GEMINI_API_KEY_1",
+      "VITE_GEMINI_API_KEY_2",
+      "VITE_GEMINI_API_KEY_3",
+      "VITE_GEMINI_API_KEY_4"
+    ];
+
+    for (const envName of envNames) {
+      add(process.env[envName], envName);
+    }
+
+    const combined = process.env.GEMINI_API_KEYS;
+    if (combined) {
+      combined.split(/[\\n,;]+/g).forEach((key, idx) => add(key, `GEMINI_API_KEYS_${idx + 1}`));
+    }
+
+    const fileNames = [
+      "gemini_key.txt",
+      "gemini_key_1.txt",
+      "gemini_key_2.txt",
+      "gemini_key_3.txt",
+      "gemini_key_4.txt",
+      "gemini_api_key_1.txt",
+      "gemini_api_key_2.txt",
+      "gemini_api_key_3.txt",
+      "gemini_api_key_4.txt"
+    ];
+
+    for (const fileName of fileNames) {
+      const filePath = path.join(this.getDataDir(), fileName);
+      try {
+        if (fs.existsSync(filePath)) {
+          add(fs.readFileSync(filePath, "utf8"), `file:${fileName}`);
+        }
+      } catch {}
+    }
+
+    // De-duplicate while retaining first-seen order.
+    const seen = new Set<string>();
+    return entries.filter(entry => {
+      if (seen.has(entry.key)) return false;
+      seen.add(entry.key);
+      return true;
+    });
+  }
+
   public loadKeys(): void {
-    const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    const now = Date.now();
+    const externalKeys = this.getExternalConfiguredKeys();
     let loaded: KeyEntry[] = [];
 
     try {
       if (fs.existsSync(this.configPath)) {
         const content = fs.readFileSync(this.configPath, "utf8");
         const parsed = JSON.parse(content);
+
         if (Array.isArray(parsed.keys) && parsed.keys.length > 0) {
-          loaded = parsed.keys.map((k: any, idx: number) => ({
-            id: k.id || `key_${idx + 1}`,
-            email: k.email || "custom@account.com",
-            key: k.key,
-            label: k.label || `Key ${idx + 1}`,
-            active: k.active !== false,
-            totalCalls: k.totalCalls || 0,
-            successCalls: k.successCalls || 0,
-            failedCalls: k.failedCalls || 0,
-            lastUsedAt: k.lastUsedAt,
-            lastError: k.lastError,
-            cooldownUntil: k.cooldownUntil
-          }));
+          loaded = parsed.keys
+            .filter((k: any) => this.isUsableConfiguredKey(k?.key))
+            .map((k: any, idx: number) => {
+              const previousError = String(k.lastError || "");
+              const isOldModelAccessDisable =
+                k.active === false &&
+                /(403|permission_denied|permission denied|model.*access|access denied)/i.test(previousError);
+
+              const cooldownExpired = !k.cooldownUntil || Number(k.cooldownUntil) <= now;
+
+              return {
+                id: k.id || `key_${idx + 1}`,
+                email: k.email || "custom@account.com",
+                key: String(k.key).trim(),
+                label: k.label || `Key ${idx + 1}`,
+                // Older builds incorrectly disabled keys on model-specific 403s.
+                // Automatically revive those keys so the pool can rotate again.
+                active: k.active !== false || isOldModelAccessDisable,
+                totalCalls: Number(k.totalCalls || 0),
+                successCalls: Number(k.successCalls || 0),
+                failedCalls: Number(k.failedCalls || 0),
+                lastUsedAt: k.lastUsedAt,
+                lastError: k.lastError,
+                cooldownUntil: cooldownExpired ? undefined : Number(k.cooldownUntil)
+              };
+            });
         }
       }
     } catch (err) {
-      console.warn("[Munimji Pool] Failed to read keys config from file, using environment defaults:", err);
+      console.warn("[Munimji Pool] Failed to read keys config; rebuilding from available key sources:", err);
     }
 
-    // Always ensure valid process.env.GEMINI_API_KEY is present in the pool at index 0
-    if (envKey && !envKey.includes("YOUR_GEMINI_API_KEY") && envKey.trim().length > 10) {
-      const existingEnvKeyIdx = loaded.findIndex(k => k.key === envKey);
-      if (existingEnvKeyIdx >= 0) {
-        const [envEntry] = loaded.splice(existingEnvKeyIdx, 1);
-        envEntry.active = true;
-        loaded.unshift(envEntry);
-      } else {
-        loaded.unshift({
-          id: "key_env_primary",
-          email: "system@aistudio.env",
-          key: envKey,
-          label: "Primary Environment Key",
-          active: true,
-          totalCalls: 0,
-          successCalls: 0,
-          failedCalls: 0
-        });
+    // Merge externally configured keys with persisted pool entries.
+    // Existing stats/cooldowns are preserved; newly discovered keys start active.
+    for (const external of externalKeys) {
+      const existing = loaded.find(k => k.key === external.key);
+      if (existing) {
+        if (existing.cooldownUntil && existing.cooldownUntil <= now) {
+          existing.cooldownUntil = undefined;
+        }
+        // Keys discovered outside the persisted pool are always eligible.
+        if (!existing.lastError || /(403|permission_denied|model.*access|access denied)/i.test(existing.lastError)) {
+          existing.active = true;
+        }
+        continue;
       }
+
+      loaded.push({
+        id: "key_ext_" + (loaded.length + 1),
+        email: "configured@local",
+        key: external.key,
+        label: external.label,
+        active: true,
+        totalCalls: 0,
+        successCalls: 0,
+        failedCalls: 0
+      });
     }
 
+    // Last-resort bundled placeholder. It is filtered out by the validity check.
     if (loaded.length === 0) {
-      loaded = BUNDLED_KEYS.map(k => ({ ...k }));
+      loaded = BUNDLED_KEYS
+        .filter(k => this.isUsableConfiguredKey(k.key))
+        .map(k => ({ ...k }));
     }
 
     this.keys = loaded;
+
+    const activeCount = this.keys.filter(k => k.active && (!k.cooldownUntil || k.cooldownUntil <= now)).length;
+    const coolingCount = this.keys.filter(k => k.active && Boolean(k.cooldownUntil && k.cooldownUntil > now)).length;
+    console.info("[Munimji Pool] Key pool loaded.", {
+      configuredKeys: this.keys.length,
+      activeKeys: activeCount,
+      coolingDownKeys: coolingCount,
+      configPath: this.configPath
+    });
   }
 
   private saveKeys(): void {
@@ -188,30 +306,35 @@ class MunimjiPoolManager {
     options?: { models?: string[] }
   ): Promise<{ result: T; keyUsed: string; modelUsed: string }> {
     const now = Date.now();
-    const envKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
-    // Refresh keys if environment key exists but is missing from active pool
-    if (envKey && !envKey.includes("YOUR_GEMINI_API_KEY") && !this.keys.some(k => k.key === envKey && k.active)) {
-      this.loadKeys();
-    }
+    // Reload on every request so expired quota cooldowns and newly added keys
+    // are picked up without restarting the Electron app.
+    this.loadKeys();
 
     const isValidKey = (k: KeyEntry) => Boolean(
       k.active &&
-      k.key &&
-      k.key.trim().length > 10 &&
-      !k.key.includes("YOUR_GEMINI_API_KEY") &&
-      !k.key.includes("YOUR_KEY")
+      this.isUsableConfiguredKey(k.key) &&
+      (!k.cooldownUntil || k.cooldownUntil <= now)
     );
 
     let candidateKeys = this.keys.filter(isValidKey);
 
-    if (candidateKeys.length === 0 && envKey && !envKey.includes("YOUR_GEMINI_API_KEY") && envKey.trim().length > 10) {
-      this.loadKeys();
-      candidateKeys = this.keys.filter(isValidKey);
-    }
-
     if (candidateKeys.length === 0) {
-      throw new Error("No active and valid Gemini API keys available. Using Local Smart Heuristic Engine.");
+      const configuredCount = this.keys.filter(k => this.isUsableConfiguredKey(k.key)).length;
+      const nextReset = this.keys
+        .map(k => k.cooldownUntil || 0)
+        .filter(v => v > now)
+        .sort((a, b) => a - b)[0];
+
+      if (configuredCount > 0 && nextReset) {
+        throw new Error(
+          `All configured Gemini keys are currently on quota cooldown. The pool will reactivate from ${new Date(nextReset).toLocaleString("en-IN")}.`
+        );
+      }
+
+      throw new Error(
+        `No Gemini API keys are loaded into the Munimji pool. Expected gemini_keys_pool.json, gemini_key*.txt, or GEMINI_API_KEY_1..4. Config path: ${this.configPath}`
+      );
     }
 
     let lastError: any = null;
@@ -271,7 +394,8 @@ class MunimjiPoolManager {
             errMsg.includes("leaked")
           ) {
             keyEntry.active = false;
-            console.info(`[Munimji Pool] Key ${keyEntry.label} authentication is invalid/inactive. Switching to the next key.`);
+            keyEntry.cooldownUntil = this.getNextQuotaResetAt(Date.now());
+            console.info(`[Munimji Pool] Key ${keyEntry.label} is rejected by Gemini. Skipping it until the next daily pool refresh.`);
             break;
           }
 
@@ -284,14 +408,15 @@ class MunimjiPoolManager {
           }
 
           if (status === 429 || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
-            if (operationName.startsWith("processMunimjiVoice")) {
-              console.info("[Munimji Pool] Voice model quota/rate limit reached for " + model + "; trying the next audio-capable model.");
-              continue;
-            }
-
-            keyEntry.cooldownUntil = Date.now() + 60000;
-            console.info("[Munimji Pool] Gemini quota/rate limit reached. Switching to Local Smart Heuristic Engine.");
-            break; // Break inner model loop, try next key or fallback
+            // Treat free-tier exhaustion as a daily quota event: move immediately
+            // to the next key, then reactivate this key after local midnight.
+            keyEntry.cooldownUntil = this.getNextQuotaResetAt(Date.now());
+            keyEntry.active = true;
+            console.info("[Munimji Pool] Gemini quota/rate limit reached. Rotating to the next key until local daily reset.", {
+              key: keyEntry.label,
+              resetAt: new Date(keyEntry.cooldownUntil).toLocaleString("en-IN")
+            });
+            break; // next key
           }
 
           console.warn(`[Munimji Pool] Warning on ${keyEntry.label} with ${model}:`, err?.message || err);
