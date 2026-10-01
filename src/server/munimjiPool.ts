@@ -264,10 +264,23 @@ class MunimjiPoolManager {
           const status = err?.status || err?.code;
           keyEntry.lastError = `${model}: ${err?.message || err}`;
 
-          if (status === 401 || errMsg.includes("unauthenticated") || status === 403 || errMsg.includes("permission_denied")) {
+          if (
+            status === 401 ||
+            errMsg.includes("unauthenticated") ||
+            errMsg.includes("api key not valid") ||
+            errMsg.includes("leaked")
+          ) {
             keyEntry.active = false;
-            console.info(`[Munimji Pool] Key ${keyEntry.label} unauthorized or inactive. Switching to Local Smart Engine.`);
+            console.info(`[Munimji Pool] Key ${keyEntry.label} authentication is invalid/inactive. Switching to the next key.`);
             break;
+          }
+
+          // A 403 can mean the current model is unavailable to this key,
+          // rather than that the API key itself is invalid. Keep the key alive
+          // and let the model/key fallback matrix try another route.
+          if (status === 403 || errMsg.includes("permission_denied")) {
+            console.info(`[Munimji Pool] Model access denied for ${model}; keeping key ${keyEntry.label} active and trying fallback.`);
+            continue;
           }
 
           if (status === 429 || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
