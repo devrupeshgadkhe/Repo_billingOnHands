@@ -19,7 +19,13 @@ import {
   Tag,
   CheckCircle2,
   TrendingDown,
-  RefreshCw
+  RefreshCw,
+  Package,
+  Search,
+  AlertTriangle,
+  Maximize2,
+  Minimize2,
+  ExternalLink
 } from "lucide-react";
 const munimji3DAvatar = "/munimji-3d.jpg";
 import {
@@ -50,6 +56,7 @@ interface MunimjiDrawerProps {
   onRefreshDb: () => Promise<void>;
   onApplyBillToEditor?: (billData: any) => void;
   onOpenInvoice?: (invoice: Invoice) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 // Multilingual UI Translations (Marathi, Hindi, English)
@@ -107,6 +114,7 @@ const TRANSLATIONS: Record<MunimjiLang, {
     userSpokenLabel: "🎙️ तुमचे बोलणे",
     munimjiLabel: "मुनीमजी",
     chips: [
+      { label: "📦 सर्व प्रॉडक्टची यादी", query: "आपल्या दुकानातील सर्व प्रॉडक्टची लिस्ट दाखव" },
       { label: "💡 साखरेचा काय भाव आहे?", query: "साखरेचा काय भाव आहे आणि चिल्लर काय देऊ?" },
       { label: "🧾 नवीन विक्री बिल बनवा", query: "राजेशला २ नग साखरेचे बिल बनव रोख" },
       { label: "⚖️ स्वस्त सप्लायर कोण?", query: "फॉर्च्युन तेल कोणाकडून स्वस्त पडेल? सप्लायर तुलना कर" },
@@ -150,6 +158,7 @@ const TRANSLATIONS: Record<MunimjiLang, {
     userSpokenLabel: "🎙️ आपकी आवाज़",
     munimjiLabel: "मुनीमजी",
     chips: [
+      { label: "📦 सभी सामान की लिस्ट", query: "दुकान के सभी प्रोडक्ट्स की लिस्ट दिखाओ" },
       { label: "💡 शक्कर का क्या भाव है?", query: "शक्कर का क्या भाव है और खुदरा क्या बेचूं?" },
       { label: "🧾 नया बिक्री बिल बनाएं", query: "राजेश को 2 बोरी शक्कर का नकद बिल बनाओ" },
       { label: "⚖️ सस्ता सप्लायर कौन है?", query: "फॉर्च्यून तेल किससे सस्ता मिलेगा? सप्लायर तुलना करें" },
@@ -193,6 +202,7 @@ const TRANSLATIONS: Record<MunimjiLang, {
     userSpokenLabel: "🎙️ Voice Command",
     munimjiLabel: "Munimji",
     chips: [
+      { label: "📦 Show Product List", query: "Show all products and stock list in the store" },
       { label: "💡 Sugar price check", query: "What is the price of sugar and retail rate?" },
       { label: "🧾 Create Sales Bill", query: "Create cash sales bill for Rajesh with 2 boxes copper cable" },
       { label: "⚖️ Cheapest supplier", query: "Which supplier gives the cheapest oil? Compare suppliers" },
@@ -221,6 +231,257 @@ const TRANSLATIONS: Record<MunimjiLang, {
   }
 };
 
+interface MunimjiProductListCardProps {
+  card: MunimjiDisplayCard;
+  language: MunimjiLang;
+  onApplyBillToEditor?: (billData: any) => void;
+  onCloseDrawer: () => void;
+  onNavigateTab?: (tab: string) => void;
+  onSendTextQuery: (text: string) => void;
+}
+
+const MunimjiProductListCard: React.FC<MunimjiProductListCardProps> = ({
+  card,
+  language,
+  onApplyBillToEditor,
+  onCloseDrawer,
+  onNavigateTab,
+  onSendTextQuery
+}) => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterMode, setFilterMode] = useState<"all" | "instock" | "low">("all");
+
+  const rawItems: any[] = Array.isArray(card.data?.items) ? card.data.items : [];
+  const totalCount = card.data?.totalCount ?? rawItems.length;
+  const totalStockValue = card.data?.totalStockValue ?? rawItems.reduce((acc, i) => acc + ((Number(i.stock) || 0) * (Number(i.salePrice) || 0)), 0);
+  const lowStockCount = card.data?.lowStockCount ?? rawItems.filter(i => i.lowStock || (Number(i.stock) || 0) <= 5).length;
+
+  const filteredItems = rawItems.filter(item => {
+    const matchesSearch = !searchTerm.trim() || 
+      String(item.name || "").toLowerCase().includes(searchTerm.toLowerCase().trim()) ||
+      String(item.category || "").toLowerCase().includes(searchTerm.toLowerCase().trim());
+    
+    if (!matchesSearch) return false;
+    if (filterMode === "low") return Boolean(item.lowStock || (Number(item.stock) || 0) <= 5);
+    if (filterMode === "instock") return (Number(item.stock) || 0) > 0;
+    return true;
+  });
+
+  const handleBillItem = (item: any) => {
+    if (onApplyBillToEditor) {
+      onApplyBillToEditor({
+        customerName: language === "en" ? "Cash Customer" : (language === "hi" ? "नकद ग्राहक" : "रोख ग्राहक"),
+        paymentMode: "cash",
+        items: [{
+          name: item.name,
+          quantity: 1,
+          unit: item.unit || "PCS",
+          price: Number(item.salePrice) || 0
+        }],
+        totalAmount: Number(item.salePrice) || 0
+      });
+      onCloseDrawer();
+    } else {
+      onSendTextQuery(`${item.name} चे १ नग बिल कर रोख`);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-md hover:border-amber-300 transition-all text-slate-800">
+      {/* Header with Title and Badges */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3 mb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 bg-amber-100 text-amber-800 rounded-xl shadow-xs">
+            <Package className="w-5 h-5 text-amber-700" />
+          </div>
+          <div>
+            <h4 className="font-extrabold text-sm text-slate-900 leading-tight">
+              {card.title || (language === "en" ? "Store Product Catalog" : (language === "hi" ? "दुकान की सामान सूची" : "आपल्या दुकानातील वस्तूंची यादी"))}
+            </h4>
+            <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 mt-0.5">
+              <span className="font-semibold text-slate-700">
+                {language === "en" ? `Total ${totalCount} Products` : (language === "hi" ? `कुल ${totalCount} सामान` : `एकूण ${totalCount} वस्तू`)}
+              </span>
+              {totalStockValue > 0 && (
+                <span className="font-extrabold text-emerald-700">
+                  • {language === "en" ? "Stock Value:" : (language === "hi" ? "स्टॉक मूल्य:" : "स्टॉक मूल्य:")} ₹{totalStockValue.toLocaleString("en-IN")}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Action Badges */}
+        <div className="flex items-center gap-2">
+          {lowStockCount > 0 && (
+            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3 text-amber-600" />
+              {lowStockCount} {language === "en" ? "Low Stock" : (language === "hi" ? "कम स्टॉक" : "कमी स्टॉक")}
+            </span>
+          )}
+          {onNavigateTab && (
+            <button
+              type="button"
+              onClick={() => {
+                onNavigateTab("inventory");
+                onCloseDrawer();
+              }}
+              className="px-2.5 py-1 text-[11px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors flex items-center gap-1"
+              title="पूर्ण इन्व्हेंटरी पेज उघडा"
+            >
+              <span>{language === "en" ? "Inventory Page" : (language === "hi" ? "इन्वेंटरी पेज" : "इन्व्हेंटरी पेज")}</span>
+              <ExternalLink className="w-3 h-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Search & Filter Bar */}
+      <div className="flex flex-col sm:flex-row gap-2 mb-3">
+        <div className="relative flex-1">
+          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder={language === "en" ? "Search product name or category..." : (language === "hi" ? "सामान या श्रेणी खोजें..." : "वस्तूचे नाव किंवा कॅटेगरी शोधा...")}
+            className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-500 focus:bg-white text-slate-800"
+          />
+          {searchTerm && (
+            <button
+              onClick={() => setSearchTerm("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs px-1"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1 text-[11px] font-bold">
+          <button
+            type="button"
+            onClick={() => setFilterMode("all")}
+            className={`px-2.5 py-1 rounded-lg transition-colors ${
+              filterMode === "all" ? "bg-amber-600 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            {language === "en" ? "All" : (language === "hi" ? "सभी" : "सर्व")} ({rawItems.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterMode("instock")}
+            className={`px-2.5 py-1 rounded-lg transition-colors ${
+              filterMode === "instock" ? "bg-emerald-600 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            }`}
+          >
+            {language === "en" ? "In Stock" : (language === "hi" ? "उपलब्ध" : "शिल्लक")}
+          </button>
+          {lowStockCount > 0 && (
+            <button
+              type="button"
+              onClick={() => setFilterMode("low")}
+              className={`px-2.5 py-1 rounded-lg transition-colors ${
+                filterMode === "low" ? "bg-rose-600 text-white shadow-xs" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {language === "en" ? "Low Stock" : (language === "hi" ? "कम" : "कमी")} ({lowStockCount})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Product List Table */}
+      {filteredItems.length === 0 ? (
+        <div className="py-6 text-center text-xs text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+          <Package className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+          <p className="font-semibold text-slate-700">
+            {language === "en" ? "No products found matching criteria." : (language === "hi" ? "कोई सामान नहीं मिला।" : "शोधल्याप्रमाणे कोणतीही वस्तू सापडली नाही.")}
+          </p>
+          {searchTerm && (
+            <button
+              onClick={() => { setSearchTerm(""); setFilterMode("all"); }}
+              className="mt-2 text-amber-700 hover:underline font-bold text-xs"
+            >
+              {language === "en" ? "Clear Search" : (language === "hi" ? "सर्च हटाएं" : "सर्च क्लिअर करा")}
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+          <div className="max-h-80 overflow-y-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-100 text-slate-600 font-bold sticky top-0 shadow-xs z-10 border-b border-slate-200">
+                <tr>
+                  <th className="p-2.5 pl-3.5">{language === "en" ? "Product Name" : (language === "hi" ? "सामान का नाम" : "वस्तूचे नाव")}</th>
+                  <th className="p-2.5 text-right">{language === "en" ? "Stock" : (language === "hi" ? "स्टॉक" : "साठा")}</th>
+                  <th className="p-2.5 text-right">{language === "en" ? "Sale Price" : (language === "hi" ? "बिक्री भाव" : "विक्री भाव")}</th>
+                  <th className="p-2.5 text-right hidden sm:table-cell">{language === "en" ? "Cost" : (language === "hi" ? "खरीद" : "खरेदी")}</th>
+                  <th className="p-2.5 text-center pr-3.5">{language === "en" ? "Action" : (language === "hi" ? "कार्रवाई" : "ॲक्शन")}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {filteredItems.map((item, idx) => {
+                  const isLow = item.lowStock || (Number(item.stock) || 0) <= 5;
+                  const isZero = (Number(item.stock) || 0) <= 0;
+                  return (
+                    <tr key={item.id || idx} className="hover:bg-amber-50/60 transition-colors">
+                      <td className="p-2.5 pl-3.5">
+                        <div className="font-bold text-slate-900">{item.name}</div>
+                        {item.category && (
+                          <div className="text-[10px] text-slate-400">{item.category}</div>
+                        )}
+                      </td>
+                      <td className="p-2.5 text-right whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
+                            isZero
+                              ? "bg-rose-100 text-rose-800"
+                              : isLow
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-emerald-100 text-emerald-800"
+                          }`}
+                        >
+                          {item.stock} {item.unit || "PCS"}
+                        </span>
+                      </td>
+                      <td className="p-2.5 text-right font-extrabold text-slate-900 whitespace-nowrap">
+                        ₹{Number(item.salePrice || 0).toFixed(2)}
+                      </td>
+                      <td className="p-2.5 text-right text-slate-500 hidden sm:table-cell whitespace-nowrap">
+                        ₹{Number(item.purchasePrice || 0).toFixed(2)}
+                      </td>
+                      <td className="p-2.5 text-center pr-3.5 whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleBillItem(item)}
+                          className="px-3 py-1.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold rounded-lg text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 mx-auto"
+                          title="या वस्तूचे बिल बनवा"
+                        >
+                          <Receipt className="w-3.5 h-3.5" />
+                          <span>{language === "en" ? "Bill" : (language === "hi" ? "बिल करें" : "बिल करा")}</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Footer hint */}
+      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+        <span>💡 {language === "en" ? "Click 'Bill' or tell Munimji: 'Bill 2 qty of this item'" : (language === "hi" ? "'बिल करें' दबाएं या मुनीमजी से कहें: 'इस सामान का 2 नग बिल करो'" : "'बिल करा' दाबा किंवा मुनीमजींना सांगा: 'या वस्तूचे २ नग बिल कर'")}</span>
+        <span className="font-bold text-slate-600">
+          {filteredItems.length} / {totalCount} {language === "en" ? "items" : (language === "hi" ? "सामान" : "वस्तू")}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 export default function MunimjiDrawer({
   isOpen,
   onClose,
@@ -228,8 +489,28 @@ export default function MunimjiDrawer({
   dbState,
   onRefreshDb,
   onApplyBillToEditor,
-  onOpenInvoice
+  onOpenInvoice,
+  onNavigateTab
 }: MunimjiDrawerProps) {
+  // Sizing mode (Normal wide vs Maximized Full Screen)
+  const [isMaximized, setIsMaximized] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("munimji_drawer_maximized") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleMaximize = () => {
+    setIsMaximized(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem("munimji_drawer_maximized", String(next));
+      } catch {}
+      return next;
+    });
+  };
+
   // Selected Language (mr | hi | en)
   const [language, setLanguage] = useState<MunimjiLang>(() => {
     return (localStorage.getItem("munimji_lang") as MunimjiLang) || "mr";
@@ -257,7 +538,7 @@ export default function MunimjiDrawer({
 
   // References for MediaRecorder & Audio Context (Electron-Safe Native Recording)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const munimjiAudioRef = useRef<HTMLAudioElement | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -301,34 +582,64 @@ export default function MunimjiDrawer({
     ]);
   };
 
-  const stopMunimjiVoice = () => {
-    const audio = munimjiAudioRef.current;
-    if (!audio) return;
-    try {
-      audio.pause();
-      audio.currentTime = 0;
-      audio.src = "";
-    } catch {}
-    munimjiAudioRef.current = null;
+  // Preload and cache natural Indian speech synthesis voices
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const transcriptRef = useRef<string>("");
+
+  useEffect(() => {
+    const updateVoices = () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        const v = window.speechSynthesis.getVoices();
+        if (v && v.length > 0) {
+          setAvailableVoices(v);
+        }
+      }
+    };
+    updateVoices();
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = updateVoices;
+    }
+  }, []);
+
+  /**
+   * Clean text for realistic Indian Munimji speech synthesis (strips markdown, formats currency & units)
+   */
+  const cleanTextForIndianSpeech = (raw: string, lang: MunimjiLang): string => {
+    let txt = raw || "";
+    txt = txt.replace(/[*_#•\-\[\]]/g, " ");
+    if (lang === "mr" || lang === "hi") {
+      txt = txt.replace(/₹\s*([0-9,]+)/g, "$1 रुपये");
+      txt = txt.replace(/([0-9]+)\s*%/g, "$1 टक्के");
+      txt = txt.replace(/\bPCS\b/gi, "नग");
+      txt = txt.replace(/\bBOX\b/gi, "बॉक्स");
+      txt = txt.replace(/\bKG\b/gi, "किलो");
+      txt = txt.replace(/\bLTR\b/gi, "लिटर");
+      txt = txt.replace(/100W/gi, "शंभर वॅट");
+      txt = txt.replace(/LED/gi, "एलईडी");
+    } else {
+      txt = txt.replace(/₹\s*([0-9,]+)/g, "$1 rupees");
+      txt = txt.replace(/([0-9]+)\s*%/g, "$1 percent");
+    }
+    txt = txt.replace(/['"`]/g, "");
+    txt = txt.replace(/\s+/g, " ");
+    return txt.trim();
   };
 
   /**
-   * Play Gemini TTS generated natural human speech audio output.
+   * Speak reply text aloud with a warm, realistic Indian Munimji voice
+   */
+  /**
+   * Play Gemini TTS generated natural human speech audio output
    */
   const playMunimjiVoice = (audioBase64?: string, audioMimeType?: string) => {
     if (!voiceSpeechEnabled || !audioBase64) return;
-    stopMunimjiVoice();
     try {
       const mime = audioMimeType || "audio/wav";
-      const audio = new Audio(`data:${mime};base64,${audioBase64}`);
-      munimjiAudioRef.current = audio;
-      audio.onended = () => {
-        if (munimjiAudioRef.current === audio) munimjiAudioRef.current = null;
-      };
+      const audioUrl = `data:${mime};base64,${audioBase64}`;
+      const audio = new Audio(audioUrl);
       audio.play().catch(err => console.warn("[Digital Munimji Audio Notice]:", err));
     } catch (err) {
       console.warn("[Digital Munimji Audio Playback Error]:", err);
-      munimjiAudioRef.current = null;
     }
   };
 
@@ -337,29 +648,11 @@ export default function MunimjiDrawer({
    */
   const startRecording = async () => {
     try {
-      console.info("🎙️ [VOICE]: Starting microphone diagnostics...", {
-        isElectron: Boolean((window as any).electronAPI?.isElectron),
-        origin: window.location.origin,
-        secureContext: window.isSecureContext,
-        mediaDevicesAvailable: Boolean(navigator.mediaDevices),
-        getUserMediaAvailable: Boolean(navigator.mediaDevices?.getUserMedia),
-        mediaRecorderAvailable: typeof MediaRecorder !== "undefined"
-      });
+      console.info("🎙️ [VOICE]: Requesting microphone permission from navigator.mediaDevices...");
       setMicPermissionError(false);
+      transcriptRef.current = "";
       setLiveInterimText("");
-
-      if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-        throw new Error("Microphone capture is unavailable in this Electron page. The app must load from a trusted local origin.");
-      }
-
-      try {
-        if (navigator.permissions?.query) {
-          const permission = await navigator.permissions.query({ name: "microphone" as PermissionName });
-          console.info("🎙️ [VOICE]: Browser microphone permission state:", permission.state);
-        }
-      } catch (permissionErr) {
-        console.info("🎙️ [VOICE]: Permission-state query unavailable in Electron:", permissionErr);
-      }
+      setIsRecording(true);
 
       let stream: MediaStream;
       try {
@@ -376,7 +669,37 @@ export default function MunimjiDrawer({
       }
 
       console.info("✅ [VOICE]: Microphone stream acquired successfully!", stream.id);
-      setIsRecording(true);
+
+      // Web Speech API for Real-time live speech-to-text interim preview while speaking (Skip in Electron to prevent API key restrictions)
+      const isElectronApp = Boolean((window as any).electronAPI?.isElectron);
+      if (!isElectronApp) {
+        try {
+          const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+          if (SpeechRec) {
+            const recognition = new SpeechRec();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = language === "hi" ? "hi-IN" : language === "en" ? "en-IN" : "mr-IN";
+
+            recognition.onresult = (event: any) => {
+              let current = "";
+              for (let i = event.resultIndex; i < event.results.length; i++) {
+                current += event.results[i][0].transcript;
+              }
+              if (current.trim()) {
+                transcriptRef.current = current.trim();
+                setLiveInterimText(current.trim());
+              }
+            };
+
+            recognition.onerror = (e: any) => console.info("SpeechRecognition notice:", e);
+            recognition.start();
+            speechRecognitionRef.current = recognition;
+          }
+        } catch (speechErr) {
+          console.info("SpeechRecognition init notice:", speechErr);
+        }
+      }
 
       // Visualizer
       try {
@@ -434,14 +757,7 @@ export default function MunimjiDrawer({
       recorder.start(100);
       console.info("🎙️ [VOICE]: MediaRecorder started with 100ms timeslice.");
     } catch (err: any) {
-      console.error("❌ [VOICE ERROR]: Failed to access microphone:", {
-        name: err?.name,
-        message: err?.message,
-        code: err?.code,
-        origin: window.location.origin,
-        secureContext: window.isSecureContext,
-        electron: Boolean((window as any).electronAPI?.isElectron)
-      });
+      console.error("❌ [VOICE ERROR]: Failed to access microphone:", err?.name || err, err?.message || err);
       setIsRecording(false);
       setMicPermissionError(true);
     }
@@ -454,6 +770,13 @@ export default function MunimjiDrawer({
     console.info("🎙️ [VOICE]: Stopping recording...");
     setIsRecording(false);
     setAudioVolume(0);
+
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch {}
+      speechRecognitionRef.current = null;
+    }
 
     if (animFrameRef.current) {
       cancelAnimationFrame(animFrameRef.current);
@@ -486,11 +809,11 @@ export default function MunimjiDrawer({
           reader.onloadend = async () => {
             const base64Data = (reader.result as string)?.split(",")[1];
             if (base64Data) {
-              const previewText = language === "en"
-                ? "🎙️ Voice Audio Command"
-                : (language === "hi" ? "🎙️ ऑडियो आदेश" : "🎙️ ऑडिओ आवाज आदेश");
-              console.info("🎙️ [VOICE]: Audio payload ready; Gemini will perform speech recognition and command understanding.");
+              const capturedText = transcriptRef.current && transcriptRef.current.trim() ? transcriptRef.current.trim() : undefined;
+              const previewText = capturedText ? `🎙️ ${capturedText}` : (language === "en" ? "🎙️ Voice Audio Command" : "🎙️ ऑडिओ आवाज आदेश");
+              console.info("🎙️ [VOICE]: Audio base64 payload ready, sending command to backend with transcript:", capturedText || "None");
               await handleProcessCommand({
+                text: capturedText,
                 audioBase64: base64Data,
                 mimeType: audioBlob.type || "audio/webm",
                 userSpokenPreview: previewText
@@ -498,6 +821,7 @@ export default function MunimjiDrawer({
             } else {
               console.warn("⚠️ [VOICE WARNING]: Failed to extract base64 from audio blob.");
             }
+            transcriptRef.current = "";
             setLiveInterimText("");
           };
         } else {
@@ -546,10 +870,6 @@ export default function MunimjiDrawer({
       if (response.userTranscript && response.userTranscript.trim()) {
         const refined = response.userTranscript.trim();
         setMessages(prev => prev.map(m => m.id === userMsgId ? { ...m, text: refined } : m));
-      }
-
-      if (response.error) {
-        console.error("[VOICE BACKEND DIAGNOSTIC]:", response.error);
       }
 
       // Add Munimji's response to UI
@@ -695,9 +1015,11 @@ export default function MunimjiDrawer({
 
       {/* 2. SLIDE-OVER MUNIMJI DRAWER */}
       <div
-        className={`fixed inset-y-0 right-0 z-50 w-full sm:w-[480px] bg-slate-50 shadow-2xl border-l border-slate-200 flex flex-col transform transition-transform duration-300 ease-in-out print:hidden ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`fixed inset-y-0 right-0 z-50 bg-slate-50 shadow-2xl border-l border-slate-200 flex flex-col transform transition-all duration-300 ease-in-out print:hidden ${
+          isMaximized
+            ? "w-full sm:w-[96vw] md:w-[95vw] lg:w-[94vw] max-w-full"
+            : "w-full sm:w-[680px] md:w-[780px] lg:w-[880px] xl:w-[940px] max-w-full"
+        } ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* Drawer Header */}
         <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-slate-800 text-white px-5 py-3.5 flex items-center justify-between shadow-md">
@@ -758,7 +1080,7 @@ export default function MunimjiDrawer({
             <button
               onClick={() => {
                 if (voiceSpeechEnabled) {
-                  stopMunimjiVoice();
+                  window.speechSynthesis?.cancel();
                 }
                 setVoiceSpeechEnabled(!voiceSpeechEnabled);
               }}
@@ -770,10 +1092,21 @@ export default function MunimjiDrawer({
               {voiceSpeechEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
 
+            {/* Maximize / Restore Drawer */}
+            <button
+              type="button"
+              onClick={toggleMaximize}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-amber-100 hover:text-white transition-colors"
+              title={isMaximized ? "खिडकी पूर्ववत करा (Restore size)" : "खिडकी मोठी करा (Maximize full screen)"}
+            >
+              {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+            </button>
+
             {/* Close Drawer */}
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors ml-0.5"
+              title="बंद करा (Close)"
             >
               <X className="w-5 h-5" />
             </button>
@@ -859,11 +1192,25 @@ export default function MunimjiDrawer({
               {/* Render Interactive Display Cards */}
               {msg.cards && msg.cards.length > 0 && (
                 <div className="w-full mt-2 space-y-2.5 pl-9">
-                  {msg.cards.map((card, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-md hover:border-amber-300 transition-all text-slate-800"
-                    >
+                  {msg.cards.map((card, idx) => {
+                    if (card.type === "product_list") {
+                      return (
+                        <MunimjiProductListCard
+                          key={idx}
+                          card={card}
+                          language={language}
+                          onApplyBillToEditor={onApplyBillToEditor}
+                          onCloseDrawer={onClose}
+                          onNavigateTab={onNavigateTab}
+                          onSendTextQuery={(q) => handleProcessCommand({ text: q })}
+                        />
+                      );
+                    }
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-md hover:border-amber-300 transition-all text-slate-800"
+                      >
                       {/* Card: MINI-BILL */}
                       {card.type === "mini_bill" && (
                         <div>
@@ -1055,7 +1402,8 @@ export default function MunimjiDrawer({
                         </div>
                       )}
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               )}
             </div>

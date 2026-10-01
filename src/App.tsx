@@ -1032,6 +1032,7 @@ export default function App() {
         onRefreshDb={fetchState}
         onApplyBillToEditor={handleApplyMunimjiBill}
         onOpenInvoice={(inv) => setSelectedInvoice(inv)}
+        onNavigateTab={(tab) => setActiveTab(tab)}
       />
 
     </div>

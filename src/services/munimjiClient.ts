@@ -7,13 +7,13 @@
  */
 
 export interface MunimjiDisplayCard {
-  type: "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report";
+  type: "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report" | "product_list" | "party_list";
   title: string;
   data: any;
 }
 
 export interface MunimjiResponse {
-  intent: "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "GENERAL_CHAT";
+  intent: "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "PRODUCT_LIST" | "GENERAL_CHAT";
   userTranscript?: string;
   replyText: string;
   displayCards?: MunimjiDisplayCard[];
@@ -69,30 +69,17 @@ export async function sendMunimjiCommand(params: {
   currentScreen?: string;
   language?: "mr" | "hi" | "en";
 }): Promise<MunimjiResponse> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 90000);
+  const res = await fetch("/api/munimji/process", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params)
+  });
 
-  try {
-    const res = await fetch("/api/munimji/process", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(params),
-      signal: controller.signal
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || "मुनीमजीशी संपर्क करताना त्रुटी आली.");
-    }
-    return data;
-  } catch (err: any) {
-    if (err?.name === "AbortError") {
-      throw new Error("मुनीमजीचा आवाज प्रक्रिया वेळेत पूर्ण झाला नाही. कृपया इंटरनेट कनेक्शन तपासून पुन्हा बोला.");
-    }
-    throw err;
-  } finally {
-    window.clearTimeout(timeout);
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.error || "मुनीमजीशी संपर्क करताना त्रुटी आली.");
   }
+  return data;
 }
 
 export async function executeMunimjiAction(actionType: string, payload: any): Promise<any> {

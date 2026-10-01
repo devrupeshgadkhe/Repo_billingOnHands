@@ -547,11 +547,11 @@ export interface MunimjiCommandRequest {
 }
 
 export interface MunimjiCommandResponse {
-  intent: "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "GENERAL_CHAT";
+  intent: "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "PRODUCT_LIST" | "GENERAL_CHAT";
   userTranscript?: string;
   replyText: string;
   displayCards?: {
-    type: "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report";
+    type: "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report" | "product_list" | "party_list";
     title: string;
     data: any;
   }[];
@@ -803,6 +803,74 @@ async function processMunimjiVoiceCommand(
 }
 
 /**
+ * Ensures that responses for product listings, inventory queries, or catalog requests
+ * are fully grounded in the live store database and never return empty cards.
+ */
+export function enrichMunimjiResponseWithStoreData(
+  response: MunimjiCommandResponse,
+  dbState: DatabaseState,
+  spokenQuery: string
+): MunimjiCommandResponse {
+  const query = (
+    spokenQuery + " " +
+    (response.userTranscript || "") + " " +
+    (response.replyText || "")
+  ).toLowerCase();
+
+  const isProductListQuery =
+    response.intent === "PRODUCT_LIST" ||
+    /(प्रॉडक्ट|वस्तू|सामान|माल|स्टॉक|प्रॉडक्ट्स).*(यादी|लिस्ट|दाखव|किती|दिखाओ|सूची|बघायची|पाहिजे)|(product|item|stock|catalog|inventory).*(list|show|all|view|catalog)|सर्व.*(प्रॉडक्ट|वस्तू|सामान)/i.test(query);
+
+  if (isProductListQuery && dbState && Array.isArray(dbState.items)) {
+    response.intent = "PRODUCT_LIST";
+
+    const allItems = dbState.items.map((i) => ({
+      id: i.id,
+      name: i.name,
+      salePrice: Number(i.salePrice || 0),
+      purchasePrice: Number(i.purchasePrice || 0),
+      stock: Number(i.stockQuantity || 0),
+      unit: i.unit || "PCS",
+      category: i.category || "",
+      lowStock: Number(i.stockQuantity || 0) <= Number(i.minStockAlert || 5)
+    }));
+
+    if (!response.displayCards) {
+      response.displayCards = [];
+    }
+
+    // Remove any incomplete product_list cards
+    response.displayCards = response.displayCards.filter((c) => c.type !== "product_list");
+
+    const totalStockValue = allItems.reduce((acc, it) => acc + (it.stock * it.salePrice), 0);
+    const lowStockCount = allItems.filter((it) => it.lowStock).length;
+
+    response.displayCards.unshift({
+      type: "product_list",
+      title: "आपल्या दुकानातील वस्तूंची यादी (Live Store Catalog)",
+      data: {
+        totalCount: allItems.length,
+        totalStockValue,
+        lowStockCount,
+        items: allItems
+      }
+    });
+
+    if (
+      !response.replyText ||
+      response.replyText.includes("अडचण") ||
+      response.replyText.includes("empty") ||
+      response.replyText.includes("उपलब्ध नाही") ||
+      response.replyText.length < 15
+    ) {
+      response.replyText = `मालक, आपल्या दुकानात एकूण ${allItems.length} वस्तू नोंदवलेल्या आहेत. खालील यादीमध्ये सर्व वस्तूंचे विक्री भाव, खरेदी भाव आणि उपलब्ध साठा दिलेला आहे. तुम्ही थेट येथून बिलही बनवू शकता!`;
+    }
+  }
+
+  return response;
+}
+
+/**
  * Main command processor for Digital Munimji
  */
 export async function processMunimjiCommand(
@@ -825,18 +893,20 @@ Your responsibilities:
 5. 'STOCK_UPDATE': When user wants to adjust stock (e.g., "१० किलो साखर वाढव" or "२ नग खराब झाले कमी कर").
 6. 'BUSINESS_AUDIT': When user asks where the business is leaking, uncollected debts, or daily summary ("कुठे पाणी मुरतंय?", "आजचा हिशोब", "डेड स्टॉक").
 7. 'SYSTEM_SELF_TEST': When user asks to test software modules ("बिलिंग मॉड्यूल टेस्ट कर", "जीएसटी बरोबर चालतंय का").
-8. 'GENERAL_CHAT': Polite, helpful Marathi/Hindi/English conversation as a loyal Munimji.
+8. 'PRODUCT_LIST': When user asks to see/show product list or catalog (e.g., "प्रॉडक्टची लिस्ट दाखव", "वस्तूंची यादी दाखव", "सामान की लिस्ट दिखाओ", "Show all products", "स्टॉक दाखव").
+   Return intent: 'PRODUCT_LIST', and include a 'product_list' display card with totalCount, totalStockValue, and all items.
+9. 'GENERAL_CHAT': Polite, helpful Marathi/Hindi/English conversation as a loyal Munimji.
 
 STRICT DATABASE GROUNDING RULE: You are strictly connected to the live database provided in STORE CONTEXT. Every response, price, stock count, and bill item MUST be derived exclusively from the live database items and parties. Never use generic or fake items. If a requested item does not exist in the store inventory, explicitly state that it is not available in our store database.
 
 Always return a JSON object strictly conforming to this structure:
 {
-  "intent": "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "GENERAL_CHAT",
+  "intent": "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "PRODUCT_LIST" | "GENERAL_CHAT",
   "userTranscript": "Exact Marathi, Hindi, or English text spoken by the user",
   "replyText": "A warm, natural Marathi, Hindi, or English reply to speak out loud to the merchant",
   "displayCards": [
     {
-      "type": "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report",
+      "type": "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report" | "product_list" | "party_list",
       "title": "Short descriptive title",
       "data": { ...structured details... }
     }
@@ -850,10 +920,11 @@ Always return a JSON object strictly conforming to this structure:
 
   try {
     if (hasAudio && !commandText) {
-      return await processMunimjiVoiceCommand(req, dbContext, systemInstruction);
+      const voiceRes = await processMunimjiVoiceCommand(req, dbContext, systemInstruction);
+      return enrichMunimjiResponseWithStoreData(voiceRes, dbState, voiceRes.userTranscript || "");
     }
 
-    return await munimjiPool.executeWithFallback("processMunimjiCommand", async (client, modelName) => {
+    const textRes = await munimjiPool.executeWithFallback("processMunimjiCommand", async (client, modelName) => {
       const parts: any[] = [{
         text: "Merchant Command: \"" + commandText + "\"\n" + dbContext
       }];
@@ -910,6 +981,8 @@ Always return a JSON object strictly conforming to this structure:
         modelUsed
       };
     });
+
+    return enrichMunimjiResponseWithStoreData(textRes, dbState, commandText || textRes.userTranscript || "");
   } catch (err: any) {
     console.warn("[Munimji Pool] Cloud processing error:", err?.message || err);
 
