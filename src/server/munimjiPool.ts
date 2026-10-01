@@ -29,8 +29,11 @@ export interface KeyEntry {
 export interface PoolStatus {
   totalKeys: number;
   activeKeys: number;
+  coolingDownKeys: number;
+  configPath: string;
   modelsInRotation: string[];
   currentKeyIndex: number;
+  nextQuotaResetAt?: string;
   keys: Array<{
     id: string;
     email: string;
@@ -296,11 +299,21 @@ class MunimjiPoolManager {
 
   public getStatus(): PoolStatus {
     const now = Date.now();
+    const activeKeys = this.keys.filter(k => k.active && (!k.cooldownUntil || k.cooldownUntil <= now));
+    const coolingDownKeys = this.keys.filter(k => k.active && Boolean(k.cooldownUntil && k.cooldownUntil > now));
+    const nextQuotaReset = coolingDownKeys
+      .map(k => k.cooldownUntil || 0)
+      .filter(v => v > now)
+      .sort((a, b) => a - b)[0];
+
     return {
       totalKeys: this.keys.length,
-      activeKeys: this.keys.filter(k => k.active && (!k.cooldownUntil || k.cooldownUntil <= now)).length,
+      activeKeys: activeKeys.length,
+      coolingDownKeys: coolingDownKeys.length,
+      configPath: this.configPath,
       modelsInRotation: [...MUNIMJI_MODELS],
       currentKeyIndex: this.currentIndex,
+      nextQuotaResetAt: nextQuotaReset ? new Date(nextQuotaReset).toISOString() : undefined,
       keys: this.keys.map(k => {
         const masked = k.key.length > 16 
           ? `${k.key.substring(0, 8)}...${k.key.substring(k.key.length - 6)}` 
