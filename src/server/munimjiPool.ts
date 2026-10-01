@@ -428,104 +428,144 @@ Recent Purchases (Supplier History): ${JSON.stringify(recentPurchases)}
 
 /**
  * Dedicated speech-to-text stage.
- * It deliberately runs outside the command-model fallback loop so one audio
- * recording is transcribed exactly once instead of being retried per model.
+ *
+ * Voice recordings from the Electron client are tiny (typically tens/hundreds
+ * of KB), so keep the STT path simple and robust: send the audio inline to
+ * Gemini 3.5 Transcribe first. If that dedicated model/API path is unavailable
+ * for a key, fall back to Gemini's normal audio-understanding models, which
+ * support WebM audio as input and can return the spoken text.
  */
 async function transcribeMunimjiAudio(
   req: MunimjiCommandRequest
 ): Promise<string> {
   const cleanMime = (req.mimeType || "audio/webm").split(";")[0].trim().toLowerCase() || "audio/webm";
   const languageCode = req.language === "hi" ? "hi-IN" : req.language === "en" ? "en-IN" : "mr-IN";
-  const tempAudioPath = path.join(
-    os.tmpdir(),
-    "billing-on-hand-munimji-" + Date.now() + "-" + Math.random().toString(36).slice(2) + ".webm"
-  );
+  const audioBase64 = (req.audioBase64 || "").trim();
 
-  let uploadedAudioFile: any = null;
+  if (audioBase64.length < 50) {
+    throw new Error("Recorded voice audio payload is empty or too small.");
+  }
+
+  let dedicatedError: any = null;
+
+  // Primary: dedicated Gemini 3.5 Transcribe model using compact inline audio.
   try {
-    fs.writeFileSync(tempAudioPath, Buffer.from(req.audioBase64 as string, "base64"));
-    console.info("[Munimji Voice] Uploading recorded audio for dedicated transcription.", {
-      mimeType: cleanMime,
-      languageCode,
-      bytes: Math.floor((req.audioBase64 as string).length * 0.75)
-    });
-
-    uploadedAudioFile = await withTimeout(
+    const dedicated = await withTimeout(
       munimjiPool.executeWithFallback(
         "munimjiTranscription",
         async (client) => {
-          const uploaded = await withTimeout(
-            client.files.upload({
-              file: tempAudioPath,
-              config: { mimeType: cleanMime }
+          console.info("[Munimji Voice] Sending inline audio to Gemini 3.5 Transcribe.", {
+            mimeType: cleanMime,
+            languageCode,
+            bytes: Math.floor(audioBase64.length * 0.75)
+          });
+
+          const interaction = await withTimeout(
+            (client as any).interactions.create({
+              model: "gemini-3.5-transcribe",
+              input: [{
+                type: "audio",
+                data: audioBase64,
+                mime_type: cleanMime
+              }],
+              generation_config: {
+                transcription_config: {
+                  language_codes: [languageCode],
+                  mode: "smart"
+                }
+              }
             }),
-            15000,
-            "Gemini audio upload timed out."
+            20000,
+            "Gemini speech recognition timed out."
           );
 
-          if (!uploaded?.uri || !uploaded?.mimeType) {
-            throw new Error("Gemini Files API did not return a usable audio URI.");
+          const transcript = (interaction?.output_text || "").trim();
+          if (!transcript) {
+            throw new Error("Gemini 3.5 Transcribe returned an empty transcript.");
           }
 
-          console.info("[Munimji Voice] Audio uploaded. Starting Gemini 3.5 Transcribe.");
+          console.info("[Munimji Voice] Gemini 3.5 Transcribe completed.", {
+            transcriptLength: transcript.length,
+            preview: transcript.slice(0, 160)
+          });
 
-          try {
-            const interaction = await withTimeout(
-              (client as any).interactions.create({
-                model: "gemini-3.5-transcribe",
-                input: [{
-                  type: "audio",
-                  uri: uploaded.uri,
-                  mime_type: uploaded.mimeType || cleanMime
-                }],
-                generation_config: {
-                  transcription_config: {
-                    language_codes: [languageCode],
-                    mode: "smart"
-                  }
-                }
-              }),
-              25000,
-              "Gemini speech recognition timed out."
-            );
-
-            const transcript = (interaction?.output_text || "").trim();
-            console.info("[Munimji Voice] Transcription completed.", {
-              transcriptLength: transcript.length,
-              preview: transcript.slice(0, 160)
-            });
-
-            if (!transcript) {
-              throw new Error("Gemini speech recognition returned an empty transcript.");
-            }
-
-            return transcript;
-          } finally {
-            if (uploaded.name && typeof (client.files as any)?.delete === "function") {
-              try {
-                await withTimeout(
-                  (client.files as any).delete({ name: uploaded.name }),
-                  5000,
-                  "Gemini audio cleanup timed out."
-                );
-              } catch (cleanupError: any) {
-                console.warn("[Munimji Voice] Remote audio cleanup notice:", cleanupError?.message || cleanupError);
-              }
-            }
-          }
+          return transcript;
         },
         { models: ["gemini-3.5-transcribe"] }
       ),
-      45000,
+      30000,
       "Gemini speech recognition timed out."
     );
 
-    return uploadedAudioFile.result.trim();
-  } finally {
-    try {
-      if (fs.existsSync(tempAudioPath)) fs.unlinkSync(tempAudioPath);
-    } catch {}
+    return dedicated.result.trim();
+  } catch (err: any) {
+    dedicatedError = err;
+    console.warn("[Munimji Voice] Dedicated transcription path failed; using Gemini audio-understanding fallback.", {
+      message: err?.message || String(err),
+      status: err?.status || err?.code
+    });
   }
+
+  // Fallback: normal Gemini models with inline WebM audio.
+  const fallback = await withTimeout(
+    munimjiPool.executeWithFallback(
+      "munimjiVoiceFallbackTranscription",
+      async (client, modelName) => {
+        console.info("[Munimji Voice] Audio fallback model:", modelName);
+
+        const response = await withTimeout(
+          client.models.generateContent({
+            model: modelName,
+            contents: {
+              parts: [
+                {
+                  text: [
+                    "Generate a transcription of the spoken audio.",
+                    "Return ONLY the words spoken by the merchant; do not answer the command, do not summarize, do not translate, and do not add commentary.",
+                    "Preserve Marathi, Hindi, English, and mixed-language wording as spoken.",
+                    "Known language hint: " + languageCode + "."
+                  ].join(" ")
+                },
+                {
+                  inlineData: {
+                    mimeType: cleanMime,
+                    data: audioBase64
+                  }
+                }
+              ]
+            },
+            config: {
+              maxOutputTokens: 512
+            }
+          }),
+          20000,
+          "Gemini audio understanding timed out."
+        );
+
+        const transcript = (response.text || "").trim();
+        if (!transcript) {
+          throw new Error("Gemini audio understanding returned an empty transcript.");
+        }
+
+        console.info("[Munimji Voice] Fallback transcription completed.", {
+          model: modelName,
+          transcriptLength: transcript.length,
+          preview: transcript.slice(0, 160)
+        });
+
+        return transcript;
+      },
+      { models: [...MUNIMJI_MODELS] }
+    ),
+    30000,
+    "Gemini voice processing timed out."
+  );
+
+  if (!fallback.result?.trim()) {
+    throw dedicatedError || new Error("Gemini voice transcription returned no text.");
+  }
+
+  return fallback.result.trim();
 }
 
 /**
@@ -574,11 +614,11 @@ Always return a JSON object strictly conforming to this structure:
   const hasAudio = Boolean(req.audioBase64 && req.audioBase64.length > 50);
   let commandText = (req.text || "").trim();
 
-  if (hasAudio && !commandText) {
-    commandText = await transcribeMunimjiAudio(req);
-  }
-
   try {
+    if (hasAudio && !commandText) {
+      commandText = await transcribeMunimjiAudio(req);
+    }
+
     return await munimjiPool.executeWithFallback("processMunimjiCommand", async (client, modelName) => {
       const parts: any[] = [{
         text: "Merchant Command: \"" + commandText + "\"\n" + dbContext
