@@ -88,9 +88,35 @@ class MunimjiPoolManager {
   }
 
   private getNextQuotaResetAt(now = Date.now()): number {
-    const reset = new Date(now);
-    reset.setHours(24, 0, 0, 0);
-    return reset.getTime();
+    // Google documents Gemini RPD reset at midnight Pacific Time.
+    // Calculate the next 00:00 in America/Los_Angeles, including DST.
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZoneName: "longOffset"
+    });
+
+    const parts = Object.fromEntries(
+      formatter.formatToParts(new Date(now))
+        .filter(part => part.type !== "literal")
+        .map(part => [part.type, part.value])
+    );
+
+    const currentYear = Number(parts.year);
+    const currentMonth = Number(parts.month);
+    const currentDay = Number(parts.day);
+
+    const nextDay = new Date(Date.UTC(currentYear, currentMonth - 1, currentDay + 1, 0, 0, 0));
+    const offsetText = String(parts.timeZoneName || "GMT-08:00");
+    const offsetMatch = offsetText.match(/GMT([+-])(\\d{1,2})(?::(\\d{2}))?/);
+    const sign = offsetMatch?.[1] === "-" ? -1 : 1;
+    const hours = Number(offsetMatch?.[2] || 8);
+    const minutes = Number(offsetMatch?.[3] || 0);
+    const offsetMinutes = sign * (hours * 60 + minutes);
+
+    return nextDay.getTime() - offsetMinutes * 60 * 1000;
   }
 
   private getDataDir(): string {
