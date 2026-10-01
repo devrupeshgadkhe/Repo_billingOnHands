@@ -673,14 +673,25 @@ Always return a JSON object strictly conforming to this structure:
     // If STT or cloud processing failed, surface a clear voice error to the UI.
     if (hasAudio && !req.text) {
       const lang = req.language || "mr";
+      const diagnostic = String(err?.message || err || "Unknown voice processing error")
+        .replace(/(?:AIza|AQ)\\S+/gi, "[redacted]")
+        .slice(0, 500);
+
+      console.error("[Munimji Voice Error] Backend voice processing failed:", {
+        message: diagnostic,
+        status: err?.status || err?.code,
+        name: err?.name
+      });
+
       return {
         intent: "GENERAL_CHAT",
         userTranscript: commandText || "",
+        error: diagnostic,
         replyText: lang === "hi"
-          ? "आवाज़ को टेक्स्ट में बदलते समय अडचण आली. कृपया इंटरनेट कनेक्शन तपासून पुन्हा बोला."
+          ? "आवाज़ को टेक्स्ट में बदलते समय अडचण आली. कृपया पुन्हा प्रयत्न करा."
           : lang === "en"
-            ? "I could not convert your voice to text. Please check the internet connection and try again."
-            : "आवाजेचा मजकूर बनवताना अडचण आली. कृपया इंटरनेट कनेक्शन तपासून पुन्हा बोला."
+            ? "I could not process your voice command. Please try again."
+            : "आवाजेचा आदेश प्रक्रिया करताना अडचण आली. कृपया पुन्हा प्रयत्न करा."
       };
     }
 
