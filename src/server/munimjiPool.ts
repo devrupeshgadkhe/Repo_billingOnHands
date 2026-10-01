@@ -505,22 +505,28 @@ Always return a JSON object strictly conforming to this structure:
             throw new Error("Gemini Files API did not return a usable audio URI.");
           }
 
-          const transcriptResponse = await withTimeout(
-            client.models.generateContent({
+          // Gemini 3.5 Transcribe uses the Interactions API for uploaded audio.
+          // Keep this call separate from command reasoning so transcription failures
+          // are surfaced cleanly instead of leaving the voice request pending.
+          const transcriptInteraction = await withTimeout(
+            (client as any).interactions.create({
               model: "gemini-3.5-transcribe",
-              contents: [uploadedAudioFile],
-              config: {
-                audioTranscriptionConfig: {
-                  languageCodes: [],
-                  mode: "SMART"
+              input: [{
+                type: "audio",
+                uri: uploadedAudioFile.uri,
+                mime_type: uploadedAudioFile.mimeType || cleanMime
+              }],
+              generation_config: {
+                transcription_config: {
+                  language_codes: []
                 }
-              } as any
+              }
             }),
             15000,
             "Gemini speech recognition timed out."
           );
 
-          commandText = (transcriptResponse.text || "").trim();
+          commandText = (transcriptInteraction?.output_text || "").trim();
           console.info("[Munimji Voice] Transcription completed.", {
             transcriptLength: commandText.length,
             preview: commandText.slice(0, 120)
