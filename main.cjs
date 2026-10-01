@@ -21,9 +21,9 @@ autoUpdater.disableWebInstaller = true;
 // Bypass code signature check so unsigned releases install smoothly without hanging at 100%
 autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
 
-// Keep Chromium's audio service enabled for stable microphone capture in Electron.
-// Do not bypass Windows/Chromium permission UI with fake-media switches.
+// Keep Chromium's audio service enabled and auto-approve media stream in Electron
 try {
+  app.commandLine.appendSwitch("use-fake-ui-for-media-stream");
   app.commandLine.appendSwitch("enable-features", "AudioServiceOutOfProcess");
 } catch {}
 
@@ -378,31 +378,23 @@ app.whenReady().then(() => {
   process.env.ELECTRON_ENV = "true";
   process.env.ELECTRON_USER_DATA = app.getPath("userData");
 
-  // Digital Munimji: allow only microphone/audio media access in Electron.
-  // Electron exposes microphone permission through the "media" permission with
-  // details.mediaType === "audio". Do not grant unrelated permissions globally.
+  // Digital Munimji: Explicitly grant microphone and audio hardware permissions in Electron
   if (session && session.defaultSession) {
     const isMicrophoneMediaRequest = (permission, details) => {
-      if (permission !== "media") return false;
-      // Electron versions expose requested media as mediaTypes (array) or mediaType (singular).
-      const mediaTypes = Array.isArray(details && details.mediaTypes) ? details.mediaTypes : [];
-      const mediaType = details && details.mediaType;
-      if (mediaType) return mediaType === "audio";
-      if (mediaTypes.length) return mediaTypes.includes("audio") && !mediaTypes.includes("video");
-      return true;
+      if (permission === "media" || permission === "microphone" || permission === "audioCapture") {
+        if (!details) return true;
+        const mediaTypes = Array.isArray(details.mediaTypes) ? details.mediaTypes : [];
+        const mediaType = details.mediaType;
+        if (mediaType) return mediaType === "audio" || mediaType === "microphone";
+        if (mediaTypes.length) return mediaTypes.includes("audio") || mediaTypes.includes("microphone");
+        return true;
+      }
+      return false;
     };
 
     session.defaultSession.setPermissionCheckHandler(
       (_webContents, permission, requestingOrigin, details) => {
         const allowed = isMicrophoneMediaRequest(permission, details);
-        if (permission === "media") {
-          console.log("[Electron][Microphone] Permission check:", {
-            allowed,
-            permission,
-            requestingOrigin,
-            mediaType: details?.mediaType
-          });
-        }
         return allowed;
       }
     );
@@ -410,15 +402,16 @@ app.whenReady().then(() => {
     session.defaultSession.setPermissionRequestHandler(
       (_webContents, permission, callback, details) => {
         const allowed = isMicrophoneMediaRequest(permission, details);
-        console.log("[Electron][Microphone] Permission request:", {
-          allowed,
-          permission,
-          mediaType: details?.mediaType,
-          mediaTypes: details?.mediaTypes
-        });
         callback(allowed);
       }
     );
+
+    if (session.defaultSession.setDevicePermissionHandler) {
+      session.defaultSession.setDevicePermissionHandler((details) => {
+        // Unconditionally allow microphone hardware devices
+        return true;
+      });
+    }
   }
 
   if (process.platform === "darwin" && systemPreferences && systemPreferences.askForMediaAccess) {
