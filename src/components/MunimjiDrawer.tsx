@@ -548,6 +548,10 @@ export default function MunimjiDrawer({
         setMessages(prev => prev.map(m => m.id === userMsgId ? { ...m, text: refined } : m));
       }
 
+      if (response.error) {
+        console.error("[VOICE BACKEND DIAGNOSTIC]:", response.error);
+      }
+
       // Add Munimji's response to UI
       const munimjiMsgId = "munimji_" + Date.now();
       setMessages(prev => [
