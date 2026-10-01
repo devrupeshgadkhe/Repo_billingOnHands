@@ -284,6 +284,14 @@ class MunimjiPoolManager {
           }
 
           if (status === 429 || errMsg.includes("quota") || errMsg.includes("resource_exhausted")) {
+            if (operationName === "munimjiTranscription") {
+              // Keep the key usable for the normal audio-understanding fallback.
+              // A dedicated transcription-model quota can be separate from the
+              // regular Gemini model path.
+              console.info(`[Munimji Pool] Dedicated transcription quota/rate limit reached; keeping key ${keyEntry.label} active for voice fallback.`);
+              break;
+            }
+
             keyEntry.cooldownUntil = Date.now() + 60000;
             console.info(`[Munimji Pool] Gemini quota/rate limit reached. Switching to Local Smart Heuristic Engine.`);
             break; // Break inner model loop, try next key or fallback
