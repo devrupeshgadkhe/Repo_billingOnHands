@@ -531,7 +531,13 @@ export default function MunimjiDrawer({
   const [inputText, setInputText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [voiceSpeechEnabled, setVoiceSpeechEnabled] = useState(true);
+  const [voiceSpeechEnabled, setVoiceSpeechEnabled] = useState(() => {
+    try {
+      return localStorage.getItem("munimji_voice_speech") !== "false";
+    } catch {
+      return true;
+    }
+  });
   const [liveInterimText, setLiveInterimText] = useState("");
   const [audioVolume, setAudioVolume] = useState(0);
   const [micPermissionError, setMicPermissionError] = useState(false);
@@ -602,20 +608,23 @@ export default function MunimjiDrawer({
   }, []);
 
   /**
-   * Clean text for realistic Indian Munimji speech synthesis (strips markdown, formats currency & units)
+   * Clean text for realistic Indian Munimji speech synthesis (strips markdown, formats currency & units, removes emojis)
    */
   const cleanTextForIndianSpeech = (raw: string, lang: MunimjiLang): string => {
     let txt = raw || "";
-    txt = txt.replace(/[*_#•\-\[\]]/g, " ");
+    // Remove emojis and symbols that speech engines struggle with or narrate as literal names
+    txt = txt.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, " ");
+    txt = txt.replace(/[*_#•\-\[\]|`]/g, " ");
     if (lang === "mr" || lang === "hi") {
       txt = txt.replace(/₹\s*([0-9,]+)/g, "$1 रुपये");
       txt = txt.replace(/([0-9]+)\s*%/g, "$1 टक्के");
       txt = txt.replace(/\bPCS\b/gi, "नग");
       txt = txt.replace(/\bBOX\b/gi, "बॉक्स");
-      txt = txt.replace(/\bKG\b/gi, "किलो");
-      txt = txt.replace(/\bLTR\b/gi, "लिटर");
+      txt = txt.replace(/\bKG\b|\bKGS\b/gi, "किलो");
+      txt = txt.replace(/\bLTR\b|\bLITRE\b/gi, "लिटर");
       txt = txt.replace(/100W/gi, "शंभर वॅट");
       txt = txt.replace(/LED/gi, "एलईडी");
+      txt = txt.replace(/\bGST\b/gi, "जीएसटी");
     } else {
       txt = txt.replace(/₹\s*([0-9,]+)/g, "$1 rupees");
       txt = txt.replace(/([0-9]+)\s*%/g, "$1 percent");
@@ -625,66 +634,162 @@ export default function MunimjiDrawer({
     return txt.trim();
   };
 
-  // Keep active Audio or Utterance in refs so GC doesn't abort playback
+  // Keep active Audio or Utterance in refs and window so Chromium GC doesn't abort playback mid-speech
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   /**
-   * Speak reply text aloud with a warm, realistic Indian Male Munimji voice
-   * Fallback to Web Speech API with male voice tuning if Gemini TTS audio is unavailable.
+   * Transliterate Devanagari into clear phonetic Latin (Romanized text)
+   * so default desktop English male voices (like Microsoft David / Mark)
+   * can pronounce Marathi / Hindi clearly without dropping out or choking on Unicode.
+   */
+  const transliterateDevanagariToLatin = (text: string): string => {
+    const vowels: { [k: string]: string } = {
+      'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo',
+      'ऋ': 'ri', 'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au',
+      'अं': 'an', 'अः': 'ah'
+    };
+    const matras: { [k: string]: string } = {
+      'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo',
+      'ृ': 'ri', 'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au',
+      'ं': 'n', 'ँ': 'n', 'ः': 'h', '्': ''
+    };
+    const consonants: { [k: string]: string } = {
+      'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'ng',
+      'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'ny',
+      'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+      'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+      'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+      'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh',
+      'ष': 'sh', 'स': 's', 'ह': 'h', 'ळ': 'l', 'क्ष': 'ksh', 'ज्ञ': 'dny'
+    };
+
+    let result = '';
+    const chars = Array.from(text);
+    for (let i = 0; i < chars.length; i++) {
+      const ch = chars[i];
+      const next = chars[i + 1] || '';
+
+      if (vowels[ch]) {
+        result += vowels[ch];
+      } else if (consonants[ch]) {
+        const base = consonants[ch];
+        if (matras[next] !== undefined) {
+          result += base + matras[next];
+          i++;
+        } else if (next === '्') {
+          result += base;
+          i++;
+        } else {
+          result += base + 'a';
+        }
+      } else if (matras[ch]) {
+        result += matras[ch];
+      } else {
+        result += ch;
+      }
+    }
+    return result
+      .replace(/aa+/g, 'aa')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  /**
+   * Speak reply text aloud with an Indian Male Munimji voice with 100% reliability
    */
   const speakWithBrowserMaleVoice = (rawText: string, lang: MunimjiLang) => {
     if (!voiceSpeechEnabled || typeof window === "undefined" || !window.speechSynthesis) return;
 
     try {
+      // 1. Cancel previous speech safely
       window.speechSynthesis.cancel();
 
       const cleaned = cleanTextForIndianSpeech(rawText, lang);
       if (!cleaned) return;
 
-      const utterance = new SpeechSynthesisUtterance(cleaned);
-      activeUtteranceRef.current = utterance;
+      // 2. Wait 60ms so cancel() and speak() do not collide (Chromium/Electron bug fix)
+      setTimeout(() => {
+        try {
+          if (!window.speechSynthesis) return;
+          window.speechSynthesis.resume();
 
-      const langCode = lang === "mr" ? "mr-IN" : (lang === "hi" ? "hi-IN" : "en-IN");
-      utterance.lang = langCode;
+          const allVoices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
+          
+          // Check if system has a native Devanagari voice (Marathi / Hindi)
+          const indianVoice = allVoices.find(v => v.lang.startsWith("mr") || v.lang.startsWith("hi"));
+          const indianMaleVoice = allVoices.find(v => 
+            (v.lang.startsWith("mr") || v.lang.startsWith("hi")) && 
+            (v.name.toLowerCase().includes("male") || v.name.toLowerCase().includes("hemant") || v.name.toLowerCase().includes("prabhat") || v.name.toLowerCase().includes("madhav") || v.name.toLowerCase().includes("ravi"))
+          );
 
-      // Select realistic Indian male voice if available in system
-      const voices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
-      const maleVoice = voices.find(v => 
-        (v.lang.startsWith(langCode.slice(0, 2)) || v.lang === "en-IN" || v.lang === "hi-IN") &&
-        (v.name.toLowerCase().includes("male") || v.name.toLowerCase().includes("ravi") || v.name.toLowerCase().includes("madhav") || v.name.toLowerCase().includes("hemant") || v.name.toLowerCase().includes("prabhat") || v.name.toLowerCase().includes("manoj") || v.name.toLowerCase().includes("david") || v.name.toLowerCase().includes("george"))
-      ) || voices.find(v => v.lang.startsWith(langCode.slice(0, 2))) || voices.find(v => v.lang.startsWith("hi")) || voices[0];
+          // Find fallback desktop male voice (Microsoft David, Mark, Google US English Male, etc.)
+          const englishMaleVoice = allVoices.find(v => 
+            (v.lang.startsWith("en") || v.lang.includes("IN")) && 
+            (v.name.toLowerCase().includes("male") || v.name.toLowerCase().includes("david") || v.name.toLowerCase().includes("mark") || v.name.toLowerCase().includes("george") || v.name.toLowerCase().includes("ravi") || v.name.toLowerCase().includes("neel") || v.name.toLowerCase().includes("guy"))
+          );
 
-      if (maleVoice) {
-        utterance.voice = maleVoice;
-      }
+          const anyMaleVoice = allVoices.find(v => v.name.toLowerCase().includes("male"));
 
-      // Male pitch & rate for mature Indian Munimji accountant
-      utterance.pitch = 0.88; // deeper mature male pitch
-      utterance.rate = 0.95;  // calm, steady cadence
-      utterance.volume = 1.0;
+          let chosenVoice = indianMaleVoice || indianVoice || englishMaleVoice || anyMaleVoice || allVoices[0];
 
-      utterance.onend = () => {
-        activeUtteranceRef.current = null;
-      };
-      utterance.onerror = (e) => {
-        console.warn("[SpeechSynthesis notice]:", e);
-        activeUtteranceRef.current = null;
-      };
+          // If chosen voice is an English voice and text is in Devanagari, convert to phonetics so it speaks aloud and never goes silent
+          let textToSpeak = cleaned;
+          const isDevanagari = /[\u0900-\u097F]/.test(cleaned);
+          const isEnglishVoice = chosenVoice && !chosenVoice.lang.startsWith("mr") && !chosenVoice.lang.startsWith("hi");
 
-      window.speechSynthesis.speak(utterance);
+          if (isDevanagari && isEnglishVoice) {
+            textToSpeak = transliterateDevanagariToLatin(cleaned);
+          }
 
-      // Chrome/Electron speech synthesis pause bug fix
-      if (window.speechSynthesis.paused) {
-        window.speechSynthesis.resume();
-      }
+          const utterance = new SpeechSynthesisUtterance(textToSpeak);
+          activeUtteranceRef.current = utterance;
+          (window as any).__munimjiUtterance = utterance; // Prevent V8 garbage collection mid-speech
+
+          if (chosenVoice) {
+            utterance.voice = chosenVoice;
+            utterance.lang = chosenVoice.lang || (lang === "en" ? "en-IN" : "hi-IN");
+          } else {
+            utterance.lang = lang === "en" ? "en-IN" : "hi-IN";
+          }
+
+          // Deep, mature Indian male accountant tone
+          utterance.pitch = 0.85; 
+          utterance.rate = 0.95;  
+          utterance.volume = 1.0;
+
+          utterance.onend = () => {
+            activeUtteranceRef.current = null;
+            (window as any).__munimjiUtterance = null;
+          };
+
+          utterance.onerror = (e) => {
+            console.warn("⚠️ [Munimji Speaker Notice]:", e);
+            activeUtteranceRef.current = null;
+            (window as any).__munimjiUtterance = null;
+          };
+
+          window.speechSynthesis.speak(utterance);
+
+          // Heartbeat interval to prevent Chromium/Electron from freezing speech synthesis
+          const heartbeat = setInterval(() => {
+            if (!window.speechSynthesis || !window.speechSynthesis.speaking) {
+              clearInterval(heartbeat);
+            } else if (window.speechSynthesis.paused) {
+              window.speechSynthesis.resume();
+            }
+          }, 1500);
+        } catch (innerErr) {
+          console.warn("[Munimji Speak delayed error]:", innerErr);
+        }
+      }, 60);
     } catch (err) {
       console.warn("[SpeechSynthesis error]:", err);
     }
   };
 
   /**
-   * Play Gemini Male TTS audio with seamless fallback to Browser Male Speech Synthesis
+   * Play Munimji Voice: Primary Native Desktop SpeechSynthesis with male voice
    */
   const playMunimjiVoice = (audioBase64?: string, audioMimeType?: string, fallbackText?: string) => {
     if (!voiceSpeechEnabled) return;
@@ -965,8 +1070,11 @@ export default function MunimjiDrawer({
       if (response.replyText) {
         playMunimjiVoice(response.audioBase64, response.audioMimeType, response.replyText);
       }
-      if (response.actionPayload) {
+      // Always synchronize global DB state so inventory, billing, parties immediately update
+      try {
         await onRefreshDb();
+      } catch (refreshErr) {
+        console.warn("DB refresh notice:", refreshErr);
       }
     } catch (err: any) {
       console.error("Munimji processing error:", err);
@@ -1259,9 +1367,21 @@ export default function MunimjiDrawer({
                     <span className={`text-[10px] font-bold ${msg.sender === "user" ? "text-amber-200" : "text-amber-800"}`}>
                       {msg.sender === "user" ? (msg.isAudio ? t.userSpokenLabel : t.userLabel) : t.munimjiLabel}
                     </span>
-                    <span className={`text-[10px] ${msg.sender === "user" ? "text-amber-200" : "text-slate-400"}`}>
-                      {msg.timestamp}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {msg.sender === "munimji" && (
+                        <button
+                          type="button"
+                          onClick={() => playMunimjiVoice(undefined, undefined, msg.text)}
+                          className="p-1 text-amber-700/80 hover:text-amber-950 hover:bg-amber-100 rounded transition-colors"
+                          title={language === "en" ? "Listen again (Male Voice)" : "पुन्हा ऐका (पुरुषी आवाज)"}
+                        >
+                          <Volume2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <span className={`text-[10px] ${msg.sender === "user" ? "text-amber-200" : "text-slate-400"}`}>
+                        {msg.timestamp}
+                      </span>
+                    </div>
                   </div>
 
                   <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap">{msg.text}</p>
@@ -1361,6 +1481,79 @@ export default function MunimjiDrawer({
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               <span>{t.directSavePrint}</span>
                             </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Card: STOCK ALERT / ITEM SAVED */}
+                      {card.type === "stock_alert" && (
+                        <div>
+                          <div className="flex items-center justify-between border-b pb-2 mb-2.5">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              <span className="font-bold text-sm text-slate-900">{card.title}</span>
+                            </div>
+                            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">
+                              {card.data?.status === "added" ? (language === "en" ? "Saved in Store" : "डेटाबेसमध्ये सेव्ह") : (language === "en" ? "Stock Updated" : "साठा अपडेट")}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 mb-3">
+                            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+                              <div className="text-[10px] text-emerald-800 font-bold uppercase">{t.retail} (विक्री दर)</div>
+                              <div className="text-base font-extrabold text-emerald-700 mt-0.5">
+                                ₹{card.data?.salePrice ?? card.data?.newSalePrice ?? "0"}
+                              </div>
+                            </div>
+
+                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                              <div className="text-[10px] text-amber-800 font-bold uppercase">{t.stock} (उपलब्ध साठा)</div>
+                              <div className="text-base font-extrabold text-amber-800 mt-0.5">
+                                {card.data?.stockQuantity ?? card.data?.newStock ?? card.data?.quantityChange ?? "0"} {card.data?.unit || (language === "en" ? "PCS" : "नग")}
+                              </div>
+                            </div>
+                          </div>
+
+                          {card.data?.purchasePrice > 0 && (
+                            <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 flex items-center justify-between text-xs mb-3">
+                              <span className="text-slate-600 font-medium">
+                                {t.costPrice} (खरेदी भाव): <strong className="text-slate-900">₹{card.data?.purchasePrice}</strong>
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2">
+                            {onNavigateTab && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onNavigateTab("inventory");
+                                  onClose();
+                                }}
+                                className="flex-1 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg transition-colors text-center"
+                              >
+                                {language === "en" ? "View in Inventory" : "इन्व्हेंटरीमध्ये बघा"}
+                              </button>
+                            )}
+                            {onApplyBillToEditor && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onApplyBillToEditor({
+                                    items: [{
+                                      name: card.data?.itemName || "Item",
+                                      quantity: 1,
+                                      price: Number(card.data?.salePrice || 100),
+                                      unit: card.data?.unit || "PCS"
+                                    }]
+                                  });
+                                  onClose();
+                                }}
+                                className="flex-1 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors text-center"
+                              >
+                                {language === "en" ? "Quick Bill" : "याचे बिल बनवा"}
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}

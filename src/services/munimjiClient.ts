@@ -13,7 +13,25 @@ export interface MunimjiDisplayCard {
 }
 
 export interface MunimjiResponse {
-  intent: "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "PRODUCT_LIST" | "GENERAL_CHAT";
+  intent:
+    | "SALES_BILL"
+    | "PURCHASE_BILL"
+    | "PRICE_QUERY"
+    | "SUPPLIER_COMPARISON"
+    | "STOCK_UPDATE"
+    | "ITEM_ADD"
+    | "PRICE_UPDATE"
+    | "ITEM_DELETE"
+    | "PARTY_ADD"
+    | "PARTY_LIST"
+    | "PARTY_DELETE"
+    | "EXPENSE_ADD"
+    | "QUOTATION_CREATE"
+    | "CHALLAN_CREATE"
+    | "BUSINESS_AUDIT"
+    | "SYSTEM_SELF_TEST"
+    | "PRODUCT_LIST"
+    | "GENERAL_CHAT";
   userTranscript?: string;
   replyText: string;
   displayCards?: MunimjiDisplayCard[];

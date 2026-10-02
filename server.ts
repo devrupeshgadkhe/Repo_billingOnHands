@@ -2093,73 +2093,18 @@ app.post("/api/munimji/process", async (req, res) => {
       currentDb
     );
 
-    // Auto-persist stock updates or new item additions directly to the store database
-    if (response.actionPayload) {
-      const payload = response.actionPayload;
-      const db = readDb();
-      if (!db.items) db.items = [];
-      let modified = false;
-
-      if (payload.action === "STOCK_UPDATE" || response.intent === "STOCK_UPDATE") {
-        const itemName = payload.itemName || payload.name;
-        const qty = Number(payload.quantityChange || payload.quantity || payload.stock || 0);
-        const op = payload.operation || "ADD";
-        if (itemName) {
-          const item = db.items.find((it: any) => it.name.toLowerCase().includes(itemName.toLowerCase()));
-          if (item) {
-            if (op === "SET") item.stockQuantity = qty;
-            else if (op === "SUBTRACT") item.stockQuantity = Math.max(0, (item.stockQuantity || 0) - qty);
-            else item.stockQuantity = (item.stockQuantity || 0) + qty;
-            modified = true;
-          } else if (payload.isNewItem || payload.action === "ADD_ITEM") {
-            const newItem = {
-              id: "item_" + Date.now(),
-              name: itemName,
-              hsn: payload.hsn || "9999",
-              purchasePrice: Number(payload.purchasePrice || 0),
-              salePrice: Number(payload.salePrice || 0),
-              stockQuantity: qty,
-              minStockAlert: 5,
-              gstRate: Number(payload.gstRate || 0),
-              unit: payload.unit || "PCS"
-            };
-            db.items.push(newItem);
-            modified = true;
-          }
-        }
-      } else if (payload.action === "ADD_ITEM" || payload.action === "CREATE_ITEM") {
-        const itemName = payload.itemName || payload.name;
-        if (itemName) {
-          const existing = db.items.find((it: any) => it.name.toLowerCase() === itemName.toLowerCase());
-          if (existing) {
-            if (payload.salePrice !== undefined) existing.salePrice = Number(payload.salePrice);
-            if (payload.purchasePrice !== undefined) existing.purchasePrice = Number(payload.purchasePrice);
-            if (payload.stockQuantity !== undefined || payload.stock !== undefined) {
-              existing.stockQuantity = Number(payload.stockQuantity ?? payload.stock);
-            }
-          } else {
-            const newItem = {
-              id: "item_" + Date.now(),
-              name: itemName,
-              hsn: payload.hsn || "9999",
-              purchasePrice: Number(payload.purchasePrice || 0),
-              salePrice: Number(payload.salePrice || 0),
-              stockQuantity: Number(payload.stockQuantity || payload.stock || 0),
-              minStockAlert: Number(payload.minStockAlert || 5),
-              gstRate: Number(payload.gstRate || 0),
-              unit: payload.unit || "PCS"
-            };
-            db.items.push(newItem);
-          }
-          modified = true;
-        }
-      }
-
-      if (modified) {
-        writeDb(db);
-        performAutoBackup(db);
-        console.info("[Munimji Auto-Persistence] Updated live database items successfully.");
-      }
+    // Auto-commit any CRUD operation (Items, Stock, Price, Parties, Expenses, Quotes, Challans, Bills) directly to the persistent database
+    const crudResult = executeMunimjiUniversalCrud(
+      response.actionPayload?.action || response.intent || "",
+      response.actionPayload || {},
+      response.intent,
+      text || response.userTranscript || "",
+      response.replyText || ""
+    );
+    if (crudResult.success) {
+      if (!response.actionPayload) response.actionPayload = {};
+      response.actionPayload.executed = true;
+      response.actionPayload.result = crudResult.data;
     }
 
     res.json(response);
@@ -2172,173 +2117,435 @@ app.post("/api/munimji/process", async (req, res) => {
   }
 });
 
-// Execute approved action directly into database (Sales bill, stock update, price update, new items)
-app.post("/api/munimji/execute-action", (req, res) => {
+// Universal Real-Database CRUD Handler for Digital Munimji across all modules
+function executeMunimjiUniversalCrud(
+  actionType: string,
+  payload: any,
+  intent?: string,
+  userText?: string,
+  replyText?: string
+): { success: boolean; message: string; data?: any } {
   try {
-    const { actionType, payload } = req.body || {};
     const db = readDb();
+    let modified = false;
+    let message = "";
+    let resultData: any = null;
 
-    if (actionType === "SALES_BILL" || actionType === "CREATE_SALES_INVOICE") {
+    const rawAct = String(actionType || payload?.action || intent || "").toUpperCase();
+    const act = rawAct.replace(/[^A-Z0-9_]/g, "_");
+    const combinedContext = `${userText || ""} ${replyText || ""} ${JSON.stringify(payload || {})}`.toLowerCase();
+
+    // 1. ADD / CREATE ITEM / PRODUCT
+    const isItemCreateAct =
+      act.includes("ADD_ITEM") || act.includes("ITEM_ADD") || act.includes("CREATE_ITEM") ||
+      act.includes("ADD_PRODUCT") || act.includes("CREATE_PRODUCT") || act.includes("NEW_ITEM") ||
+      act.includes("CREATE_NEW_ITEM") || act.includes("NEW_PRODUCT") || act.includes("PRODUCT_ADD") ||
+      (act.includes("ITEM") && (act.includes("ADD") || act.includes("CREATE") || act.includes("NEW"))) ||
+      (act.includes("PRODUCT") && (act.includes("ADD") || act.includes("CREATE") || act.includes("NEW"))) ||
+      (intent === "ITEM_ADD" || intent === "ADD_ITEM" || intent === "ADD_PRODUCT");
+
+    if (isItemCreateAct) {
+      if (!db.items) db.items = [];
+      let itemName =
+        payload?.itemName ||
+        payload?.name ||
+        payload?.productName ||
+        payload?.product?.name ||
+        payload?.item?.name ||
+        payload?.title ||
+        payload?.item;
+
+      // Fallback extraction from user command or reply if itemName was not cleanly in payload
+      if (!itemName || typeof itemName !== "string" || itemName.trim().length < 2) {
+        const textToSearch = userText || replyText || "";
+        const m = textToSearch.match(/(?:नवीन\s*(?:प्रॉडक्ट|वस्तू|आयटम|सामान)?\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो)?[:\-\s]*|add\s*(?:new\s*)?(?:product|item)[:\-\s]*|नया\s*(?:सामान|प्रोडक्ट)[:\-\s]*)([^,\n:0-9₹]+)/i);
+        if (m && m[1]) {
+          const rawName = m[1].split(/(?:विक्री|खरेदी|भाव|दर|किंमत|रेट|स्टॉक|साठा|price|rate|stock|cost|sale)/i)[0].trim();
+          if (rawName.length >= 2) itemName = rawName;
+        }
+        if (!itemName) {
+          const qMatch = textToSearch.match(/['"`‘“]([^'"`’“”]+)['"`’“”]/);
+          if (qMatch && qMatch[1].trim().length >= 2) itemName = qMatch[1].trim();
+        }
+      }
+
+      if (!itemName) return { success: false, message: "वस्तूचे नाव आवश्यक आहे." };
+      itemName = String(itemName).replace(/^[:\-\s,]+|[:\-\s,]+$/g, "").trim();
+
+      const salePrice = Number(payload?.salePrice ?? payload?.price ?? payload?.retailPrice ?? payload?.rate ?? payload?.sellingPrice ?? payload?.product?.salePrice ?? payload?.product?.price ?? 0);
+      let purchasePrice = Number(payload?.purchasePrice ?? payload?.costPrice ?? payload?.cost ?? payload?.buyPrice ?? payload?.product?.purchasePrice ?? 0);
+      if (purchasePrice === 0 && salePrice > 0) purchasePrice = Math.round(salePrice * 0.85);
+
+      const stockQty = Number(payload?.stockQuantity ?? payload?.stock ?? payload?.quantity ?? payload?.qty ?? payload?.initialStock ?? payload?.product?.stock ?? 0);
+
+      // Normalize unit
+      let unit = String(payload?.unit || payload?.product?.unit || "PCS").toUpperCase();
+      if (unit.includes("LIT") || unit === "L") unit = "LTR";
+      else if (unit.includes("KG") || unit.includes("KIL")) unit = "KGS";
+      else if (unit.includes("BOX")) unit = "BOX";
+      else if (unit.includes("MTR") || unit.includes("MET")) unit = "MTR";
+      else unit = "PCS";
+
+      const gstRate = Number(payload?.gstRate || payload?.taxRate || 0);
+
+      let item = db.items.find((it: any) => it.name.toLowerCase() === itemName.toLowerCase() || (it.name.toLowerCase().includes(itemName.toLowerCase()) && itemName.length > 4));
+      if (item) {
+        if (salePrice > 0) item.salePrice = salePrice;
+        if (purchasePrice > 0) item.purchasePrice = purchasePrice;
+        if (stockQty > 0) item.stockQuantity = (item.stockQuantity || 0) + stockQty;
+        message = `'${item.name}' आधीपासून अस्तित्वात आहे, त्याचे दर/साठा अपडेट केले.`;
+        resultData = item;
+      } else {
+        item = {
+          id: "item_" + Date.now(),
+          name: itemName,
+          hsn: payload?.hsn || "9999",
+          purchasePrice,
+          salePrice,
+          stockQuantity: stockQty,
+          minStockAlert: Number(payload?.minStockAlert || 5),
+          gstRate,
+          unit
+        };
+        db.items.push(item);
+        message = `'${item.name}' ही नवीन वस्तू इन्व्हेंटरी डेटाबेसमध्ये यशस्वीरीत्या ॲड केली आहे.`;
+        resultData = item;
+      }
+      modified = true;
+    }
+
+    // 2. STOCK UPDATE
+    else if (
+      act.includes("STOCK_UPDATE") || act.includes("UPDATE_STOCK") || act.includes("ADD_STOCK") ||
+      act.includes("STOCK_ADD") || act.includes("STOCK_CHANGE") || act.includes("SET_STOCK") ||
+      (intent === "STOCK_UPDATE")
+    ) {
+      if (!db.items) db.items = [];
+      let targetName = payload?.itemName || payload?.name || payload?.productName || payload?.product?.name;
+      const changeQty = Number(payload?.quantityChange ?? payload?.quantity ?? payload?.stock ?? payload?.qty ?? 1);
+      const operation = String(payload?.operation || (act.includes("SET") ? "SET" : act.includes("SUBTRACT") ? "SUBTRACT" : "ADD")).toUpperCase();
+
+      let item = targetName ? db.items.find((it: any) => it.name.toLowerCase().includes(targetName.toLowerCase())) : null;
+      if (!item) {
+        // Try searching items mentioned in context
+        item = db.items.find((it: any) => combinedContext.includes(it.name.toLowerCase()));
+      }
+
+      if (!item) {
+        // Create new item with this stock so user stock update is never discarded
+        const newItemName = targetName || "नवीन वस्तू";
+        item = {
+          id: "item_" + Date.now(),
+          name: newItemName,
+          hsn: "9999",
+          purchasePrice: Number(payload?.purchasePrice || 0),
+          salePrice: Number(payload?.salePrice || 100),
+          stockQuantity: changeQty,
+          minStockAlert: 5,
+          gstRate: 0,
+          unit: payload?.unit || "PCS"
+        };
+        db.items.push(item);
+        message = `'${item.name}' नवीन तयार करून तिचा साठा ${item.stockQuantity} ${item.unit} केला.`;
+      } else {
+        const prevStock = item.stockQuantity || 0;
+        if (operation === "SET") item.stockQuantity = changeQty;
+        else if (operation === "SUBTRACT") item.stockQuantity = Math.max(0, prevStock - changeQty);
+        else item.stockQuantity = prevStock + changeQty;
+        message = `'${item.name}' चा साठा अपडेट केला. जुना साठा: ${prevStock}, नवीन साठा: ${item.stockQuantity} ${item.unit || "नग"}.`;
+      }
+      resultData = item;
+      modified = true;
+    }
+
+    // 3. PRICE UPDATE
+    else if (act.includes("PRICE_UPDATE") || act.includes("UPDATE_PRICE") || act.includes("CHANGE_PRICE") || act.includes("SET_PRICE") || intent === "PRICE_UPDATE") {
+      if (!db.items) db.items = [];
+      const targetName = payload?.itemName || payload?.name || payload?.productName;
+      let item = targetName ? db.items.find((it: any) => it.name.toLowerCase().includes(targetName.toLowerCase())) : null;
+      if (!item) item = db.items.find((it: any) => combinedContext.includes(it.name.toLowerCase()));
+
+      if (item) {
+        if (payload?.salePrice !== undefined || payload?.price !== undefined || payload?.rate !== undefined) {
+          item.salePrice = Number(payload.salePrice ?? payload.price ?? payload.rate);
+        }
+        if (payload?.purchasePrice !== undefined || payload?.costPrice !== undefined) {
+          item.purchasePrice = Number(payload.purchasePrice ?? payload.costPrice);
+        }
+        message = `'${item.name}' चे दर अपडेट केले. विक्री भाव: ₹${item.salePrice}, खरेदी भाव: ₹${item.purchasePrice}.`;
+        resultData = item;
+        modified = true;
+      }
+    }
+
+    // 4. ITEM DELETE
+    else if (act.includes("ITEM_DELETE") || act.includes("DELETE_ITEM") || act.includes("REMOVE_ITEM") || act.includes("DELETE_PRODUCT") || intent === "ITEM_DELETE") {
+      if (!db.items) db.items = [];
+      const targetName = (payload?.itemName || payload?.name || payload?.productName || "").toLowerCase();
+      const idx = db.items.findIndex((it: any) =>
+        (targetName && it.name.toLowerCase().includes(targetName)) ||
+        (payload?.itemId && it.id === payload.itemId)
+      );
+      if (idx !== -1) {
+        const removed = db.items.splice(idx, 1)[0];
+        message = `'${removed.name}' ही वस्तू इन्व्हेंटरीमधून काढून टाकली.`;
+        resultData = removed;
+        modified = true;
+      }
+    }
+
+    // 5. PARTY ADD (Customer or Supplier)
+    else if (
+      act.includes("ADD_PARTY") || act.includes("PARTY_ADD") || act.includes("CREATE_PARTY") ||
+      act.includes("ADD_CUSTOMER") || act.includes("CREATE_CUSTOMER") || act.includes("NEW_CUSTOMER") ||
+      act.includes("ADD_SUPPLIER") || act.includes("CREATE_SUPPLIER") || act.includes("NEW_SUPPLIER") ||
+      intent === "PARTY_ADD"
+    ) {
+      if (!db.parties) db.parties = [];
+      const partyName = payload?.partyName || payload?.name || payload?.customerName || payload?.supplierName;
+      if (partyName) {
+        const isSupplier = payload?.type === "supplier" || act.includes("SUPPLIER") || combinedContext.includes("सप्लायर") || combinedContext.includes("supplier");
+        let party = db.parties.find((p: any) => p.name.toLowerCase() === partyName.toLowerCase());
+        if (!party) {
+          party = {
+            id: "party_" + Date.now(),
+            name: partyName,
+            type: isSupplier ? "supplier" : "customer",
+            phone: payload?.phone || payload?.mobile || "",
+            email: payload?.email || "",
+            address: payload?.address || "",
+            state: db.business?.state || "Maharashtra",
+            gstin: payload?.gstin || "",
+            initialBalance: Number(payload?.initialBalance || payload?.balance || 0),
+            currentBalance: Number(payload?.initialBalance || payload?.balance || 0)
+          };
+          db.parties.push(party);
+          message = `${party.type === "supplier" ? "सप्लायर" : "ग्राहक"} '${party.name}' चे खाते डेटाबेसमध्ये सेव्ह केले आहे.`;
+        } else {
+          if (payload?.phone) party.phone = payload.phone;
+          if (payload?.address) party.address = payload.address;
+          message = `'${party.name}' चे खाते आधीच अस्तित्वात आहे (माहिती अपडेट केली).`;
+        }
+        resultData = party;
+        modified = true;
+      }
+    }
+
+    // 6. PARTY DELETE
+    else if (act.includes("DELETE_PARTY") || act.includes("PARTY_DELETE") || act.includes("DELETE_CUSTOMER") || act.includes("DELETE_SUPPLIER") || intent === "PARTY_DELETE") {
+      if (!db.parties) db.parties = [];
+      const targetName = (payload?.partyName || payload?.name || payload?.customerName || "").toLowerCase();
+      const idx = db.parties.findIndex((p: any) => (targetName && p.name.toLowerCase().includes(targetName)) || p.id === payload?.partyId);
+      if (idx !== -1) {
+        const removed = db.parties.splice(idx, 1)[0];
+        message = `'${removed.name}' चे खाते डेटाबेसमधून काढून टाकले.`;
+        resultData = removed;
+        modified = true;
+      }
+    }
+
+    // 7. EXPENSE RECORDING
+    else if (act.includes("ADD_EXPENSE") || act.includes("EXPENSE_ADD") || act.includes("CREATE_EXPENSE") || act.includes("RECORD_EXPENSE") || act.includes("TRANSACTION_ADD") || intent === "EXPENSE_ADD") {
+      if (!db.transactions) db.transactions = [];
+      const newTx = {
+        id: "tx_" + Date.now(),
+        date: new Date().toISOString().split("T")[0],
+        type: "expense" as const,
+        category: payload?.category || payload?.expenseCategory || "General Expense",
+        amount: Number(payload?.amount || payload?.expenseAmount || 0),
+        paymentType: payload?.paymentType === "bank" ? ("bank" as const) : ("cash" as const),
+        notes: payload?.notes || userText || "Munimji logged expense"
+      };
+      db.transactions.push(newTx);
+      message = `₹${newTx.amount} चा '${newTx.category}' खर्च डेटाबेसमध्ये नोंदवला आहे.`;
+      resultData = newTx;
+      modified = true;
+    }
+
+    // 8. QUOTATION CREATE
+    else if (act.includes("CREATE_QUOTATION") || act.includes("QUOTATION_CREATE") || intent === "QUOTATION_CREATE") {
+      if (!db.quotations) db.quotations = [];
+      const quoteNum = "QT-" + Date.now().toString().slice(-6);
+      const validUntil = new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0];
+      const items = (payload?.items || []).map((it: any) => ({
+        itemId: it.itemId || "item_" + Date.now(),
+        itemName: it.name || it.itemName || "Item",
+        hsn: it.hsn || "9999",
+        quantity: Number(it.quantity || 1),
+        unit: it.unit || "PCS",
+        price: Number(it.price || 0),
+        gstRate: 0,
+        amountBeforeTax: Number(it.price || 0) * Number(it.quantity || 1),
+        taxAmount: 0,
+        cgst: 0,
+        sgst: 0,
+        igst: 0,
+        totalAmount: Number(it.price || 0) * Number(it.quantity || 1)
+      }));
+      const totalAmount = items.reduce((s: number, i: any) => s + i.totalAmount, 0);
+
+      const quotation = {
+        id: "qt_" + Date.now(),
+        quotationNumber: quoteNum,
+        date: new Date().toISOString().split("T")[0],
+        validUntil,
+        partyId: payload?.partyId || "walkin_customer",
+        partyName: payload?.customerName || payload?.partyName || "ग्राहक (Customer)",
+        partyGstin: "",
+        items,
+        subtotal: totalAmount,
+        taxAmount: 0,
+        cgstTotal: 0,
+        sgstTotal: 0,
+        igstTotal: 0,
+        totalAmount,
+        status: "draft" as const,
+        notes: "Generated by Digital Munimji"
+      };
+      db.quotations.push(quotation);
+      message = `${quotation.partyName} साठी कोटेशन ${quoteNum} (₹${totalAmount}) तयार केले आहे.`;
+      resultData = quotation;
+      modified = true;
+    }
+
+    // 9. DELIVERY CHALLAN CREATE
+    else if (act.includes("CREATE_CHALLAN") || act.includes("CHALLAN_CREATE") || intent === "CHALLAN_CREATE") {
+      if (!db.challans) db.challans = [];
+      const chNum = "DC-" + Date.now().toString().slice(-6);
+      const items = (payload?.items || []).map((it: any) => ({
+        itemId: it.itemId || "item_" + Date.now(),
+        itemName: it.name || it.itemName || "Goods",
+        hsn: "9999",
+        quantity: Number(it.quantity || 1),
+        unit: it.unit || "PCS",
+        price: Number(it.price || 0),
+        gstRate: 0,
+        amountBeforeTax: 0,
+        taxAmount: 0,
+        totalAmount: 0
+      }));
+
+      const challan = {
+        id: "dc_" + Date.now(),
+        challanNumber: chNum,
+        date: new Date().toISOString().split("T")[0],
+        partyId: payload?.partyId || "walkin_customer",
+        partyName: payload?.partyName || "ग्राहक / पार्टी",
+        partyGstin: "",
+        purpose: "dispatch" as const,
+        items,
+        vehicleNumber: payload?.vehicleNumber || "MH 12 AB 1234",
+        subtotal: 0,
+        taxAmount: 0,
+        totalAmount: 0,
+        status: "pending" as const,
+        notes: "Generated by Digital Munimji"
+      };
+      db.challans.push(challan);
+      message = `${challan.partyName} साठी डिलिव्हरी चलन ${chNum} तयार केले आहे.`;
+      resultData = challan;
+      modified = true;
+    }
+
+    // 10. SALES INVOICE / BILL
+    else if (
+      act.includes("SALES_BILL") || act.includes("CREATE_SALES_INVOICE") || act.includes("CREATE_INVOICE") ||
+      act.includes("NEW_BILL") || act.includes("SALE_CREATE") || (intent === "SALES_BILL" && !act.includes("PURCHASE"))
+    ) {
       if (!db.invoices) db.invoices = [];
-      const invoice = payload as Invoice;
+      const invoice = (payload as Invoice) || {};
       if (!invoice.id) invoice.id = "inv_" + Date.now();
       if (!invoice.invoiceNumber) invoice.invoiceNumber = "INV-" + Date.now().toString().slice(-6);
       if (!invoice.date) invoice.date = new Date().toISOString().split("T")[0];
+      if (!invoice.partyId) invoice.partyId = "walkin_customer";
+      if (!invoice.partyName) invoice.partyName = "रोख ग्राहक (Cash Customer)";
+      invoice.type = "sales" as any;
 
-      // Update party ledger balance
-      if (invoice.partyId && db.parties && invoice.partyId !== "walkin_customer") {
-        const party = db.parties.find(p => p.id === invoice.partyId);
-        if (party) {
-          if (invoice.paymentType === "unpaid") {
-            party.currentBalance = (party.currentBalance || 0) + (invoice.remainingAmount || invoice.totalAmount || 0);
+      // Deduct stock
+      if (invoice.items && db.items) {
+        for (const line of invoice.items) {
+          const prod = db.items.find((it: any) => it.id === line.itemId || it.name.toLowerCase() === (line.itemName || "").toLowerCase());
+          if (prod) {
+            prod.stockQuantity = Math.max(0, (prod.stockQuantity || 0) - line.quantity);
           }
         }
       }
 
-      // Deduct stock for line items
+      // Update customer credit balance if unpaid
+      if (invoice.partyId && invoice.partyId !== "walkin_customer" && db.parties) {
+        const party = db.parties.find((p: any) => p.id === invoice.partyId);
+        if (party && invoice.paymentType === "unpaid") {
+          party.currentBalance = (party.currentBalance || 0) + (invoice.remainingAmount || invoice.totalAmount || 0);
+        }
+      }
+
+      db.invoices.push(invoice);
+      message = `सेल्स बिल ${invoice.invoiceNumber} (₹${invoice.totalAmount || 0}) यशस्वीरीत्या सेव्ह केले आहे.`;
+      resultData = invoice;
+      modified = true;
+    }
+
+    // 11. PURCHASE INVOICE / BILL
+    else if (act.includes("PURCHASE_BILL") || act.includes("CREATE_PURCHASE_INVOICE") || act.includes("RECORD_PURCHASE") || intent === "PURCHASE_BILL") {
+      if (!db.invoices) db.invoices = [];
+      const invoice = (payload as Invoice) || {};
+      if (!invoice.id) invoice.id = "inv_pur_" + Date.now();
+      if (!invoice.invoiceNumber) invoice.invoiceNumber = "PUR-" + Date.now().toString().slice(-6);
+      if (!invoice.date) invoice.date = new Date().toISOString().split("T")[0];
+      invoice.type = "purchase" as any;
+
+      // Add stock
       if (invoice.items && db.items) {
         for (const line of invoice.items) {
-          const product = db.items.find(it => it.id === line.itemId || it.name.toLowerCase() === line.itemName.toLowerCase());
-          if (product) {
-            product.stockQuantity = Math.max(0, (product.stockQuantity || 0) - line.quantity);
+          let prod = db.items.find((it: any) => it.id === line.itemId || it.name.toLowerCase() === (line.itemName || "").toLowerCase());
+          if (prod) {
+            prod.stockQuantity = (prod.stockQuantity || 0) + Number(line.quantity || 1);
+            if (line.price) prod.purchasePrice = Number(line.price);
+          } else {
+            db.items.push({
+              id: "item_" + Date.now(),
+              name: line.itemName || "Item",
+              hsn: line.hsn || "9999",
+              purchasePrice: Number(line.price || 0),
+              salePrice: Math.round(Number(line.price || 0) * 1.2),
+              stockQuantity: Number(line.quantity || 1),
+              minStockAlert: 5,
+              gstRate: line.gstRate || 0,
+              unit: line.unit || "PCS"
+            });
           }
         }
       }
 
       db.invoices.push(invoice);
-      writeDb(db);
-      performAutoBackup(db);
-
-      return res.json({ 
-        success: true, 
-        message: "सेल्स बिल यशस्वीरीत्या तयार करून सेव्ह केले आहे.",
-        invoice 
-      });
+      message = `खरेदी बिल ${invoice.invoiceNumber} (₹${invoice.totalAmount || 0}) नोंदवले आणि साठा अपडेट केला.`;
+      resultData = invoice;
+      modified = true;
     }
 
-    if (actionType === "ADD_ITEM" || actionType === "CREATE_ITEM") {
-      if (!db.items) db.items = [];
-      const itemName = payload.itemName || payload.name;
-      if (!itemName) {
-        return res.status(400).json({ error: "वस्तूचे नाव आवश्यक आहे." });
-      }
-
-      const existing = db.items.find(it => it.name.toLowerCase() === itemName.toLowerCase());
-      if (existing) {
-        if (payload.salePrice !== undefined) existing.salePrice = Number(payload.salePrice);
-        if (payload.purchasePrice !== undefined) existing.purchasePrice = Number(payload.purchasePrice);
-        if (payload.stockQuantity !== undefined || payload.stock !== undefined) {
-          existing.stockQuantity = Number(payload.stockQuantity ?? payload.stock);
-        }
-        writeDb(db);
-        performAutoBackup(db);
-        return res.json({
-          success: true,
-          message: `'${existing.name}' आधीपासून अस्तित्वात आहे, त्याचे दर/साठा अपडेट केले.`,
-          item: existing
-        });
-      }
-
-      const newItem = {
-        id: "item_" + Date.now(),
-        name: itemName,
-        hsn: payload.hsn || "9999",
-        purchasePrice: Number(payload.purchasePrice || 0),
-        salePrice: Number(payload.salePrice || 0),
-        stockQuantity: Number(payload.stockQuantity || payload.stock || 0),
-        minStockAlert: Number(payload.minStockAlert || 5),
-        gstRate: Number(payload.gstRate || 0),
-        unit: payload.unit || "PCS"
-      };
-
-      db.items.push(newItem);
+    if (modified) {
       writeDb(db);
       performAutoBackup(db);
-
-      return res.json({
-        success: true,
-        message: `'${newItem.name}' ही नवीन वस्तू इन्व्हेंटरी डेटाबेसमध्ये ॲड केली आहे.`,
-        item: newItem
-      });
+      console.info(`[Munimji Real Database CRUD] Successfully committed action: ${act}`);
+      return { success: true, message: message || "कृती यशस्वीरीत्या पूर्ण झाली!", data: resultData };
     }
 
-    if (actionType === "STOCK_UPDATE" || actionType === "UPDATE_STOCK") {
-      const { itemName, name, quantityChange, quantity, stock, operation } = payload || {};
-      const targetName = itemName || name;
-      const changeQty = quantityChange !== undefined ? quantityChange : (quantity !== undefined ? quantity : stock);
+    return { success: false, message: "कोणताही बदल झाला नाही." };
+  } catch (err: any) {
+    console.error("[Munimji Universal CRUD Error]:", err);
+    return { success: false, message: err?.message || "Failed to commit CRUD" };
+  }
+}
 
-      if (!targetName || changeQty === undefined) {
-        return res.status(400).json({ error: "Item name and quantity change are required." });
-      }
-
-      if (!db.items) db.items = [];
-      let item = db.items.find(it => it.name.toLowerCase().includes(targetName.toLowerCase()));
-      
-      if (!item) {
-        // Auto-create item if user is adding stock for new product
-        item = {
-          id: "item_" + Date.now(),
-          name: targetName,
-          hsn: "9999",
-          purchasePrice: Number(payload?.purchasePrice || 0),
-          salePrice: Number(payload?.salePrice || 0),
-          stockQuantity: Number(changeQty),
-          minStockAlert: 5,
-          gstRate: Number(payload?.gstRate || 0),
-          unit: payload?.unit || "PCS"
-        };
-        db.items.push(item);
-        writeDb(db);
-        performAutoBackup(db);
-
-        return res.json({
-          success: true,
-          message: `'${item.name}' ही वस्तू नवीन तयार करून तिचा साठा ${item.stockQuantity} ${item.unit} केला.`,
-          item
-        });
-      }
-
-      const prevStock = item.stockQuantity || 0;
-      if (operation === "SET") {
-        item.stockQuantity = Number(changeQty);
-      } else if (operation === "SUBTRACT") {
-        item.stockQuantity = Math.max(0, prevStock - Number(changeQty));
-      } else {
-        item.stockQuantity = prevStock + Number(changeQty);
-      }
-
-      writeDb(db);
-      performAutoBackup(db);
-
-      return res.json({
-        success: true,
-        message: `'${item.name}' चा साठा अपडेट केला. जुना साठा: ${prevStock}, नवीन साठा: ${item.stockQuantity} ${item.unit || "नग"}.`,
-        item
-      });
+// Execute approved action directly into database (Sales bill, stock update, price update, new items, parties, expenses)
+app.post("/api/munimji/execute-action", (req, res) => {
+  try {
+    const { actionType, payload } = req.body || {};
+    const result = executeMunimjiUniversalCrud(actionType, payload);
+    if (!result.success) {
+      return res.status(400).json({ error: result.message });
     }
-
-    if (actionType === "PRICE_UPDATE" || actionType === "UPDATE_PRICE") {
-      const { itemName, name, salePrice, purchasePrice } = payload || {};
-      const targetName = itemName || name;
-      const item = (db.items || []).find(it => it.name.toLowerCase().includes((targetName || "").toLowerCase()));
-      if (!item) {
-        return res.status(404).json({ error: `दुकानात '${targetName}' ही वस्तू सापडली नाही.` });
-      }
-
-      if (salePrice !== undefined) item.salePrice = Number(salePrice);
-      if (purchasePrice !== undefined) item.purchasePrice = Number(purchasePrice);
-
-      writeDb(db);
-      performAutoBackup(db);
-
-      return res.json({
-        success: true,
-        message: `'${item.name}' चे दर अपडेट केले. विक्री भाव: ₹${item.salePrice}, खरेदी भाव: ₹${item.purchasePrice}.`,
-        item
-      });
-    }
-
-    res.status(400).json({ error: "Unsupported action type." });
+    res.json({ success: true, message: result.message, ...result.data });
   } catch (err: any) {
     res.status(500).json({ error: err?.message || "Failed to execute Munimji action." });
   }

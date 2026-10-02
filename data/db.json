@@ -63,6 +63,39 @@
       "minStockAlert": 100,
       "gstRate": 5,
       "unit": "MTR"
+    },
+    {
+      "id": "item_1790861267866",
+      "name": "Premium Basmati Rice",
+      "hsn": "9999",
+      "purchasePrice": 90,
+      "salePrice": 120,
+      "stockQuantity": 52,
+      "minStockAlert": 5,
+      "gstRate": 0,
+      "unit": "KGS"
+    },
+    {
+      "id": "item_1790929265642",
+      "name": "फॉर्च्युन तेल ५ लिटर",
+      "hsn": "NA",
+      "purchasePrice": 120,
+      "salePrice": 150,
+      "stockQuantity": 25,
+      "minStockAlert": 5,
+      "gstRate": 0,
+      "unit": "PCS"
+    },
+    {
+      "id": "item_1790929269936",
+      "name": "Maggi Noodles",
+      "hsn": "9999",
+      "purchasePrice": 11,
+      "salePrice": 14,
+      "stockQuantity": 100,
+      "minStockAlert": 5,
+      "gstRate": 0,
+      "unit": "PCS"
     }
   ],
   "parties": [
@@ -99,6 +132,18 @@
       "address": "Shop No. 12, Central Arcade, MG Road, Bengaluru",
       "state": "Karnataka",
       "gstin": "29CCCBB4321A1ZE",
+      "initialBalance": 0,
+      "currentBalance": 0
+    },
+    {
+      "id": "party_1790929271901",
+      "name": "विजय कदम",
+      "type": "customer",
+      "phone": "9822123456",
+      "email": "",
+      "address": "Not Provided",
+      "state": "Maharashtra",
+      "gstin": "",
       "initialBalance": 0,
       "currentBalance": 0
     }
@@ -222,9 +267,56 @@
       "paidAmount": 0,
       "remainingAmount": 18880,
       "notes": "Stock procurement of cables."
+    },
+    {
+      "invoiceNumber": "INV-CASH-7891",
+      "date": "2026-10-01",
+      "partyId": "walkin_customer",
+      "partyName": "रोख ग्राहक (Cash Customer)",
+      "partyGstin": "",
+      "type": "sales",
+      "paymentType": "cash",
+      "items": [
+        {
+          "itemId": "item_1790861267866",
+          "itemName": "Premium Basmati Rice",
+          "hsn": "9999",
+          "quantity": 2,
+          "price": 120,
+          "discount": 0,
+          "gstRate": 0,
+          "amountBeforeTax": 240,
+          "taxAmount": 0,
+          "cgst": 0,
+          "sgst": 0,
+          "igst": 0,
+          "totalAmount": 240
+        }
+      ],
+      "subtotal": 240,
+      "taxAmount": 0,
+      "cgstTotal": 0,
+      "sgstTotal": 0,
+      "igstTotal": 0,
+      "extraCharges": [],
+      "grandTotal": 240,
+      "paidAmount": 240,
+      "remainingAmount": 0,
+      "notes": "Cash counter sale",
+      "id": "dn_1790861267900"
     }
   ],
-  "transactions": [],
+  "transactions": [
+    {
+      "id": "tx_1790929275211",
+      "date": "2026-10-02",
+      "type": "expense",
+      "category": "चहा नाश्ता",
+      "amount": 60,
+      "paymentType": "cash",
+      "notes": "दैनिक चहा नाश्ता खर्च"
+    }
+  ],
   "users": [
     {
       "username": "admin",
