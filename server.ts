@@ -1419,15 +1419,31 @@ app.post("/api/invoices", (req, res) => {
   
   // Apply new invoice stock deduction ONLY if NOT generated from a delivery challan (to avoid double deduction)
   if (!invoice.sourceChallanId) {
+    if (!db.items) db.items = [];
     invoice.items.forEach((invItem: any) => {
-      const dbItem = db.items.find(i => i.id === invItem.itemId);
+      let dbItem = db.items.find((i: any) => i.id === invItem.itemId || (invItem.itemName && i.name.toLowerCase() === invItem.itemName.toLowerCase()));
       if (dbItem) {
         if (invoice.type === "sale" || invoice.type === "purchase_return") {
-          dbItem.stockQuantity -= invItem.quantity;
+          dbItem.stockQuantity = Math.max(0, (dbItem.stockQuantity || 0) - invItem.quantity);
         } else {
           // "purchase" or "sale_return"
-          dbItem.stockQuantity += invItem.quantity;
+          dbItem.stockQuantity = (dbItem.stockQuantity || 0) + invItem.quantity;
         }
+      } else if (invItem.itemName && invItem.itemName.trim()) {
+        // Auto-register in db.items so inventory is ALWAYS in sync with sales
+        const autoNewItem = {
+          id: invItem.itemId && !invItem.itemId.startsWith("custom_") ? invItem.itemId : "item_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
+          name: invItem.itemName,
+          hsn: invItem.hsn || "9999",
+          purchasePrice: Math.round((invItem.price || 0) * 0.8),
+          salePrice: invItem.price || 0,
+          stockQuantity: invoice.type === "purchase" ? invItem.quantity : 0,
+          minStockAlert: 5,
+          gstRate: invItem.gstRate || 0,
+          unit: "PCS"
+        };
+        db.items.push(autoNewItem);
+        invItem.itemId = autoNewItem.id;
       }
     });
   } else {
@@ -2158,9 +2174,9 @@ function executeMunimjiUniversalCrud(
       // Fallback extraction from user command or reply if itemName was not cleanly in payload
       if (!itemName || typeof itemName !== "string" || itemName.trim().length < 2) {
         const textToSearch = userText || replyText || "";
-        const m = textToSearch.match(/(?:नवीन\s*(?:प्रॉडक्ट|वस्तू|आयटम|सामान)?\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो)?[:\-\s]*|add\s*(?:new\s*)?(?:product|item)[:\-\s]*|नया\s*(?:सामान|प्रोडक्ट)[:\-\s]*)([^,\n:0-9₹]+)/i);
+        const m = textToSearch.match(/(?:(?:नवीन|नया|add\s*new|add|create)?\s*(?:प्रॉडक्ट|वस्तू|आयटम|सामान|इन्व्हेंटरी|इन्व्हेंटरीमध्ये|स्टॉक|स्टॉकमध्ये|product|item)?\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो|जोड़ो)?[:\-\s]*)([^,\n:0-9₹]+)/i);
         if (m && m[1]) {
-          const rawName = m[1].split(/(?:विक्री|खरेदी|भाव|दर|किंमत|रेट|स्टॉक|साठा|price|rate|stock|cost|sale)/i)[0].trim();
+          const rawName = m[1].replace(/^(?:कृपया\s*)?(?:मला\s*)?(?:एक\s*)?(?:नवीन\s*)?(?:प्रॉडक्ट|वस्तू|आयटम|सामान|इन्व्हेंटरी|इन्व्हेंटरीमध्ये|स्टॉक)?\s*(?:ॲड\s*कर|जोडा|करा)?[:\-\s]*/i, "").split(/(?:विक्री|खरेदी|भाव|दर|किंमत|रेट|स्टॉक|साठा|price|rate|stock|cost|sale)/i)[0].trim();
           if (rawName.length >= 2) itemName = rawName;
         }
         if (!itemName) {
@@ -2169,7 +2185,7 @@ function executeMunimjiUniversalCrud(
         }
       }
 
-      if (!itemName) return { success: false, message: "वस्तूचे नाव आवश्यक आहे." };
+      if (!itemName || itemName.trim().length < 2) itemName = "नवीन वस्तू";
       itemName = String(itemName).replace(/^[:\-\s,]+|[:\-\s,]+$/g, "").trim();
 
       const salePrice = Number(payload?.salePrice ?? payload?.price ?? payload?.retailPrice ?? payload?.rate ?? payload?.sellingPrice ?? payload?.product?.salePrice ?? payload?.product?.price ?? 0);
@@ -2453,13 +2469,13 @@ function executeMunimjiUniversalCrud(
       act.includes("NEW_BILL") || act.includes("SALE_CREATE") || (intent === "SALES_BILL" && !act.includes("PURCHASE"))
     ) {
       if (!db.invoices) db.invoices = [];
-      const invoice = (payload as Invoice) || {};
+      const invoice: any = payload ? { ...payload } : {};
       if (!invoice.id) invoice.id = "inv_" + Date.now();
       if (!invoice.invoiceNumber) invoice.invoiceNumber = "INV-" + Date.now().toString().slice(-6);
       if (!invoice.date) invoice.date = new Date().toISOString().split("T")[0];
       if (!invoice.partyId) invoice.partyId = "walkin_customer";
       if (!invoice.partyName) invoice.partyName = "रोख ग्राहक (Cash Customer)";
-      invoice.type = "sales" as any;
+      invoice.type = "sales";
 
       // Deduct stock
       if (invoice.items && db.items) {
@@ -2479,7 +2495,7 @@ function executeMunimjiUniversalCrud(
         }
       }
 
-      db.invoices.push(invoice);
+      db.invoices.push(invoice as Invoice);
       message = `सेल्स बिल ${invoice.invoiceNumber} (₹${invoice.totalAmount || 0}) यशस्वीरीत्या सेव्ह केले आहे.`;
       resultData = invoice;
       modified = true;
@@ -2488,11 +2504,11 @@ function executeMunimjiUniversalCrud(
     // 11. PURCHASE INVOICE / BILL
     else if (act.includes("PURCHASE_BILL") || act.includes("CREATE_PURCHASE_INVOICE") || act.includes("RECORD_PURCHASE") || intent === "PURCHASE_BILL") {
       if (!db.invoices) db.invoices = [];
-      const invoice = (payload as Invoice) || {};
+      const invoice: any = payload ? { ...payload } : {};
       if (!invoice.id) invoice.id = "inv_pur_" + Date.now();
       if (!invoice.invoiceNumber) invoice.invoiceNumber = "PUR-" + Date.now().toString().slice(-6);
       if (!invoice.date) invoice.date = new Date().toISOString().split("T")[0];
-      invoice.type = "purchase" as any;
+      invoice.type = "purchase";
 
       // Add stock
       if (invoice.items && db.items) {
@@ -2517,7 +2533,7 @@ function executeMunimjiUniversalCrud(
         }
       }
 
-      db.invoices.push(invoice);
+      db.invoices.push(invoice as Invoice);
       message = `खरेदी बिल ${invoice.invoiceNumber} (₹${invoice.totalAmount || 0}) नोंदवले आणि साठा अपडेट केला.`;
       resultData = invoice;
       modified = true;

@@ -347,6 +347,12 @@ class MunimjiPoolManager {
     };
   }
 
+  public getActiveKeyEntry(): KeyEntry | null {
+    const now = Date.now();
+    return this.keys.find(k => k.active && (!k.cooldownUntil || k.cooldownUntil <= now)) ||
+      this.keys.find(k => k.active) || null;
+  }
+
   /**
    * Executes an operation with dual-tier fallback:
    * Key Pool (4 keys) × Model Matrix (3 models) = 12 total self-healing recovery tiers
@@ -585,38 +591,88 @@ export interface MunimjiCommandResponse {
  * Builds the database snapshot context to feed into Munimji's brain
  */
 export function buildDatabaseContext(db: DatabaseState): string {
-  const itemsSummary = (db.items || []).slice(0, 50).map(i => ({
+  const itemsSummary = (db.items || []).map(i => ({
     name: i.name,
     salePrice: i.salePrice,
     purchasePrice: i.purchasePrice,
     stock: i.stockQuantity,
     unit: i.unit,
-    gst: i.gstRate
+    lowStockAlert: i.stockQuantity <= (i.minStockAlert || 5)
   }));
 
-  const partiesSummary = (db.parties || []).slice(0, 30).map(p => ({
-    name: p.name,
-    type: p.type,
-    balance: p.currentBalance,
-    phone: p.phone
-  }));
-
-  const recentPurchases = (db.invoices || [])
-    .filter(inv => inv.type === "purchase")
-    .slice(-20)
-    .map(inv => ({
-      supplier: inv.partyName,
-      date: inv.date,
-      items: inv.items.map(it => ({ name: it.itemName, price: it.price, qty: it.quantity }))
+  const customerReceivables = (db.parties || [])
+    .filter(p => p.type === "customer" && (p.currentBalance || 0) > 0)
+    .map(p => ({
+      customerName: p.name,
+      pendingDuesThakbaki: p.currentBalance,
+      phone: p.phone
     }));
 
+  const totalCustomerReceivables = customerReceivables.reduce((s, c) => s + c.pendingDuesThakbaki, 0);
+
+  const supplierPayables = (db.parties || [])
+    .filter(p => p.type === "supplier" && (p.currentBalance || 0) > 0)
+    .map(p => ({
+      supplierName: p.name,
+      payableAmount: p.currentBalance,
+      phone: p.phone
+    }));
+
+  const totalSupplierPayables = supplierPayables.reduce((s, sp) => s + sp.payableAmount, 0);
+
+  const recentSalesInvoices = (db.invoices || [])
+    .filter(inv => inv.type === "sale")
+    .slice(-15)
+    .map(inv => ({
+      invoiceNumber: inv.invoiceNumber,
+      date: inv.date,
+      customerName: inv.partyName,
+      totalAmount: inv.totalAmount,
+      paidAmount: inv.paidAmount,
+      remainingPendingAmount: inv.remainingAmount,
+      paymentType: inv.paymentType,
+      items: (inv.items || []).map(it => ({ name: it.itemName, qty: it.quantity, price: it.price }))
+    }));
+
+  const unpaidPendingBills = (db.invoices || [])
+    .filter(inv => (inv.remainingAmount || 0) > 0)
+    .map(inv => ({
+      invoiceNumber: inv.invoiceNumber,
+      date: inv.date,
+      customerName: inv.partyName,
+      totalAmount: inv.totalAmount,
+      pendingAmount: inv.remainingAmount
+    }));
+
+  const latestInvoice = (db.invoices && db.invoices.length > 0)
+    ? db.invoices[db.invoices.length - 1]
+    : null;
+
   return `
-STORE CONTEXT:
+STORE CONTEXT (LIVE STORE DATA):
 Business Name: ${db.business?.name || "Local Store"}
 Total Products In Stock: ${(db.items || []).length}
-Items Sample: ${JSON.stringify(itemsSummary)}
-Customer & Supplier Parties Sample: ${JSON.stringify(partiesSummary)}
-Recent Purchases (Supplier History): ${JSON.stringify(recentPurchases)}
+All Store Products (Items, Stock & Rates): ${JSON.stringify(itemsSummary)}
+
+Customer Dues & Thakbaki (उधारी व थकबाकी):
+Total Customer Dues (एकूण थकबाकी येणे): ₹${totalCustomerReceivables}
+Customers with Pending Dues: ${JSON.stringify(customerReceivables)}
+
+Supplier Payables (देणी):
+Total Supplier Payables (एकूण सप्लायर देणे): ₹${totalSupplierPayables}
+Suppliers to Pay: ${JSON.stringify(supplierPayables)}
+
+Recent Sales Bills & Invoices (विक्री बिले):
+Latest Invoice (शेवटचे बिल): ${latestInvoice ? JSON.stringify({
+  invoiceNumber: latestInvoice.invoiceNumber,
+  date: latestInvoice.date,
+  customerName: latestInvoice.partyName,
+  totalAmount: latestInvoice.totalAmount,
+  paidAmount: latestInvoice.paidAmount,
+  remainingPendingAmount: latestInvoice.remainingAmount
+}) : "None"}
+All Unpaid / Pending Bills (पेंडिंग बिले): ${JSON.stringify(unpaidPendingBills)}
+Recent Invoices Sample: ${JSON.stringify(recentSalesInvoices)}
 `;
 }
 
@@ -836,17 +892,18 @@ export function enrichMunimjiResponseWithStoreData(
   ).toLowerCase();
 
   // Guard: NEVER treat as generic product list if the user or Munimji is performing an action (add item, update stock, bill, price change, etc.)
+  const intentStr = String(response.intent || "");
   const isActionCommand =
-    response.intent === "ITEM_ADD" ||
-    response.intent === "ADD_ITEM" ||
-    response.intent === "ADD_PRODUCT" ||
-    response.intent === "STOCK_UPDATE" ||
-    response.intent === "UPDATE_STOCK" ||
-    response.intent === "PRICE_UPDATE" ||
-    response.intent === "ITEM_DELETE" ||
-    response.intent === "SALES_BILL" ||
-    response.intent === "PARTY_ADD" ||
-    response.intent === "EXPENSE_ADD" ||
+    intentStr === "ITEM_ADD" ||
+    intentStr === "ADD_ITEM" ||
+    intentStr === "ADD_PRODUCT" ||
+    intentStr === "STOCK_UPDATE" ||
+    intentStr === "UPDATE_STOCK" ||
+    intentStr === "PRICE_UPDATE" ||
+    intentStr === "ITEM_DELETE" ||
+    intentStr === "SALES_BILL" ||
+    intentStr === "PARTY_ADD" ||
+    intentStr === "EXPENSE_ADD" ||
     Boolean(response.actionPayload?.action) ||
     Boolean(response.actionPayload?.productName) ||
     Boolean(response.actionPayload?.itemName) ||
@@ -861,7 +918,7 @@ export function enrichMunimjiResponseWithStoreData(
   if (isProductListQuery && dbState && Array.isArray(dbState.items)) {
     response.intent = "PRODUCT_LIST";
 
-    const allItems = dbState.items.map((i) => ({
+    const allItems = dbState.items.map((i: any) => ({
       id: i.id,
       name: i.name,
       salePrice: Number(i.salePrice || 0),
@@ -944,12 +1001,14 @@ Your responsibilities across all store modules:
 11. 'SALES_BILL': When user asks to bill/sell goods (e.g., "महेशला ५ किलो बासमती तांदूळ आणि २ लिटर तेल कॅशवर बिल कर").
    Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ name: string, quantity: number, price: number }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number }
 12. 'PURCHASE_BILL': When user enters incoming purchases from suppliers.
-13. 'PRICE_QUERY': When shopkeeper asks for product price (e.g., "साखरेचा काय भाव आहे?", "चिल्लर काय भाव देऊ?").
+13. 'PRICE_QUERY': When shopkeeper asks for product price or stock (e.g., "साखरेचा काय भाव आहे?", "चिल्लर काय भाव देऊ?", "बासमती तांदळाचा साठा किती आहे?", "साठा किती शिल्लक आहे?"). Look at 'All Store Products' in STORE CONTEXT and quote exact item name, available stock, unit, and price.
 14. 'SUPPLIER_COMPARISON': When user asks which supplier is cheaper (e.g., "फॉर्च्युन तेल कोणाकडून स्वस्त पडेल?").
 15. 'PRODUCT_LIST': When user asks to see product list or catalog (e.g., "प्रॉडक्टची लिस्ट दाखव", "वस्तूंची यादी दाखव", "स्टॉक दाखव").
 16. 'BUSINESS_AUDIT': When user asks where business is leaking ("कुठे पाणी मुरतंय?", "आजचा हिशोब").
 17. 'SYSTEM_SELF_TEST': When user asks to test software modules ("बिलिंग टेस्ट कर").
-18. 'GENERAL_CHAT': Polite, helpful conversation as a loyal Munimji.
+18. 'DUES_QUERY' / 'PARTY_LIST': When merchant asks who owes money or about pending balance/dues/thakbaki (e.g., "कोणाकडे किती थकबाकी आहे?", "उधारी कोणाची बाकी आहे?", "करणची किती थकबाकी आहे?"). You MUST look at 'Customer Dues & Thakbaki' in STORE CONTEXT. Quote the exact customer names, phone numbers, and ₹ pending amounts. If general, quote the total customer dues and list the customers with dues. Set intent: 'PARTY_LIST' and include 'party_list' displayCard.
+19. 'BILL_QUERY': When merchant asks about bill date, bill number, bill pending amount, recent bill, or unpaid bills (e.g., "शेवटच्या बिलाचा नंबर काय आहे?", "बिलाची तारीख काय आहे?", "बिलाची पेंडिंग अमाऊंट किती आहे?", "पेंडिंग बिले कोणती आहेत?"). Look at 'Recent Sales Bills & Invoices' and 'Latest Invoice' in STORE CONTEXT. Quote the exact invoice number (e.g. INV-...), bill date, customer name, total amount, paid amount, and remaining pending amount. Set intent: 'SALES_BILL' with 'mini_bill' displayCard.
+20. 'GENERAL_CHAT': Polite, helpful conversation as a loyal Munimji.
 
 DATABASE COMMIT ENFORCEMENT:
 When the merchant commands ANY create, update, or delete action (adding items, updating stock/price, adding parties, expenses, quotations, challans, or sales), YOU MUST ALWAYS POPULATE the 'actionPayload' with machine-readable fields so our persistent database commits the real changes instantly.
@@ -1067,7 +1126,24 @@ Always return a JSON object strictly conforming to this structure:
       };
     }
 
-    return fallbackLocalMunimjiProcessor(req, dbState);
+    const fallbackRes = fallbackLocalMunimjiProcessor(req, dbState);
+    try {
+      const activeKey = munimjiPool.getActiveKeyEntry();
+      if (activeKey && fallbackRes.replyText) {
+        const client = new GoogleGenAI({
+          apiKey: activeKey.key,
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+        });
+        const speech = await generateMunimjiSpeechAudio(client, fallbackRes.replyText, req.language);
+        if (speech) {
+          fallbackRes.audioBase64 = speech.audioBase64;
+          fallbackRes.audioMimeType = speech.mimeType;
+        }
+      }
+    } catch (ttsErr) {
+      console.warn("[Munimji Fallback TTS notice]:", ttsErr);
+    }
+    return fallbackRes;
   }
 }
 
@@ -1102,20 +1178,63 @@ function pcmToWav(pcmBase64: string, sampleRate = 24000, numChannels = 1, bitDep
 }
 
 /**
- * Generates natural human speech audio for Munimji's replyText.
- * By default, returns null so the desktop/browser native Indian Male SpeechSynthesis
- * engine speaks out immediately with zero latency and 100% reliable hardware output.
+ * Generates natural human male speech audio for Munimji's replyText using Gemini TTS.
+ * Speaks Marathi, Hindi, and English with an authentic Indian male business accent.
  */
 export async function generateMunimjiSpeechAudio(
-  _client: GoogleGenAI,
+  client: GoogleGenAI,
   textToSpeak: string,
   _language: "mr" | "hi" | "en" = "mr"
 ): Promise<{ audioBase64: string; mimeType: string } | null> {
   if (!textToSpeak || !textToSpeak.trim()) return null;
+
+  const cleanText = textToSpeak
+    .replace(/[*_#`~[\]()]/g, "")
+    .replace(/[✨⚡🎙️🤖📊✅❌📦🛒💰🧾📈📉💡⚠️]/gu, "")
+    .replace(/₹\s*([0-9,]+)/g, "$1 रुपये")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleanText.length < 2) return null;
+
+  try {
+    const res = await withTimeout(
+      client.models.generateContent({
+        model: "gemini-3.8-flash-lite-tts",
+        contents: cleanText.slice(0, 320),
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: "Fenrir" // Real deep natural human male voice
+              }
+            }
+          }
+        }
+      }),
+      8000,
+      "TTS generation timeout"
+    );
+
+    const part = res.candidates?.[0]?.content?.parts?.[0];
+    const pcmData = part?.inlineData?.data;
+    if (pcmData && pcmData.length > 50) {
+      const wavBase64 = pcmToWav(pcmData, 24000, 1, 16);
+      return {
+        audioBase64: wavBase64,
+        mimeType: "audio/wav"
+      };
+    }
+  } catch (err: any) {
+    console.warn("[Munimji Neural TTS notice]:", err?.message || err);
+  }
+
   return null;
 }
 
 /**
+ * /**
  * Intelligent Local Business Heuristic Fallback Engine
  * Guarantees 100% uptime for Marathi, Hindi, and English commands and handles real CRUD across all store modules
  */
@@ -1134,51 +1253,245 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
   };
   const normQuery = normalizeDigits(query);
 
-  // 1. ADD NEW ITEM / PRODUCT (नवीन प्रॉडक्ट / नवीन वस्तू / नवीन आयटम / नवीन स्टॉक / add product / new item / add item / नया सामान)
+  // =========================================================================
+  // 1. DUES & OUTSTANDING QUERY (कोणाकडे किती थकबाकी आहे / उधारी / बाकी पैसे)
+  // =========================================================================
+  const isDuesQuery =
+    query.includes("थकबाकी") ||
+    (query.includes("उधारी") && (query.includes("कोणा") || query.includes("बाकी") || query.includes("किती") || query.includes("यादी") || query.includes("लिस्ट") || query.includes("दाखव"))) ||
+    (query.includes("बाकी") && (query.includes("कोणा") || query.includes("पैसे") || query.includes("रक्कम") || query.includes("येणे") || query.includes("देणे") || query.includes("ग्राहक")));
+
+  if (isDuesQuery) {
+    // Check if user is asking about a specific person/party
+    const matchedParty = (db.parties || []).find(p =>
+      query.includes(p.name.toLowerCase()) ||
+      p.name.toLowerCase().split(' ').some(w => w.length > 2 && query.includes(w))
+    );
+
+    if (matchedParty) {
+      const balance = matchedParty.currentBalance || 0;
+      const isSup = matchedParty.type === "supplier";
+      const reply = balance > 0
+        ? (isSup
+          ? `मालक, सप्लायर '${matchedParty.name}' यांना आपल्याला देणे रक्कम ₹${balance.toLocaleString("en-IN")} बाकी आहे. संपर्क: ${matchedParty.phone || "उपलब्ध नाही"}.`
+          : `मालक, ग्राहक '${matchedParty.name}' यांच्याकडे एकूण थकबाकी (उधारी) ₹${balance.toLocaleString("en-IN")} बाकी आहे. संपर्क: ${matchedParty.phone || "उपलब्ध नाही"}.`)
+        : `मालक, '${matchedParty.name}' यांच्या खात्यावर कोणतीही बाकी किंवा थकबाकी नाही, खाते पूर्णपणे क्लिअर आहे.`;
+
+      return {
+        intent: "PARTY_LIST",
+        replyText: reply,
+        displayCards: [{
+          type: "party_list",
+          title: `खाते चौकशी: ${matchedParty.name}`,
+          data: {
+            parties: [{ name: matchedParty.name, phone: matchedParty.phone, balance, type: matchedParty.type }],
+            totalDues: balance
+          }
+        }]
+      };
+    }
+
+    // General Store Receivables / Dues Query (कोणाकडे किती थकबाकी आहे)
+    const customerDebtors = (db.parties || [])
+      .filter(p => p.type === "customer" && (p.currentBalance || 0) > 0)
+      .sort((a, b) => (b.currentBalance || 0) - (a.currentBalance || 0));
+
+    const totalCustomerDues = customerDebtors.reduce((sum, p) => sum + (p.currentBalance || 0), 0);
+
+    let replyText = "";
+    if (customerDebtors.length === 0) {
+      replyText = "मालक, आपल्या दुकानात सध्या कोणाकडेही थकबाकी किंवा उधारी बाकी नाही! सर्व ग्राहकांचे हिशोब पूर्ण आहेत.";
+    } else {
+      const topList = customerDebtors.slice(0, 3).map(p => `${p.name} (₹${(p.currentBalance || 0).toLocaleString("en-IN")})`).join(", ");
+      replyText = `मालक, आपल्याकडे सध्या एकूण ₹${totalCustomerDues.toLocaleString("en-IN")} थकबाकी बाकी आहे. प्रमुख उधारी: ${topList}. खालील यादीमध्ये सर्व ग्राहकांची थकबाकी दिलेली आहे.`;
+    }
+
+    return {
+      intent: "PARTY_LIST",
+      replyText,
+      displayCards: [{
+        type: "party_list",
+        title: "ग्राहक थकबाकी व उधारी यादी (Outstanding Receivables)",
+        data: {
+          parties: customerDebtors.map(p => ({ name: p.name, phone: p.phone, balance: p.currentBalance })),
+          totalDues: totalCustomerDues
+        }
+      }]
+    };
+  }
+
+  // =========================================================================
+  // 2. BILL / INVOICE QUERY (बिलाची तारीख, बिलाचा नंबर, बिलाची पेंडिंग अमाऊंट, शेवटचे बिल, पेंडिंग बिले)
+  // =========================================================================
+  const isBillInfoQuery =
+    (query.includes("बिल") || query.includes("invoice") || query.includes("पावती")) &&
+    (query.includes("तारीख") || query.includes("नंबर") || query.includes("क्रमांक") || query.includes("पेंडिंग") ||
+     query.includes("अमाऊंट") || query.includes("रक्कम") || query.includes("शेवट") || query.includes("आजचे") ||
+     query.includes("माहिती") || query.includes("काय आहे") || query.includes("किती आहे") || query.includes("कोणती"));
+
+  if (isBillInfoQuery) {
+    const allInvoices = db.invoices || [];
+
+    // Query A: Pending Unpaid Bills (पेंडिंग बिले / पेंडिंग अमाऊंट)
+    if (query.includes("पेंडिंग") || query.includes("बाकी")) {
+      const pendingBills = allInvoices.filter(i => (i.remainingAmount || 0) > 0);
+      const totalPending = pendingBills.reduce((s, i) => s + (i.remainingAmount || 0), 0);
+
+      if (pendingBills.length === 0) {
+        return {
+          intent: "SALES_BILL",
+          replyText: "मालक, आपल्या दुकानात सध्या एकही बिल पेंडिंग नाही. सर्व बिले रोख अथवा पूर्ण भरलेली आहेत!"
+        };
+      }
+
+      const firstBill = pendingBills[pendingBills.length - 1];
+      const reply = `मालक, सध्या एकूण ${pendingBills.length} बिले पेंडिंग आहेत, एकूण पेंडिंग रक्कम ₹${totalPending.toLocaleString("en-IN")} आहे. शेवटचे पेंडिंग बिल #${firstBill.invoiceNumber} (${firstBill.partyName}, तारीख: ${firstBill.date}, बाकी रक्कम: ₹${firstBill.remainingAmount}) चे आहे.`;
+
+      return {
+        intent: "SALES_BILL",
+        replyText: reply,
+        displayCards: [{
+          type: "mini_bill",
+          title: `पेंडिंग बिल: #${firstBill.invoiceNumber}`,
+          data: {
+            invoiceNumber: firstBill.invoiceNumber,
+            customerName: firstBill.partyName,
+            date: firstBill.date,
+            totalAmount: firstBill.totalAmount,
+            paidAmount: firstBill.paidAmount,
+            remainingAmount: firstBill.remainingAmount,
+            paymentMode: firstBill.paymentType
+          }
+        }]
+      };
+    }
+
+    // Query B: Latest / Specific Bill details (शेवटचे बिल / बिलाची तारीख / बिलाचा नंबर)
+    if (allInvoices.length > 0) {
+      const latestInv = allInvoices[allInvoices.length - 1];
+      const reply = `मालक, शेवटचे नोंदवलेले बिल क्रमांक '${latestInv.invoiceNumber}' आहे. हे बिल ग्राहक '${latestInv.partyName}' यांच्या नावे दिनांक ${latestInv.date} रोजी बनवले होते. बिलाची एकूण रक्कम ₹${latestInv.totalAmount || 0}, भरलेली रक्कम ₹${latestInv.paidAmount || 0} आणि पेंडिंग शिल्लक ₹${latestInv.remainingAmount || 0} आहे.`;
+
+      return {
+        intent: "SALES_BILL",
+        replyText: reply,
+        displayCards: [{
+          type: "mini_bill",
+          title: `बिल तपशील: ${latestInv.invoiceNumber}`,
+          data: {
+            invoiceNumber: latestInv.invoiceNumber,
+            customerName: latestInv.partyName,
+            date: latestInv.date,
+            totalAmount: latestInv.totalAmount,
+            paidAmount: latestInv.paidAmount,
+            remainingAmount: latestInv.remainingAmount,
+            paymentMode: latestInv.paymentType,
+            items: latestInv.items || []
+          }
+        }]
+      };
+    } else {
+      return {
+        intent: "SALES_BILL",
+        replyText: "मालक, सिस्टीममध्ये अजून एकही बिल नोंदवलेले नाही. तुम्ही नवीन ग्राहकाचे बिल बनवण्यास सांगू शकता!"
+      };
+    }
+  }
+
+  // =========================================================================
+  // 3. STOCK & ITEM QUERIES (साठा किती आहे / शिल्लक साठा / वस्तूचे नाव / दर काय आहे)
+  // =========================================================================
+  const isStockOrPriceQuestion =
+    (query.includes("साठा") || query.includes("स्टॉक") || query.includes("शिल्लक") || query.includes("उपलब्ध") || query.includes("भाव") || query.includes("दर") || query.includes("किंमत")) &&
+    (query.includes("काय") || query.includes("किती") || query.includes("दाखव") || query.includes("आहे") || query.includes("बघाय"));
+
+  if (isStockOrPriceQuestion) {
+    // Check if an item matches
+    let matchedItem = (db.items || []).find(it =>
+      query.includes(it.name.toLowerCase()) ||
+      it.name.toLowerCase().split(' ').some(w => w.length > 2 && query.includes(w))
+    );
+
+    if (matchedItem) {
+      return {
+        intent: "PRICE_QUERY",
+        replyText: `मालक, '${matchedItem.name}' चा उपलब्ध साठा ${matchedItem.stockQuantity} ${matchedItem.unit} आहे. विक्री भाव ₹${matchedItem.salePrice} आणि खरेदी भाव ₹${matchedItem.purchasePrice} आहे.`,
+        displayCards: [{
+          type: "stock_alert",
+          title: `${matchedItem.name} - साठा व दर तपशील`,
+          data: {
+            itemName: matchedItem.name,
+            salePrice: matchedItem.salePrice,
+            purchasePrice: matchedItem.purchasePrice,
+            stockQuantity: matchedItem.stockQuantity,
+            unit: matchedItem.unit
+          }
+        }]
+      };
+    }
+
+    // Check low stock query
+    if (query.includes("कमी") || query.includes("संपत") || query.includes("low")) {
+      const lowItems = (db.items || []).filter(i => i.stockQuantity <= (i.minStockAlert || 5));
+      if (lowItems.length === 0) {
+        return {
+          intent: "PRODUCT_LIST",
+          replyText: "मालक, आपल्या सर्व वस्तूंचा साठा पुरेसा आहे, कोणतीही वस्तू कमी साठ्यात नाही!"
+        };
+      }
+      const names = lowItems.slice(0, 4).map(i => `${i.name} (${i.stockQuantity} ${i.unit})`).join(", ");
+      return {
+        intent: "PRODUCT_LIST",
+        replyText: `मालक, एकूण ${lowItems.length} वस्तूंचा साठा संपत आला आहे: ${names}.`,
+        displayCards: [{
+          type: "product_list",
+          title: "कमी साठा असलेल्या वस्तू (Low Stock Alert)",
+          data: { totalCount: lowItems.length, items: lowItems }
+        }]
+      };
+    }
+  }
+
+  // =========================================================================
+  // 4. ADD NEW ITEM / PRODUCT (नवीन प्रॉडक्ट / नवीन वस्तू / नवीन इन्व्हेंटरी ॲड / add product)
+  // =========================================================================
   const isItemAdd =
-    (query.includes("नवीन") && (query.includes("प्रॉडक्ट") || query.includes("वस्तू") || query.includes("आयटम") || query.includes("सामान") || query.includes("माल") || query.includes("प्रोडक्ट") || query.includes("स्टॉक") || query.includes("साठा") || query.includes("item") || query.includes("product"))) ||
+    (query.includes("नवीन") && (query.includes("प्रॉडक्ट") || query.includes("वस्तू") || query.includes("आयटम") || query.includes("सामान") || query.includes("माल") || query.includes("प्रोडक्ट") || query.includes("स्टॉक") || query.includes("इन्व्हेंटरी") || query.includes("item") || query.includes("product"))) ||
     query.includes("add product") || query.includes("new product") || query.includes("add item") || query.includes("new item") || query.includes("create product") || query.includes("create item") ||
     query.includes("नया प्रोडक्ट") || query.includes("नया सामान") || query.includes("सामान जोड़ो") || query.includes("सामान ऐड") || query.includes("वस्तू जोडा") || query.includes("प्रॉडक्ट जोडा") || query.includes("आयटम जोडा") ||
-    query.includes("प्रॉडक्ट ॲड") || query.includes("आयटम ॲड") || query.includes("वस्तू ॲड") ||
+    query.includes("प्रॉडक्ट ॲड") || query.includes("आयटम ॲड") || query.includes("वस्तू ॲड") || query.includes("नवीन इन्व्हेंटरी") ||
     ((query.includes("ॲड कर") || query.includes("ऐड कर") || query.includes("जोडा") || query.includes("add")) && 
      (query.includes("भाव") || query.includes("दर") || query.includes("किंमत") || query.includes("रेट") || query.includes("रुपये") || query.includes("price") || query.includes("rate") || query.includes("stock") || query.includes("साठा")));
 
   if (isItemAdd) {
-    // Extract Item Name cleanly
     let cleanName = rawQuery
       .replace(/^(?:कृपया\s*)?(?:मला\s*)?(?:एक\s*)?/i, "")
-      .replace(/(?:नवीन\s*(?:प्रॉडक्ट|वस्तू|आयटम|सामान|प्रोडक्ट|माल|स्टॉक)?\s*(?:ॲड\s*कर|जोडा|करा|टाका|नोंदव|ऐड\s*करो|जोड़ो)?)[:\-\s]*/i, "")
+      .replace(/(?:नवीन\s*(?:प्रॉडक्ट|वस्तू|आयटम|सामान|प्रोडक्ट|माल|स्टॉक|इन्व्हेंटरी|इन्व्हेंटरीमध्ये|स्टॉकमध्ये)?\s*(?:ॲड\s*कर|जोडा|करा|टाका|नोंदव|ऐड\s*करो|जोड़ो)?)[:\-\s]*/i, "")
+      .replace(/(?:इन्व्हेंटरीमध्ये\s*(?:नवीन\s*)?(?:प्रॉडक्ट|वस्तू|आयटम)?\s*(?:ॲड\s*कर|जोडा|करा)?)/i, "")
       .replace(/(?:add\s*(?:new\s*)?(?:product|item)|new\s*(?:product|item)|create\s*(?:product|item))[:\-\s]*/i, "")
       .replace(/(?:नया\s*(?:सामान|प्रोडक्ट|आइटम)\s*(?:जोड़ो|ऐड\s*करो)?)[:\-\s]*/i, "");
 
-    // Split before price / rate / stock terms
     const namePart = cleanName.split(/(?:विक्री|खरेदी|भाव|दर|किंमत|रेट|स्टॉक|साठा|price|rate|stock|cost|sale|qty|quantity|₹)/i)[0].trim();
     let itemName = namePart.replace(/^[:\-\s,]+|[:\-\s,]+$/g, "");
     if (!itemName || itemName.length < 2) {
-      // Look for quoted string or explicit name
       const qMatch = rawQuery.match(/["'‘“]([^"'’”]+)["'’”]/);
       if (qMatch) itemName = qMatch[1].trim();
       else itemName = "नवीन वस्तू";
     }
 
-    // Extract Sale Price
     let salePrice = 0;
     const saleMatch = normQuery.match(/(?:विक्री\s*(?:भाव|दर|किंमत)?|भाव|दर|किंमत|रेट|sale\s*price|mrp|price|rate)\s*[:=]?\s*₹?\s*(\d+(?:\.\d+)?)/i);
     if (saleMatch) salePrice = parseFloat(saleMatch[1]);
 
-    // Extract Purchase / Cost Price
     let purchasePrice = 0;
     const purchaseMatch = normQuery.match(/(?:खरेदी\s*(?:भाव|दर|किंमत)?|cost|purchase\s*price|buy\s*price)\s*[:=]?\s*₹?\s*(\d+(?:\.\d+)?)/i);
     if (purchaseMatch) purchasePrice = parseFloat(purchaseMatch[1]);
     else if (salePrice > 0) purchasePrice = Math.round(salePrice * 0.85);
 
-    // Extract Stock
     let stockQuantity = 0;
     const stockMatch = normQuery.match(/(?:स्टॉक|साठा|संख्या|qty|stock|quantity)\s*[:=]?\s*(\d+(?:\.\d+)?)/i) ||
       normQuery.match(/(\d+)\s*(?:किलो|लिटर|नग|बॉक्स|units?|box|pcs|kg|kgs|ltr|litre|liter)/i);
     if (stockMatch) stockQuantity = parseFloat(stockMatch[1]);
 
-    // Extract Unit
     let unit = "PCS";
     if (query.includes("किलो") || query.includes("kg") || query.includes("kilogram")) unit = "KGS";
     else if (query.includes("लिटर") || query.includes("liter") || query.includes("litre") || query.includes("ltr")) unit = "LTR";
@@ -1224,14 +1537,16 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     };
   }
 
-  // 2. STOCK UPDATE (स्टॉक वाढव / कमी कर / साठा / खराब झाले / add stock / update stock)
+  // =========================================================================
+  // 5. STOCK UPDATE (स्टॉक वाढव / कमी कर / साठा बदल / add stock / update stock)
+  // =========================================================================
   const isStockUpdate =
     (query.includes("स्टॉक") || query.includes("साठा") || query.includes("stock")) &&
     (query.includes("वाढव") || query.includes("कमी") || query.includes("वजा") || query.includes("खराब") || query.includes("कर") || query.includes("update") || query.includes("add") || query.includes("set") || query.includes("बदल"));
 
   if (isStockUpdate) {
     let operation: "ADD" | "SUBTRACT" | "SET" = "ADD";
-    if (query.includes("कमी") || query.includes("वजा") || query.includes("खराब") || query.includes("घटाओ") || query.includes("reduce") || query.includes("sub")) {
+    if (query.includes("कमी") || query.includes("वजा") || query.includes("खराब") || query.includes("reduce") || query.includes("sub")) {
       operation = "SUBTRACT";
     } else if (query.includes("सेट") || query.includes("फिक्स") || query.includes("set to") || query.includes("करून टाक")) {
       operation = "SET";
@@ -1251,38 +1566,22 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     const newStock = operation === "SET" ? qty : operation === "SUBTRACT" ? Math.max(0, currentStock - qty) : currentStock + qty;
 
     let replyText = `मालक, '${itemName}' चा साठा अपडेट केला आहे. जुना साठा ${currentStock} होता, आता नवीन साठा ${newStock} ${matchedItem?.unit || "नग"} झाला आहे.`;
-    if (lang === "hi") {
-      replyText = `सेठजी, '${itemName}' का स्टॉक अपडेट कर दिया गया है। पुराना स्टॉक ${currentStock} था, अब नया स्टॉक ${newStock} ${matchedItem?.unit || "नग"} है।`;
-    } else if (lang === "en") {
-      replyText = `Sir, updated stock for '${itemName}'. Previous stock was ${currentStock}, now updated to ${newStock} ${matchedItem?.unit || "PCS"}.`;
-    }
 
     return {
       intent: "STOCK_UPDATE",
       replyText,
-      displayCards: [
-        {
-          type: "stock_alert",
-          title: `साठा अपडेट: ${itemName}`,
-          data: {
-            itemName,
-            quantityChange: qty,
-            operation,
-            previousStock: currentStock,
-            newStock
-          }
-        }
-      ],
-      actionPayload: {
-        action: "STOCK_UPDATE",
-        itemName,
-        quantityChange: qty,
-        operation
-      }
+      displayCards: [{
+        type: "stock_alert",
+        title: `साठा अपडेट: ${itemName}`,
+        data: { itemName, quantityChange: qty, operation, previousStock: currentStock, newStock }
+      }],
+      actionPayload: { action: "STOCK_UPDATE", itemName, quantityChange: qty, operation }
     };
   }
 
-  // 3. PRICE UPDATE (भाव कर / दर बदल / किंमत बदल / update price / change price)
+  // =========================================================================
+  // 6. PRICE UPDATE (भाव कर / दर बदल / change price / update price)
+  // =========================================================================
   const isPriceUpdate =
     (query.includes("भाव") || query.includes("दर") || query.includes("किंमत") || query.includes("price") || query.includes("rate")) &&
     (query.includes("कर") || query.includes("बदल") || query.includes("change") || query.includes("update") || query.includes("set")) &&
@@ -1300,36 +1599,24 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
 
     const itemName = matchedItem ? matchedItem.name : "वस्तू";
     let replyText = `मालक, '${itemName}' चा नवीन विक्री भाव ₹${newPrice} सेट केला आहे.`;
-    if (lang === "hi") {
-      replyText = `सेठजी, '${itemName}' का नया बिक्री दर ₹${newPrice} अपडेट कर दिया गया है।`;
-    } else if (lang === "en") {
-      replyText = `Sir, updated the selling price for '${itemName}' to ₹${newPrice}.`;
-    }
 
     return {
       intent: "PRICE_UPDATE",
       replyText,
-      displayCards: [
-        {
-          type: "price_guide",
-          title: `दर अपडेट: ${itemName}`,
-          data: { itemName, newSalePrice: newPrice }
-        }
-      ],
-      actionPayload: {
-        action: "PRICE_UPDATE",
-        itemName,
-        salePrice: newPrice
-      }
+      displayCards: [{
+        type: "price_guide",
+        title: `दर अपडेट: ${itemName}`,
+        data: { itemName, newSalePrice: newPrice }
+      }],
+      actionPayload: { action: "PRICE_UPDATE", itemName, salePrice: newPrice }
     };
   }
 
-  // 4. ITEM DELETE (आयटम डिलीट / वस्तू काढून टाक / delete item / remove product)
-  const isItemDelete =
-    (query.includes("डिलीट") || query.includes("काढून टाक") || query.includes("delete") || query.includes("remove")) &&
-    (query.includes("आयटम") || query.includes("वस्तू") || query.includes("प्रॉडक्ट") || query.includes("item") || query.includes("product"));
-
-  if (isItemDelete) {
+  // =========================================================================
+  // 7. ITEM DELETE (आयटम डिलीट / वस्तू काढून टाक / delete item)
+  // =========================================================================
+  if ((query.includes("डिलीट") || query.includes("काढून टाक") || query.includes("delete") || query.includes("remove")) &&
+      (query.includes("आयटम") || query.includes("वस्तू") || query.includes("प्रॉडक्ट") || query.includes("item"))) {
     let matchedItem = (db.items || []).find(it =>
       query.includes(it.name.toLowerCase()) ||
       it.name.toLowerCase().split(' ').some(w => w.length > 2 && query.includes(w))
@@ -1339,19 +1626,15 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     return {
       intent: "ITEM_DELETE",
       replyText: `मालक, '${itemName}' ही वस्तू इन्व्हेंटरीमधून काढून टाकली (डिलीट केली) आहे.`,
-      actionPayload: {
-        action: "ITEM_DELETE",
-        itemName
-      }
+      actionPayload: { action: "ITEM_DELETE", itemName }
     };
   }
 
-  // 5. PARTY ADD (नवीन ग्राहक / नवीन पार्टी / नवीन सप्लायर / add customer / add party / add supplier)
-  const isPartyAdd =
-    (query.includes("नवीन") || query.includes("add") || query.includes("नया") || query.includes("जोडा")) &&
-    (query.includes("ग्राहक") || query.includes("पार्टी") || query.includes("सप्लायर") || query.includes("कस्टमर") || query.includes("customer") || query.includes("party") || query.includes("supplier") || query.includes("vendor"));
-
-  if (isPartyAdd) {
+  // =========================================================================
+  // 8. PARTY ADD (नवीन ग्राहक / नवीन सप्लायर / add customer / add supplier)
+  // =========================================================================
+  if ((query.includes("नवीन") || query.includes("add") || query.includes("जोडा")) &&
+      (query.includes("ग्राहक") || query.includes("पार्टी") || query.includes("सप्लायर") || query.includes("कस्टमर") || query.includes("customer") || query.includes("supplier"))) {
     const isSupplier = query.includes("सप्लायर") || query.includes("supplier") || query.includes("vendor");
     let phone = "";
     const phoneMatch = normQuery.match(/\b\d{10}\b/);
@@ -1360,29 +1643,21 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     let partyName = rawQuery
       .replace(/नवीन\s*(ग्राहक|पार्टी|सप्लायर|कस्टमर)\s*(ॲड\s*कर|जोडा|करा)?[:\-\s]*/i, "")
       .replace(/(add\s*(new\s*)?(customer|party|supplier)|new\s*(customer|party|supplier))[:\-\s]*/i, "")
-      .replace(/(नया\s*(ग्राहक|सप्लायर|पार्टी)\s*(जोड़ो)?)[:\-\s]*/i, "")
       .replace(/फोन.*|\d{10}.*/i, "")
       .trim();
 
     if (!partyName || partyName.length < 2) partyName = isSupplier ? "नवीन सप्लायर" : "नवीन ग्राहक";
 
     let replyText = `मालक, ${isSupplier ? "सप्लायर" : "ग्राहक"} '${partyName}' चे खाते डेटाबेसमध्ये ॲड केले आहे.${phone ? ` संपर्क: ${phone}` : ""}`;
-    if (lang === "hi") {
-      replyText = `सेठजी, ${isSupplier ? "सप्लायर" : "ग्राहक"} '${partyName}' का खाता डेटाबेस में जोड़ दिया गया है।`;
-    } else if (lang === "en") {
-      replyText = `Sir, added ${isSupplier ? "Supplier" : "Customer"} '${partyName}' to your business directory.`;
-    }
 
     return {
       intent: "PARTY_ADD",
       replyText,
-      displayCards: [
-        {
-          type: "party_list",
-          title: `नवीन खाते: ${partyName}`,
-          data: { partyName, type: isSupplier ? "supplier" : "customer", phone }
-        }
-      ],
+      displayCards: [{
+        type: "party_list",
+        title: `नवीन खाते: ${partyName}`,
+        data: { partyName, type: isSupplier ? "supplier" : "customer", phone }
+      }],
       actionPayload: {
         action: "ADD_PARTY",
         partyName,
@@ -1394,118 +1669,29 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     };
   }
 
-  // 6. PARTY LIST (ग्राहकांची यादी / सप्लायरची यादी / उधारी कोणाकडे / customer list / suppliers)
+  // =========================================================================
+  // 9. PARTY LIST (ग्राहकांची यादी / सप्लायरची यादी / customer list / suppliers)
+  // =========================================================================
   if ((query.includes("ग्राहक") || query.includes("सप्लायर") || query.includes("पार्टी") || query.includes("customer") || query.includes("supplier")) &&
-      (query.includes("यादी") || query.includes("लिस्ट") || query.includes("list") || query.includes("उधारी") || query.includes("बाकी") || query.includes("balance") || query.includes("दाखव"))) {
+      (query.includes("यादी") || query.includes("लिस्ट") || query.includes("list") || query.includes("दाखव"))) {
     const isSup = query.includes("सप्लायर") || query.includes("supplier");
     const parties = (db.parties || []).filter(p => isSup ? p.type === "supplier" : p.type === "customer");
     const totalDues = parties.reduce((sum, p) => sum + (p.currentBalance || 0), 0);
 
-    let replyText = `मालक, आपल्याकडे एकूण ${parties.length} ${isSup ? "सप्लायर्स" : "ग्राहक"} नोंदणीकृत आहेत. एकूण बाकी रक्कम ₹${totalDues.toLocaleString("en-IN")} आहे.`;
-
     return {
       intent: "PARTY_LIST",
-      replyText,
-      displayCards: [
-        {
-          type: "party_list",
-          title: isSup ? "सप्लायर यादी" : "ग्राहक व उधारी यादी",
-          data: {
-            parties: parties.slice(0, 15).map(p => ({ name: p.name, phone: p.phone, balance: p.currentBalance })),
-            totalDues
-          }
-        }
-      ]
+      replyText: `मालक, आपल्याकडे एकूण ${parties.length} ${isSup ? "सप्लायर्स" : "ग्राहक"} नोंदणीकृत आहेत. एकूण बाकी रक्कम ₹${totalDues.toLocaleString("en-IN")} आहे.`,
+      displayCards: [{
+        type: "party_list",
+        title: isSup ? "सप्लायर यादी" : "ग्राहक व उधारी यादी",
+        data: { parties: parties.slice(0, 15).map(p => ({ name: p.name, phone: p.phone, balance: p.currentBalance })), totalDues }
+      }]
     };
   }
 
-  // 7. EXPENSE RECORDING (खर्च नोंदव / खर्च टाका / खर्च झाला / record expense / add expense)
-  if (query.includes("खर्च") || query.includes("expense") || query.includes("लाईट बिल") || query.includes("भाडे भरले") || query.includes("पगार दिला")) {
-    let amount = 0;
-    const amtMatch = normQuery.match(/(?:₹|रु|रुपये|rs\.?)?\s*(\d+(?:\.\d+)?)/i);
-    if (amtMatch) amount = parseFloat(amtMatch[1]);
-
-    let category = "General Expense";
-    if (query.includes("चहा") || query.includes("नाश्ता") || query.includes("tea")) category = "Tea & Snacks";
-    else if (query.includes("लाईट") || query.includes("electricity") || query.includes("वीज")) category = "Electricity";
-    else if (query.includes("भाडे") || query.includes("rent")) category = "Rent";
-    else if (query.includes("पगार") || query.includes("salary")) category = "Salary";
-    else if (query.includes("गाडी") || query.includes("पेट्रोल") || query.includes("transport")) category = "Transport";
-
-    let replyText = `मालक, ₹${amount} चा '${category}' खर्च डेटाबेसमध्ये यशस्वीरीत्या नोंदवला आहे.`;
-    if (lang === "hi") {
-      replyText = `सेठजी, ₹${amount} का '${category}' खर्च रिकॉर्ड कर लिया गया है।`;
-    } else if (lang === "en") {
-      replyText = `Sir, recorded expense of ₹${amount} under '${category}'.`;
-    }
-
-    return {
-      intent: "EXPENSE_ADD",
-      replyText,
-      actionPayload: {
-        action: "ADD_EXPENSE",
-        category,
-        amount,
-        paymentType: query.includes("बँक") || query.includes("bank") ? "bank" : "cash",
-        notes: rawQuery
-      }
-    };
-  }
-
-  // 8. QUOTATION CREATE (कोटेशन बनव / कोटेशन तयार कर / create quotation / estimate)
-  if (query.includes("कोटेशन") || query.includes("quotation") || query.includes("estimate") || query.includes("अंदाजपत्रक")) {
-    let customerName = "ग्राहक (Customer)";
-    for (const p of db.parties || []) {
-      if (query.includes(p.name.toLowerCase())) {
-        customerName = p.name;
-        break;
-      }
-    }
-
-    let items = (db.items || []).slice(0, 3).map(it => ({
-      name: it.name,
-      quantity: 1,
-      price: it.salePrice,
-      total: it.salePrice
-    }));
-
-    return {
-      intent: "QUOTATION_CREATE",
-      replyText: `मालक, ${customerName} साठी अधिकृत कोटेशन ड्राफ्ट तयार केले आहे. खात्री करून सेव्ह करा.`,
-      actionPayload: {
-        action: "CREATE_QUOTATION",
-        customerName,
-        items
-      }
-    };
-  }
-
-  // 9. CHALLAN CREATE (डिलिव्हरी चलन / चलन तयार कर / delivery challan / dispatch)
-  if (query.includes("चलन") || query.includes("challan") || query.includes("डिलिव्हरी")) {
-    let partyName = "ग्राहक / पार्टी";
-    for (const p of db.parties || []) {
-      if (query.includes(p.name.toLowerCase())) {
-        partyName = p.name;
-        break;
-      }
-    }
-
-    const vehMatch = rawQuery.match(/[A-Z]{2}\s*\d{2}\s*[A-Z]{1,2}\s*\d{4}/i);
-    const vehicleNumber = vehMatch ? vehMatch[0].toUpperCase() : "MH 12 AB 1234";
-
-    return {
-      intent: "CHALLAN_CREATE",
-      replyText: `मालक, ${partyName} साठी वाहन क्रमांक ${vehicleNumber} सह डिलिव्हरी चलन तयार केले आहे.`,
-      actionPayload: {
-        action: "CREATE_CHALLAN",
-        partyName,
-        vehicleNumber,
-        items: (db.items || []).slice(0, 2).map(i => ({ name: i.name, quantity: 10, unit: i.unit }))
-      }
-    };
-  }
-
-  // 10. PRODUCT LIST (प्रॉडक्ट लिस्ट / वस्तूंची यादी / catalog / सामान दिखाओ / show products / स्टॉक दाखव)
+  // =========================================================================
+  // 10. PRODUCT LIST (प्रॉडक्ट लिस्ट / वस्तूंची यादी / catalog / स्टॉक दाखव)
+  // =========================================================================
   if ((query.includes("प्रॉडक्ट") || query.includes("वस्तू") || query.includes("सामान") || query.includes("आयटम") || query.includes("माल") || query.includes("product") || query.includes("stock")) &&
       (query.includes("यादी") || query.includes("लिस्ट") || query.includes("दाखव") || query.includes("कॅटलॉग") || query.includes("list") || query.includes("catalog") || query.includes("show"))) {
     const totalCount = (db.items || []).length;
@@ -1514,24 +1700,20 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     return {
       intent: "PRODUCT_LIST",
       replyText: `मालक, दुकानाच्या डेटाबेसमधील सर्व ${totalCount} वस्तूंची यादी समोर आणली आहे. दुकानातील एकूण साठ्याचे मूल्य अंदाजे ₹${totalStockValue.toLocaleString("en-IN")} आहे.`,
-      displayCards: [
-        {
-          type: "product_list",
-          title: "दुकानातील सर्व वस्तूंची थेट यादी (Live Store Catalog)",
-          data: {
-            totalCount,
-            totalStockValue,
-            items: db.items || []
-          }
-        }
-      ]
+      displayCards: [{
+        type: "product_list",
+        title: "दुकानातील सर्व वस्तूंची थेट यादी (Live Store Catalog)",
+        data: { totalCount, totalStockValue, items: db.items || [] }
+      }]
     };
   }
 
-  // 11. SALES BILL (बिल / विक्री / सेल / पावती / bill / invoice / sale)
-  if (query.includes("बिल") || query.includes("invoice") || query.includes("पावती") || query.includes("विक्री") || query.includes("sale") || query.includes("उधारी") || query.includes("रोख") || query.includes("cash") || query.includes("credit") || query.includes("bill")) {
+  // =========================================================================
+  // 11. SALES BILL CREATION (बिल कर / विक्री नोंदव / bill / sale)
+  // =========================================================================
+  if (query.includes("बिल") || query.includes("invoice") || query.includes("पावती") || query.includes("विक्री") || query.includes("sale")) {
     const isCredit = query.includes("उधारी") || query.includes("credit") || query.includes("unpaid");
-    let customerName = lang === "en" ? "Cash Customer" : (lang === "hi" ? "नकद ग्राहक (Cash Sale)" : "रोख ग्राहक (Cash Sale)");
+    let customerName = lang === "en" ? "Cash Customer" : "रोख ग्राहक (Cash Sale)";
     for (const p of db.parties || []) {
       if (query.includes(p.name.toLowerCase())) {
         customerName = p.name;
@@ -1555,18 +1737,16 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     return {
       intent: "SALES_BILL",
       replyText: `मालक, ${customerName} साठी ${qty} नग '${itemName}' चे ₹${totalAmount} चे ${isCredit ? "उधारी" : "रोख"} बिल तयार केले आहे.`,
-      displayCards: [
-        {
-          type: "mini_bill",
-          title: `विक्री बिल: ${customerName}`,
-          data: {
-            customerName,
-            paymentMode: isCredit ? "unpaid" : "cash",
-            items: [{ itemId: billItem?.id || "item_custom", name: itemName, quantity: qty, unit: billItem?.unit || "PCS", price: unitPrice, total: totalAmount }],
-            totalAmount
-          }
+      displayCards: [{
+        type: "mini_bill",
+        title: `विक्री बिल: ${customerName}`,
+        data: {
+          customerName,
+          paymentMode: isCredit ? "unpaid" : "cash",
+          items: [{ itemId: billItem?.id || "item_custom", name: itemName, quantity: qty, unit: billItem?.unit || "PCS", price: unitPrice, total: totalAmount }],
+          totalAmount
         }
-      ],
+      }],
       actionPayload: {
         action: "CREATE_SALES_INVOICE",
         customerName,
@@ -1577,76 +1757,30 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     };
   }
 
-  // 12. PRICE QUERY
-  if (query.includes("भाव") || query.includes("दर") || query.includes("किंमत") || query.includes("price") || query.includes("rate")) {
-    let matchedItem = (db.items || []).find(it =>
-      query.includes(it.name.toLowerCase()) ||
-      it.name.toLowerCase().split(' ').some(w => w.length > 2 && query.includes(w))
-    );
+  // =========================================================================
+  // 12. EXPENSE RECORDING
+  // =========================================================================
+  if (query.includes("खर्च") || query.includes("expense") || query.includes("भाडे") || query.includes("पगार")) {
+    let amount = 0;
+    const amtMatch = normQuery.match(/(?:₹|रु|रुपये|rs\.?)?\s*(\d+(?:\.\d+)?)/i);
+    if (amtMatch) amount = parseFloat(amtMatch[1]);
 
-    if (matchedItem) {
-      const wholesalePrice = Math.round(matchedItem.salePrice * 0.92);
-      const bottomLinePrice = Math.round(matchedItem.purchasePrice * 1.06);
-      return {
-        intent: "PRICE_QUERY",
-        replyText: `मालक, '${matchedItem.name}' चा विक्री भाव ₹${matchedItem.salePrice} आहे, खरेदी भाव ₹${matchedItem.purchasePrice} असून साठा ${matchedItem.stockQuantity} ${matchedItem.unit} आहे.`,
-        displayCards: [
-          {
-            type: "price_guide",
-            title: `${matchedItem.name} - दर माहिती`,
-            data: {
-              itemName: matchedItem.name,
-              stockOnHand: matchedItem.stockQuantity,
-              unit: matchedItem.unit,
-              retailPrice: matchedItem.salePrice,
-              wholesalePrice,
-              purchasePrice: matchedItem.purchasePrice,
-              bottomLinePrice
-            }
-          }
-        ]
-      };
-    }
-  }
-
-  // 13. SYSTEM SELF-TEST
-  if (query.includes("टेस्ट") || query.includes("test") || query.includes("तपासणी") || query.includes("चालतंय का")) {
-    return {
-      intent: "SYSTEM_SELF_TEST",
-      replyText: "मालक, बिलिंग, जीएसटी कॅल्क्युलेटर, स्टॉक डेटाबेस आणि स्पीकर सर्व सिस्टीम १००% अचूक आणि सुरक्षित कार्यरत आहेत!",
-      displayCards: [{
-        type: "test_report",
-        title: "मुनीमजी सिस्टीम सेल्फ-टेस्ट रिपोर्ट",
-        data: {
-          points: [
-            "इन्व्हेंटरी व स्टॉक CRUD: रिअल-टाइम डेटाबेस सेव्ह सक्रिय आहे.",
-            "बिलिंग व जीएसटी: अचूक कर विभाजन व पावती निर्मिती सज्ज आहे.",
-            "स्पिकर व व्हॉइस: भारतीय पुरुषी आवाज सिस्टीम सक्रिय आहे.",
-            "डेटाबेस सुरक्षितता: लोकल सुरक्षित डेटा सेव्ह."
-          ]
-        }
-      }]
-    };
-  }
-
-  // 14. BUSINESS AUDIT
-  if (query.includes("पाणी") || query.includes("मुरतंय") || query.includes("हिशोब") || query.includes("audit") || query.includes("leakage")) {
-    const unpaid = (db.invoices || []).filter(i => i.paymentType === "unpaid").reduce((s, i) => s + (i.remainingAmount || i.totalAmount || 0), 0);
-    const lowStock = (db.items || []).filter(i => i.stockQuantity <= i.minStockAlert).length;
+    let category = "General Expense";
+    if (query.includes("चहा") || query.includes("नाश्ता")) category = "Tea & Snacks";
+    else if (query.includes("लाईट") || query.includes("वीज")) category = "Electricity";
+    else if (query.includes("भाडे")) category = "Rent";
+    else if (query.includes("पगार")) category = "Salary";
 
     return {
-      intent: "BUSINESS_AUDIT",
-      replyText: `मालक, व्यवसायाची तपासणी केली: एकूण ₹${unpaid.toLocaleString("en-IN")} उधारी थकबाकी आहे, आणि ${lowStock} वस्तूंचा साठा संपत आला आहे.`,
-      displayCards: [{
-        type: "leakage_report",
-        title: "व्यवसाय तपासणी अहवाल",
-        data: {
-          points: [
-            `अडकलेली उधारी: एकूण ₹${unpaid.toLocaleString("en-IN")}.`,
-            `कमी साठा: ${lowStock} वस्तूंची पुनर्नोंदणी आवश्यक.`
-          ]
-        }
-      }]
+      intent: "EXPENSE_ADD",
+      replyText: `मालक, ₹${amount} चा '${category}' खर्च डेटाबेसमध्ये यशस्वीरीत्या नोंदवला आहे.`,
+      actionPayload: {
+        action: "ADD_EXPENSE",
+        category,
+        amount,
+        paymentType: query.includes("बँक") ? "bank" : "cash",
+        notes: rawQuery
+      }
     };
   }
 
@@ -1654,6 +1788,6 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
   const bName = db.business?.name || "दुकान";
   return {
     intent: "GENERAL_CHAT",
-    replyText: `राम राम मालक! मी '${bName}' चा डिजिटल मुनीमजी आहे. सांगा काय सेवा करू? तुम्ही नवीन प्रॉडक्ट ॲड करायला सांगू शकता, साठा वाढवू शकता, ग्राहक नोंदवू शकता किंवा थेट बिल करू शकता!`
+    replyText: `राम राम मालक! मी '${bName}' चा डिजिटल मुनीमजी आहे. सांगा काय सेवा करू? तुम्ही कोणाची किती थकबाकी आहे विचारू शकता, साठा किंवा दर विचारू शकता, शेवटच्या बिलाची तारीख किंवा पेंडिंग बिले तपासू शकता किंवा नवीन वस्तू ॲड करू शकता!`
   };
 }

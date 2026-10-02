@@ -61,6 +61,9 @@ interface InvoicingViewProps {
 
 interface InvoiceLine {
   itemId: string;
+  itemName?: string;
+  hsn?: string;
+  unit?: string;
   quantity: number;
   customPrice: number;
   discount: number;
@@ -458,6 +461,8 @@ export default function InvoicingView({
 
           return {
             itemId: item.itemId,
+            itemName: item.itemName,
+            hsn: item.hsn,
             quantity: item.quantity,
             customPrice: item.price,
             discount: discVal,
@@ -564,8 +569,12 @@ export default function InvoicingView({
     let totalDiscountGiven = 0;
 
     const formattedLines: InvoiceItem[] = invoiceLines.map(line => {
-      const originalItem = items.find(i => i.id === line.itemId);
-      if (!originalItem) {
+      const originalItem = items.find(i => i.id === line.itemId || (line.itemName && i.name.toLowerCase() === line.itemName.toLowerCase()));
+      const itemName = originalItem?.name || line.itemName || (line.itemId ? "Item" : "");
+      const hsn = originalItem?.hsn || line.hsn || "9999";
+      const itemId = originalItem?.id || line.itemId || ("item_" + Date.now());
+
+      if (!itemName) {
         return {
           itemId: "",
           itemName: "",
@@ -583,7 +592,7 @@ export default function InvoicingView({
         };
       }
 
-      const rate = line.customPrice || 0;
+      const rate = line.customPrice !== undefined && !isNaN(line.customPrice) ? line.customPrice : (originalItem?.salePrice || 0);
       const qty = line.quantity || 0;
       const grossAmt = qty * rate;
       const rawDisc = typeof line.discount === 'number' && !isNaN(line.discount) ? Math.max(0, line.discount) : 0;
@@ -595,8 +604,9 @@ export default function InvoicingView({
         lineDisc = (grossAmt * Math.min(100, rawDisc)) / 100;
       }
 
+      const lineGstRate = line.gstRate !== undefined ? line.gstRate : (originalItem?.gstRate || 0);
       const amtBeforeTax = Math.max(0, grossAmt - lineDisc);
-      const rowTax = amtBeforeTax * (line.gstRate / 100);
+      const rowTax = amtBeforeTax * (lineGstRate / 100);
       const rowTotal = amtBeforeTax + rowTax;
 
       // GST determination based on inter-state shipping rules
@@ -621,13 +631,13 @@ export default function InvoicingView({
       totalDiscountGiven += lineDisc;
 
       return {
-        itemId: originalItem.id,
-        itemName: originalItem.name,
-        hsn: originalItem.hsn,
+        itemId: itemId,
+        itemName: itemName,
+        hsn: hsn,
         quantity: line.quantity,
         price: rate,
         discount: lineDisc,
-        gstRate: line.gstRate,
+        gstRate: lineGstRate,
         amountBeforeTax: amtBeforeTax,
         taxAmount: rowTax,
         cgst: itemCgst,
@@ -635,7 +645,7 @@ export default function InvoicingView({
         igst: itemIgst,
         totalAmount: rowTotal
       };
-    }).filter(i => i.itemId !== "");
+    }).filter(i => i.itemName.trim() !== "" && (i.quantity > 0 || i.price > 0));
 
     // Sum up dynamic extra charges
     const extraChargesSum = extraCharges.reduce((sum, curr) => sum + (curr.amount || 0), 0);

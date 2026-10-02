@@ -1035,7 +1035,11 @@ export default function App() {
         onRefreshDb={fetchState}
         onApplyBillToEditor={handleApplyMunimjiBill}
         onOpenInvoice={(inv) => setSelectedInvoice(inv)}
-        onNavigateTab={(tab) => setActiveTab(tab)}
+        onNavigateTab={(tab) => {
+          if (tab === "inventory" || tab === "stock") setActiveTab("items");
+          else setActiveTab(tab);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
       />
 
     </div>

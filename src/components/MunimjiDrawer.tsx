@@ -323,7 +323,7 @@ const MunimjiProductListCard: React.FC<MunimjiProductListCardProps> = ({
             <button
               type="button"
               onClick={() => {
-                onNavigateTab("inventory");
+                onNavigateTab("items");
                 onCloseDrawer();
               }}
               className="px-2.5 py-1 text-[11px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors flex items-center gap-1"
@@ -1527,7 +1527,7 @@ export default function MunimjiDrawer({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  onNavigateTab("inventory");
+                                  onNavigateTab("items");
                                   onClose();
                                 }}
                                 className="flex-1 py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg transition-colors text-center"
