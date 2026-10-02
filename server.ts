@@ -2176,6 +2176,229 @@ Ensure output strictly conforms to the JSON schema.`
   });
 });
 
+// AI Handwritten & Printed Item Catalog Parser
+app.post("/api/ai/parse-items-list", async (req, res) => {
+  const isAvailable = await verifyGeminiAvailability();
+  if (!isAvailable) {
+    return res.status(429).json({
+      error: "सध्या AI स्कॅनिंग उपलब्ध नाही किंवा आजची मोफत मर्यादा पूर्ण झाली आहे."
+    });
+  }
+
+  const { fileBase64, mimeType } = req.body || {};
+  if (!fileBase64 || !mimeType) {
+    return res.status(400).json({ error: "File data (base64) and MIME type are required." });
+  }
+
+  const ai = getGenAIClient();
+  if (!ai) {
+    return res.status(503).json({ error: "Gemini AI client is not configured." });
+  }
+
+  const imagePart = {
+    inlineData: {
+      mimeType,
+      data: fileBase64
+    }
+  };
+
+  const textPart = {
+    text: `You are an expert handwritten catalog and inventory extraction assistant for Indian retail and wholesale businesses.
+Extract all product items from this handwritten notebook page, printed price list, distributor quotation, or invoice.
+Instructions:
+1. Extract item name (Marathi, Hindi, or English).
+2. Extract or infer: purchasePrice (खरेदी दर), salePrice (विक्री दर), mrp, wholesalePrice (घाऊक दर), minWholesaleQty (MOQ), stockQuantity (साठा), unit (PCS, KGS, GMS, LTR, BOX, BAG, MTR, SET), HSN code, GST rate percentage (0, 5, 12, 18, 28), brand, category.
+3. If only one price is listed, set both purchasePrice and salePrice to that amount. If only wholesale price is listed, set appropriately. Default unit to 'PCS' if not specified.
+Return strictly valid JSON according to schema.`
+  };
+
+  const itemsSchema = {
+    type: Type.OBJECT,
+    properties: {
+      items: {
+        type: Type.ARRAY,
+        description: "List of extracted inventory products",
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING, description: "Product name" },
+            hsn: { type: Type.STRING, description: "HSN code" },
+            purchasePrice: { type: Type.NUMBER, description: "Purchase cost price" },
+            salePrice: { type: Type.NUMBER, description: "Retail selling price" },
+            mrp: { type: Type.NUMBER, description: "Maximum retail price" },
+            wholesalePrice: { type: Type.NUMBER, description: "Wholesale trade price" },
+            minWholesaleQty: { type: Type.NUMBER, description: "Minimum wholesale order quantity" },
+            boxPackingRatio: { type: Type.NUMBER, description: "Items per box or bag" },
+            boxUnit: { type: Type.STRING, description: "Box unit name e.g. BOX or BAG" },
+            stockQuantity: { type: Type.NUMBER, description: "Initial stock quantity" },
+            minStockAlert: { type: Type.NUMBER, description: "Low stock alert threshold" },
+            gstRate: { type: Type.NUMBER, description: "GST rate % (0, 5, 12, 18, 28)" },
+            unit: { type: Type.STRING, description: "Unit e.g. PCS, KGS, LTR, BAG, BOX" },
+            brand: { type: Type.STRING, description: "Brand name" },
+            category: { type: Type.STRING, description: "Product category" }
+          },
+          required: ["name", "salePrice", "unit"]
+        }
+      }
+    },
+    required: ["items"]
+  };
+
+  let parsed: any = null;
+  let lastError: any = null;
+
+  for (let i = 0; i < CANDIDATE_SCANNER_MODELS.length; i++) {
+    const currentModel = CANDIDATE_SCANNER_MODELS[i];
+    try {
+      const response = await ai.models.generateContent({
+        model: currentModel,
+        contents: { parts: [imagePart, textPart] },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: itemsSchema
+        }
+      });
+      const rawText = response.text?.trim() || "{}";
+      parsed = JSON.parse(rawText);
+      if (parsed?.items && parsed.items.length > 0) break;
+    } catch (err: any) {
+      lastError = err;
+      if (i < CANDIDATE_SCANNER_MODELS.length - 1) {
+        await new Promise(r => setTimeout(r, 400));
+        continue;
+      }
+    }
+  }
+
+  if (!parsed || !parsed.items || parsed.items.length === 0) {
+    return res.status(422).json({
+      error: formatScannerError(lastError) || "आयटम लिस्ट वाचता आली नाही."
+    });
+  }
+
+  res.json({
+    success: true,
+    items: parsed.items
+  });
+});
+
+// Universal Data Migration Endpoint (Excel, CSV, Tally, Marg, Vyapar)
+app.post("/api/migration/import-data", (req, res) => {
+  try {
+    const { items, parties } = req.body || {};
+    const db = readDb();
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    // Safety snapshot before bulk migration
+    performAutoBackup(db);
+
+    if (Array.isArray(items) && items.length > 0) {
+      if (!db.items) db.items = [];
+      for (const incomingItem of items) {
+        if (!incomingItem.name || !incomingItem.name.trim()) continue;
+
+        const cleanName = incomingItem.name.trim();
+        const existingIdx = db.items.findIndex(
+          i => i.name.toLowerCase().trim() === cleanName.toLowerCase() ||
+               (incomingItem.barcodes && incomingItem.barcodes.length > 0 && i.barcodes && i.barcodes.some((b: string) => incomingItem.barcodes.includes(b)))
+        );
+
+        if (existingIdx > -1) {
+          // Update existing item fields
+          db.items[existingIdx] = {
+            ...db.items[existingIdx],
+            purchasePrice: Number(incomingItem.purchasePrice) || db.items[existingIdx].purchasePrice,
+            salePrice: Number(incomingItem.salePrice) || db.items[existingIdx].salePrice,
+            mrp: Number(incomingItem.mrp) || db.items[existingIdx].mrp,
+            wholesalePrice: Number(incomingItem.wholesalePrice) || db.items[existingIdx].wholesalePrice,
+            stockQuantity: Number(incomingItem.stockQuantity) !== undefined ? Number(incomingItem.stockQuantity) : db.items[existingIdx].stockQuantity,
+            unit: incomingItem.unit ? incomingItem.unit.toUpperCase() : db.items[existingIdx].unit,
+            gstRate: Number(incomingItem.gstRate) !== undefined ? Number(incomingItem.gstRate) : db.items[existingIdx].gstRate,
+            hsn: incomingItem.hsn || db.items[existingIdx].hsn,
+            brand: incomingItem.brand || db.items[existingIdx].brand,
+            category: incomingItem.category || db.items[existingIdx].category
+          };
+          updatedCount++;
+        } else {
+          // Insert new item
+          db.items.push({
+            id: "item_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+            name: cleanName,
+            hsn: incomingItem.hsn || "",
+            purchasePrice: Number(incomingItem.purchasePrice) || 0,
+            salePrice: Number(incomingItem.salePrice) || Number(incomingItem.purchasePrice) || 0,
+            mrp: Number(incomingItem.mrp) || Number(incomingItem.salePrice) || 0,
+            wholesalePrice: Number(incomingItem.wholesalePrice) || 0,
+            minWholesaleQty: Number(incomingItem.minWholesaleQty) || 5,
+            boxPackingRatio: Number(incomingItem.boxPackingRatio) || 0,
+            boxUnit: incomingItem.boxUnit || "BOX",
+            category: incomingItem.category || "",
+            brand: incomingItem.brand || "",
+            stockQuantity: Number(incomingItem.stockQuantity) || 0,
+            minStockAlert: Number(incomingItem.minStockAlert) || 5,
+            gstRate: Number(incomingItem.gstRate) || 0,
+            unit: incomingItem.unit ? incomingItem.unit.toUpperCase() : "PCS",
+            barcodes: incomingItem.barcodes || []
+          });
+          addedCount++;
+        }
+      }
+    }
+
+    if (Array.isArray(parties) && parties.length > 0) {
+      if (!db.parties) db.parties = [];
+      for (const incomingParty of parties) {
+        if (!incomingParty.name || !incomingParty.name.trim()) continue;
+
+        const cleanName = incomingParty.name.trim();
+        const existingIdx = db.parties.findIndex(
+          p => p.name.toLowerCase().trim() === cleanName.toLowerCase() ||
+               (incomingParty.phone && p.phone && p.phone.trim() === incomingParty.phone.trim()) ||
+               (incomingParty.gstin && p.gstin && p.gstin.trim().toUpperCase() === incomingParty.gstin.trim().toUpperCase())
+        );
+
+        if (existingIdx > -1) {
+          db.parties[existingIdx] = {
+            ...db.parties[existingIdx],
+            phone: incomingParty.phone || db.parties[existingIdx].phone,
+            gstin: incomingParty.gstin || db.parties[existingIdx].gstin,
+            address: incomingParty.address || db.parties[existingIdx].address,
+            currentBalance: Number(incomingParty.currentBalance) !== undefined ? Number(incomingParty.currentBalance) : db.parties[existingIdx].currentBalance
+          };
+          updatedCount++;
+        } else {
+          db.parties.push({
+            id: "party_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+            name: cleanName,
+            type: incomingParty.type === "supplier" ? "supplier" : "customer",
+            phone: incomingParty.phone || "",
+            email: incomingParty.email || "",
+            address: incomingParty.address || "",
+            state: incomingParty.state || "Maharashtra",
+            gstin: incomingParty.gstin || "",
+            initialBalance: Number(incomingParty.currentBalance) || 0,
+            currentBalance: Number(incomingParty.currentBalance) || 0
+          });
+          addedCount++;
+        }
+      }
+    }
+
+    writeDb(db);
+    res.json({
+      success: true,
+      message: `डेटा यशस्वीरीत्या आयात झाला. (नवीन: ${addedCount}, अपडेट: ${updatedCount})`,
+      added: addedCount,
+      updated: updatedCount,
+      total: addedCount + updatedCount
+    });
+  } catch (err: any) {
+    console.error("Migration import error:", err);
+    res.status(500).json({ error: "डेटा आयात करताना त्रुटी आली: " + err.message });
+  }
+});
+
 // ==========================================
 // डिजिटल मुनीमजी (Digital Munimji) APIs
 // ==========================================

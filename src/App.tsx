@@ -862,6 +862,7 @@ export default function App() {
               items={dbState.items}
               onSaveItem={handleSaveItem}
               onDeleteItem={handleDeleteItem}
+              onRefreshDb={fetchState}
               permissions={session?.permissions?.items}
             />
           )}

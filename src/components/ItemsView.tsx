@@ -15,13 +15,19 @@ import {
   Trash2,
   Tag,
   Boxes,
-  ArrowRight
+  ArrowRight,
+  Database,
+  Camera,
+  FileSpreadsheet
 } from "lucide-react";
+import ItemsScanModal from "./ItemsScanModal.js";
+import DataMigrationModal from "./DataMigrationModal.js";
 
 interface ItemsViewProps {
   items: Item[];
   onSaveItem: (item: Item) => Promise<void>;
   onDeleteItem: (id: string) => Promise<void>;
+  onRefreshDb?: () => Promise<void>;
   permissions?: any;
 }
 
@@ -29,6 +35,7 @@ export default function ItemsView({
   items,
   onSaveItem,
   onDeleteItem,
+  onRefreshDb,
   permissions
 }: ItemsViewProps) {
   
@@ -40,6 +47,8 @@ export default function ItemsView({
   const [lowStockFilter, setLowStockFilter] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isScanModalOpen, setIsScanModalOpen] = useState(false);
+  const [isMigrationModalOpen, setIsMigrationModalOpen] = useState(false);
   const [barcodeInputText, setBarcodeInputText] = useState("");
 
   // Form State
@@ -168,26 +177,64 @@ export default function ItemsView({
     }
   };
 
+  const handleBatchImportScannedItems = async (scannedList: Omit<Item, "id">[]) => {
+    for (const it of scannedList) {
+      await onSaveItem({
+        ...it,
+        id: "item_" + Date.now() + "_" + Math.floor(Math.random() * 1000)
+      });
+    }
+    if (onRefreshDb) await onRefreshDb();
+  };
+
   return (
     <div id="v-items-container" className="space-y-6">
       
       {/* Title block */}
-      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Inventory Management</h1>
           <p className="text-xs text-slate-500 mt-1">Configure stock items, trigger supply alerts, and regulate tax/GST HSN codes</p>
         </div>
         
-        {perms.create && (
-          <button
-            id="add-item-btn"
-            onClick={openAddModal}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white select-none px-4 py-2 rounded-xl text-sm font-semibold flex items-center space-x-2 shadow-md hover:shadow-lg transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Product / Service</span>
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {perms.create && (
+            <>
+              {/* AI Handwritten / Printed Scan Button */}
+              <button
+                id="scan-items-list-btn"
+                type="button"
+                onClick={() => setIsScanModalOpen(true)}
+                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 select-none px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                <span>AI हँडरिटन लिस्ट स्कॅन (Scan List)</span>
+              </button>
+
+              {/* Data Migration Import Button */}
+              <button
+                id="data-migration-btn"
+                type="button"
+                onClick={() => setIsMigrationModalOpen(true)}
+                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 select-none px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition cursor-pointer"
+              >
+                <Database className="w-3.5 h-3.5 text-indigo-600" />
+                <span>डेटा मायग्रेशन (Import CSV)</span>
+              </button>
+
+              {/* Manual Add Product */}
+              <button
+                id="add-item-btn"
+                type="button"
+                onClick={openAddModal}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white select-none px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md hover:shadow-lg transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Add Product</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Filter and search deck */}
@@ -643,6 +690,24 @@ export default function ItemsView({
           </div>
         </div>
       )}
+
+      {/* AI Handwritten / Printed Items Scan Modal */}
+      <ItemsScanModal
+        isOpen={isScanModalOpen}
+        onClose={() => setIsScanModalOpen(false)}
+        onItemsImported={handleBatchImportScannedItems}
+        existingItems={items}
+      />
+
+      {/* Universal Data Migration / CSV Modal */}
+      <DataMigrationModal
+        isOpen={isMigrationModalOpen}
+        onClose={() => setIsMigrationModalOpen(false)}
+        onImportCompleted={async () => {
+          if (onRefreshDb) await onRefreshDb();
+        }}
+        existingItems={items}
+      />
 
     </div>
   );

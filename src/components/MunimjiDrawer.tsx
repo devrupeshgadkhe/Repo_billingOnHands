@@ -25,7 +25,9 @@ import {
   AlertTriangle,
   Maximize2,
   Minimize2,
-  ExternalLink
+  ExternalLink,
+  Camera,
+  Upload
 } from "lucide-react";
 const munimji3DAvatar = "/munimji-3d.jpg";
 import {
@@ -550,6 +552,7 @@ export default function MunimjiDrawer({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -1148,6 +1151,125 @@ export default function MunimjiDrawer({
     }
   };
 
+  /**
+   * Handle Photo Upload of Handwritten Sales Bill or Item List
+   */
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const base64 = (event.target?.result as string).split(",")[1];
+        const userMsgId = "user_photo_" + Date.now();
+        setMessages(prev => [
+          ...prev,
+          {
+            id: userMsgId,
+            sender: "user",
+            text: `📸 [बिलाचा / यादीचा फोटो अपलोड केला - ${file.name}]`,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          }
+        ]);
+        setIsProcessing(true);
+
+        // 1. Try parsing as bill / invoice
+        const res = await fetch("/api/ai/parse-invoice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileBase64: base64, mimeType: file.type })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.invoice) {
+          const inv = data.invoice;
+          const munimjiMsgId = "munimji_" + Date.now();
+          const billDraft = {
+            customerName: inv.supplierName || "रोख ग्राहक",
+            items: (inv.items || []).map((it: any) => ({
+              name: it.name,
+              quantity: it.quantity || 1,
+              price: it.rate || it.totalAmount || 0,
+              unit: it.unit || "PCS"
+            })),
+            subtotal: inv.subtotal || inv.grandTotal,
+            totalAmount: inv.grandTotal,
+            paymentMode: "cash"
+          };
+
+          setMessages(prev => [
+            ...prev,
+            {
+              id: munimjiMsgId,
+              sender: "munimji",
+              text: `मालक, मी बिलाचा फोटो वाचला आहे. ${inv.items?.length || 0} वस्तू आणि एकूण रक्कम ₹${inv.grandTotal} आहे. खालील 'बिल तयार करा' बटनावर क्लिक करा.`,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              cards: [
+                {
+                  type: "mini_bill",
+                  title: `बिल: ${inv.supplierName || "ग्राहक"}`,
+                  data: billDraft
+                }
+              ]
+            }
+          ]);
+          playMunimjiVoice(undefined, undefined, `मालक, मी बिलाचा फोटो वाचला आहे. एकूण रक्कम ${inv.grandTotal} रुपये आहे.`);
+        } else {
+          // 2. Try parsing as handwritten items list
+          const listRes = await fetch("/api/ai/parse-items-list", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ fileBase64: base64, mimeType: file.type })
+          });
+          const listData = await listRes.json();
+          if (listRes.ok && listData.items && listData.items.length > 0) {
+            const munimjiMsgId = "munimji_" + Date.now();
+            setMessages(prev => [
+              ...prev,
+              {
+                id: munimjiMsgId,
+                sender: "munimji",
+                text: `मालक, मी हस्तलिखित यादीमधून ${listData.items.length} आयटम्स वाचले आहेत. खालील यादी तपासून इन्व्हेंटरीमध्ये ॲड करा.`,
+                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                cards: [
+                  {
+                    type: "stock_alert",
+                    title: `हस्तलिखित मालाची यादी (${listData.items.length} Items)`,
+                    data: {
+                      items: listData.items.map((i: any) => ({
+                        name: i.name,
+                        stock: i.stockQuantity || 0,
+                        price: i.salePrice
+                      }))
+                    }
+                  }
+                ]
+              }
+            ]);
+            playMunimjiVoice(undefined, undefined, `मालक, मी हस्तलिखित यादीमधून ${listData.items.length} आयटम्स वाचले आहेत.`);
+          } else {
+            throw new Error(data.error || "फोटो स्पष्ट वाचता आला नाही. कृपया स्पष्ट फोटो निवडा.");
+          }
+        }
+      } catch (err: any) {
+        setMessages(prev => [
+          ...prev,
+          {
+            id: "err_" + Date.now(),
+            sender: "munimji",
+            text: `क्षमस्व मालक, फोटो वाचताना अडचण आली: ${err.message || ""}`,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+          }
+        ]);
+      } finally {
+        setIsProcessing(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   return (
     <>
       {/* 1. FLOATING LAUNCHER BUTTON WITH 3D MUNIMJI CLIPART */}
@@ -1722,6 +1844,26 @@ export default function MunimjiDrawer({
         {/* Bottom Input & Microphone Controls */}
         <div className="p-3.5 bg-white border-t border-slate-200">
           <form onSubmit={handleSubmitText} className="flex items-center gap-2">
+            {/* Hidden Photo File Input for Bill & Items List Scan */}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              onChange={handlePhotoUpload}
+              className="hidden"
+            />
+
+            {/* Photo / Camera Scan Button */}
+            <button
+              type="button"
+              disabled={isProcessing || isRecording}
+              onClick={() => photoInputRef.current?.click()}
+              className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition shadow-xs flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-50"
+              title="Upload handwritten bill or item list photo (फोटो स्कॅन करा)"
+            >
+              <Camera className="w-4 h-4 text-slate-700" />
+            </button>
+
             {/* ELECTRON-PROOF VOICE RECORDING BUTTON */}
             <button
               type="button"
@@ -1747,7 +1889,7 @@ export default function MunimjiDrawer({
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder={isRecording ? t.listeningNotice : t.inputPlaceholder}
+              placeholder={isRecording ? t.listeningNotice : (language === "en" ? "Type command or upload bill photo..." : (language === "hi" ? "आदेश टाइप करें या बिल फोटो अपलोड करें..." : "आदेश टाइप करा किंवा बिलाचा फोटो टाका..."))}
               disabled={isRecording || isProcessing}
               className="flex-1 bg-slate-50 border border-slate-300 focus:border-amber-500 focus:bg-white focus:ring-1 focus:ring-amber-500 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none transition-all"
             />
