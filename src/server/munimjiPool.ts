@@ -353,6 +353,11 @@ class MunimjiPoolManager {
       this.keys.find(k => k.active) || null;
   }
 
+  public getAllActiveKeys(): KeyEntry[] {
+    const now = Date.now();
+    return this.keys.filter(k => k.active && (!k.cooldownUntil || k.cooldownUntil <= now));
+  }
+
   /**
    * Executes an operation with dual-tier fallback:
    * Key Pool (4 keys) × Model Matrix (3 models) = 12 total self-healing recovery tiers
@@ -1216,7 +1221,7 @@ function pcmToWav(pcmBase64: string, sampleRate = 24000, numChannels = 1, bitDep
  * Speaks Marathi, Hindi, and English with an authentic Indian male business accent.
  */
 export async function generateMunimjiSpeechAudio(
-  client: GoogleGenAI,
+  client: GoogleGenAI | null,
   textToSpeak: string,
   _language: "mr" | "hi" | "en" = "mr"
 ): Promise<{ audioBase64: string; mimeType: string } | null> {
@@ -1231,37 +1236,56 @@ export async function generateMunimjiSpeechAudio(
 
   if (cleanText.length < 2) return null;
 
-  try {
-    const res = await withTimeout(
-      client.models.generateContent({
-        model: "gemini-3.8-flash-lite-tts",
-        contents: cleanText.slice(0, 320),
-        config: {
-          responseModalities: ["AUDIO"],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: {
-                voiceName: "Fenrir" // Real deep natural human male voice
+  // Build candidate client list: primary client first, then any active pool keys
+  const clientsToTry: GoogleGenAI[] = [];
+  if (client) {
+    clientsToTry.push(client);
+  }
+
+  const poolKeys = munimjiPool.getAllActiveKeys();
+  for (const k of poolKeys) {
+    if (k.key && (!client || k.key !== (client as any).apiKey)) {
+      clientsToTry.push(new GoogleGenAI({
+        apiKey: k.key,
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+      }));
+    }
+  }
+
+  // Uniform voice: ALWAYS use "Fenrir" (Deep mature authentic Indian male voice)
+  for (const candidateClient of clientsToTry) {
+    try {
+      const res = await withTimeout(
+        candidateClient.models.generateContent({
+          model: "gemini-3.8-flash-lite-tts",
+          contents: cleanText.slice(0, 320),
+          config: {
+            responseModalities: ["AUDIO"],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: {
+                  voiceName: "Fenrir" // Uniform high-fidelity male voice across all models & keys
+                }
               }
             }
           }
-        }
-      }),
-      8000,
-      "TTS generation timeout"
-    );
+        }),
+        7000,
+        "TTS generation timeout"
+      );
 
-    const part = res.candidates?.[0]?.content?.parts?.[0];
-    const pcmData = part?.inlineData?.data;
-    if (pcmData && pcmData.length > 50) {
-      const wavBase64 = pcmToWav(pcmData, 24000, 1, 16);
-      return {
-        audioBase64: wavBase64,
-        mimeType: "audio/wav"
-      };
+      const part = res.candidates?.[0]?.content?.parts?.[0];
+      const pcmData = part?.inlineData?.data;
+      if (pcmData && pcmData.length > 50) {
+        const wavBase64 = pcmToWav(pcmData, 24000, 1, 16);
+        return {
+          audioBase64: wavBase64,
+          mimeType: "audio/wav"
+        };
+      }
+    } catch (err: any) {
+      console.warn("[Munimji Neural TTS pool attempt notice]:", err?.message || err);
     }
-  } catch (err: any) {
-    console.warn("[Munimji Neural TTS notice]:", err?.message || err);
   }
 
   return null;

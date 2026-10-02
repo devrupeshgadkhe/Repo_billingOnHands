@@ -716,22 +716,29 @@ export default function MunimjiDrawer({
 
           const allVoices = availableVoices.length > 0 ? availableVoices : window.speechSynthesis.getVoices();
           
-          // Check if system has a native Devanagari voice (Marathi / Hindi)
-          const indianVoice = allVoices.find(v => v.lang.startsWith("mr") || v.lang.startsWith("hi"));
-          const indianMaleVoice = allVoices.find(v => 
-            (v.lang.startsWith("mr") || v.lang.startsWith("hi")) && 
-            (v.name.toLowerCase().includes("male") || v.name.toLowerCase().includes("hemant") || v.name.toLowerCase().includes("prabhat") || v.name.toLowerCase().includes("madhav") || v.name.toLowerCase().includes("ravi"))
-          );
+          const isFemaleVoice = (v: SpeechSynthesisVoice) => {
+            const n = (v.name + " " + (v.voiceURI || "")).toLowerCase();
+            return /female|zira|kalpana|heera|swara|ananya|aditi|priya|kavya|veena|sangeeta|shreya|neha|pooja|puja|rashmi|geeta|sunita|hazel|susan|catherine|linda|eva|victoria|samantha|karen|siri|woman|girl/i.test(n);
+          };
 
-          // Find fallback desktop male voice (Microsoft David, Mark, Google US English Male, etc.)
-          const englishMaleVoice = allVoices.find(v => 
-            (v.lang.startsWith("en") || v.lang.includes("IN")) && 
-            (v.name.toLowerCase().includes("male") || v.name.toLowerCase().includes("david") || v.name.toLowerCase().includes("mark") || v.name.toLowerCase().includes("george") || v.name.toLowerCase().includes("ravi") || v.name.toLowerCase().includes("neel") || v.name.toLowerCase().includes("guy"))
-          );
+          const isMaleName = (v: SpeechSynthesisVoice) => {
+            const n = (v.name + " " + (v.voiceURI || "")).toLowerCase();
+            return /male|hemant|madhav|prabhat|ravi|neel|guy|david|mark|george|alex|daniel|oliver|microsoft|google/i.test(n) && !isFemaleVoice(v);
+          };
 
-          const anyMaleVoice = allVoices.find(v => v.name.toLowerCase().includes("male"));
+          // 1. Indian Male Voice (Marathi / Hindi)
+          const indianMaleVoice = allVoices.find(v => (v.lang.startsWith("mr") || v.lang.startsWith("hi")) && isMaleName(v) && !isFemaleVoice(v));
 
-          let chosenVoice = indianMaleVoice || indianVoice || englishMaleVoice || anyMaleVoice || allVoices[0];
+          // 2. English (India) or High-grade English Male Voice (David, Mark, Ravi, Guy)
+          const englishMaleVoice = allVoices.find(v => (v.lang.includes("IN") || v.lang.startsWith("en")) && isMaleName(v) && !isFemaleVoice(v));
+
+          // 3. Any explicit male voice
+          const anyMaleVoice = allVoices.find(v => isMaleName(v));
+
+          // 4. Any voice that is strictly NOT female
+          const nonFemaleVoice = allVoices.find(v => !isFemaleVoice(v));
+
+          let chosenVoice = indianMaleVoice || englishMaleVoice || anyMaleVoice || nonFemaleVoice || allVoices[0];
 
           // If chosen voice is an English voice and text is in Devanagari, convert to phonetics so it speaks aloud and never goes silent
           let textToSpeak = cleaned;
