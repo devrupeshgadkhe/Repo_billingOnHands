@@ -21,8 +21,21 @@ autoUpdater.disableWebInstaller = true;
 // Bypass code signature check so unsigned releases install smoothly without hanging at 100%
 autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
 
-// Keep Chromium's audio service enabled and auto-approve media stream in Electron
+// Safe uncaught exception handling to prevent silent main-process halts
+process.on("uncaughtException", (err) => {
+  console.error("[Electron Main] Uncaught Exception:", err);
+});
+process.on("unhandledRejection", (reason) => {
+  console.error("[Electron Main] Unhandled Rejection:", reason);
+});
+
+// Configure Chromium switches to guarantee loopback connectivity and avoid GPU white screen hangs
 try {
+  // 1. Bypass any system/corporate/VPN proxy for local server connection (prevents white screen)
+  app.commandLine.appendSwitch("proxy-bypass-list", "<-loopback>;127.0.0.1;localhost");
+  // 2. Hardware acceleration & rendering stability
+  app.commandLine.appendSwitch("disable-gpu-sandbox");
+  // 3. Audio & Media Stream permissions for Munimji voice
   app.commandLine.appendSwitch("use-fake-ui-for-media-stream");
   app.commandLine.appendSwitch("enable-features", "AudioServiceOutOfProcess");
 } catch {}
@@ -163,8 +176,8 @@ function createWindow(port) {
     title: "Billing On Hand - Offline Retail & GST ERP",
     icon: appIcon,
     autoHideMenuBar: true,
-    backgroundColor: "#f8fafc", // Light crisp canvas background matches the app theme perfectly
-    show: false, // Prevent white screen flash while painting initial frames
+    backgroundColor: "#0f172a", // Deep slate background matching the splash and dark theme (prevents white screen flash)
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
@@ -173,7 +186,7 @@ function createWindow(port) {
     }
   });
 
-  // Gracefully show window once ready or on fallback timer
+  // Gracefully show window once ready or when initial content finished rendering
   let isShown = false;
   const showSafely = () => {
     if (!isShown && mainWindow && !mainWindow.isDestroyed()) {
@@ -184,28 +197,79 @@ function createWindow(port) {
   };
 
   mainWindow.once("ready-to-show", showSafely);
-  setTimeout(showSafely, 1500); // Safety fallback so window always reveals
+  mainWindow.webContents.once("did-finish-load", showSafely);
+  setTimeout(showSafely, 3000); // Safety fallback timer
 
   // Load the running server URL
   const appUrl = `http://127.0.0.1:${port}`;
   console.log(`[Electron] Loading application URL: ${appUrl}`);
   mainWindow.loadURL(appUrl);
 
+  let failLoadCount = 0;
   // Automatic retry if loading fails before server is ready
   mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL) => {
-    console.warn(`[Electron] Failed to load ${validatedURL} (${errorCode}: ${errorDescription}). Retrying in 400ms...`);
+    if (errorCode === -3) {
+      // ERR_ABORTED: Normal when navigation is redirected or canceled
+      return;
+    }
+    failLoadCount++;
+    console.warn(`[Electron] Failed to load ${validatedURL} (${errorCode}: ${errorDescription}) [attempt ${failLoadCount}]. Retrying in 600ms...`);
+    
+    if (failLoadCount >= 4) {
+      // Load sleek inline recovery UI instead of blank white canvas
+      const fallbackHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Billing On Hand - Connecting</title>
+            <style>
+              body { margin:0; height:100vh; display:flex; align-items:center; justify-content:center; background:#0f172a; color:#f8fafc; font-family:system-ui,-apple-system,sans-serif; text-align:center; }
+              .box { background:#1e293b; padding:36px; border-radius:20px; border:1px solid #334155; max-width:440px; box-shadow:0 15px 35px rgba(0,0,0,0.4); }
+              .spinner { width:36px; height:36px; border:3px solid #334155; border-top-color:#10b981; border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 16px; }
+              @keyframes spin { to { transform:rotate(360deg); } }
+              h2 { margin:0 0 10px; color:#f8fafc; font-size:18px; font-weight:700; }
+              p { color:#94a3b8; font-size:13px; line-height:1.6; margin:0 0 20px; }
+              button { background:#10b981; color:#0f172a; border:none; padding:10px 22px; border-radius:10px; font-weight:700; cursor:pointer; font-size:13px; transition:0.2s; }
+              button:hover { background:#059669; color:#ffffff; }
+            </style>
+          </head>
+          <body>
+            <div class="box">
+              <div class="spinner"></div>
+              <h2>Connecting to Billing Engine</h2>
+              <p>Preparing local offline database and GST tax compliance services...</p>
+              <button onclick="window.location.href='${appUrl}'">Refresh Page</button>
+            </div>
+            <script>
+              setTimeout(function() { window.location.href = '${appUrl}'; }, 1500);
+            </script>
+          </body>
+        </html>
+      `;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fallbackHtml)}`);
+      }
+      return;
+    }
+
     setTimeout(() => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.loadURL(validatedURL);
       }
-    }, 400);
+    }, 600);
   });
 
-  // F12 or Ctrl+Shift+I to toggle DevTools if user or support needs to inspect
+  // F12 or Ctrl+Shift+I for DevTools, F5 / Ctrl+R for Reload
   mainWindow.webContents.on("before-input-event", (_event, input) => {
     if (input.key === "F12" || (input.control && input.shift && input.key.toLowerCase() === "i")) {
       if (mainWindow) {
         mainWindow.webContents.toggleDevTools();
+      }
+    }
+    if (input.key === "F5" || (input.control && input.key.toLowerCase() === "r")) {
+      if (mainWindow) {
+        mainWindow.reload();
       }
     }
   });
@@ -336,7 +400,7 @@ ipcMain.handle("app:open-external", (_event, url) => {
 });
 
 // Helper to poll the local health endpoint
-function pollServerReady(port, maxRetries = 25) {
+function pollServerReady(port, maxRetries = 50) {
   const http = require("http");
   return new Promise((resolve) => {
     let attempts = 0;
@@ -358,7 +422,7 @@ function pollServerReady(port, maxRetries = 25) {
           resolve(false);
         }
       });
-      req.setTimeout(300, () => {
+      req.setTimeout(400, () => {
         req.destroy();
         if (attempts < maxRetries) {
           setTimeout(check, 100);
@@ -369,6 +433,23 @@ function pollServerReady(port, maxRetries = 25) {
     };
     check();
   });
+}
+
+function resolveServerModulePath() {
+  const fs = require("fs");
+  const candidates = [
+    path.join(__dirname, "dist", "server.cjs"),
+    path.join(__dirname, "server.cjs"),
+    process.resourcesPath ? path.join(process.resourcesPath, "app.asar", "dist", "server.cjs") : null,
+    process.resourcesPath ? path.join(process.resourcesPath, "app", "dist", "server.cjs") : null
+  ].filter(Boolean);
+
+  for (const c of candidates) {
+    if (fs.existsSync(c)) {
+      return c;
+    }
+  }
+  return path.join(__dirname, "dist", "server.cjs");
 }
 
 // Ensure the app boots successfully
@@ -424,25 +505,33 @@ app.whenReady().then(() => {
     process.env.PORT = assignedPort.toString();
     console.log(`[Electron] Starting Express on 127.0.0.1:${assignedPort}`);
 
+    let activePort = assignedPort;
+    const serverModulePath = resolveServerModulePath();
+    console.log(`[Electron] Loading server module from: ${serverModulePath}`);
+
     // Boot the packaged Express backend server
     try {
-      const serverModule = require(path.join(__dirname, "dist", "server.cjs"));
+      const serverModule = require(serverModulePath);
       if (serverModule && typeof serverModule.startServer === "function") {
-        await serverModule.startServer(assignedPort);
+        const startResult = await serverModule.startServer(assignedPort);
+        if (startResult && startResult.port) {
+          activePort = startResult.port;
+          process.env.PORT = activePort.toString();
+        }
       }
     } catch (err) {
-      console.error("[Electron] Failed to require packaged server module:", err);
+      console.error("[Electron] Failed to require or boot server module:", err);
     }
 
     // Wait until Express server responds to health check
-    const isReady = await pollServerReady(assignedPort);
+    const isReady = await pollServerReady(activePort, 50);
     if (isReady) {
-      console.log(`[Electron] Express server verified active and healthy on port ${assignedPort}`);
+      console.log(`[Electron] Express server verified active and healthy on port ${activePort}`);
     } else {
-      console.warn(`[Electron] Health check timed out, launching window anyway with retry listener...`);
+      console.warn(`[Electron] Health check timed out, launching window with automatic retry listener...`);
     }
 
-    createWindow(assignedPort);
+    createWindow(activePort);
   });
 });
 

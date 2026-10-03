@@ -31,6 +31,17 @@ export const DEFAULT_GOOGLE_DEPLOYMENT_ID = "AKfycbyAYKVB5xsVTtyKjQv1R-9sSRKsCJo
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
+// Loopback and desktop CORS headers to guarantee seamless local API communication
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // Safely assembled token seed to comply with GitHub Push Protection and secret scanning
 const TOKEN_SEED_1 = "QVEuQWI4Uk42TFcxTERN";
 const TOKEN_SEED_2 = "UXNmOW9ZMTRFVldWQzBz";
@@ -3205,26 +3216,74 @@ export function startServer(portToUse?: number): Promise<{ app: typeof app; port
         const distCandidates = [
           appDir,
           path.join(appDir, "dist"),
-          path.join(process.cwd(), "dist")
-        ];
+          path.join(process.cwd(), "dist"),
+          (process as any).resourcesPath ? path.join((process as any).resourcesPath, "app.asar", "dist") : "",
+          (process as any).resourcesPath ? path.join((process as any).resourcesPath, "app", "dist") : ""
+        ].filter(Boolean);
         const distPath = distCandidates.find(p => fs.existsSync(path.join(p, "index.html"))) || path.join(process.cwd(), "dist");
-        app.use(express.static(distPath));
-        app.get("*", (req, res) => {
-          res.sendFile(path.join(distPath, "index.html"));
+        console.log(`[Static Files] Serving frontend from: ${distPath}`);
+
+        app.use(express.static(distPath, {
+          maxAge: "1d",
+          index: "index.html"
+        }));
+
+        // Never serve index.html for unmatched API routes
+        app.all(/^\/api\/.*/, (_req, res) => {
+          res.status(404).json({ error: "API endpoint not found" });
+        });
+
+        // Never serve index.html for missing asset bundle files
+        app.get(/^\/assets\/.*/, (_req, res) => {
+          res.status(404).send("Asset not found");
+        });
+
+        // SPA route fallback
+        app.get("*", (_req, res) => {
+          res.sendFile(path.join(distPath, "index.html"), (err) => {
+            if (err && !res.headersSent) {
+              res.status(500).send(`
+                <!DOCTYPE html>
+                <html>
+                  <head>
+                    <meta charset="utf-8">
+                    <title>Billing On Hand - Initializing</title>
+                    <meta http-equiv="refresh" content="2">
+                  </head>
+                  <body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;background:#0f172a;color:#f8fafc;margin:0;">
+                    <div style="text-align:center;">
+                      <h2 style="margin-bottom:8px;">Starting Billing On Hand...</h2>
+                      <p style="color:#94a3b8;font-size:14px;">Preparing offline database and user interface...</p>
+                    </div>
+                  </body>
+                </html>
+              `);
+            }
+          });
         });
       }
 
       // In Electron desktop environment, bind loopback (127.0.0.1) for zero firewall prompts
       const host = process.env.ELECTRON_ENV ? "127.0.0.1" : "0.0.0.0";
-      const server = app.listen(listenPort, host, () => {
-        console.log(`Billing On Hand Server operating at: http://${host}:${listenPort}`);
-        resolve({ app, port: listenPort });
-      });
+      
+      const tryBind = (portAttempt: number, retriesLeft: number) => {
+        const server = app.listen(portAttempt, host, () => {
+          console.log(`Billing On Hand Server operating at: http://${host}:${portAttempt}`);
+          resolve({ app, port: portAttempt });
+        });
 
-      server.on("error", (err) => {
-        console.error("Server listen failed:", err);
-        reject(err);
-      });
+        server.once("error", (err: any) => {
+          if (err.code === "EADDRINUSE" && retriesLeft > 0 && process.env.ELECTRON_ENV) {
+            console.warn(`[Server] Port ${portAttempt} in use, trying next available port ${portAttempt + 1}...`);
+            tryBind(portAttempt + 1, retriesLeft - 1);
+          } else {
+            console.error("Server listen failed:", err);
+            reject(err);
+          }
+        });
+      };
+
+      tryBind(listenPort, 10);
     } catch (err) {
       console.error("Failed to initialize server:", err);
       reject(err);
