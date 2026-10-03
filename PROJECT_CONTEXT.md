@@ -103,8 +103,8 @@
 
 ## 🔄 6. Instructions for Future AI Development Sessions
 Whenever resuming work on this codebase in a new Google AI Studio conversation:
-1. **Read `PROJECT_CONTEXT.md` first:** Check which phase was completed last (currently **Phase 5**).
-2. **Follow Serial Order:** Proceed to the next pending phase (**Phase 6: Custom Thermal Bill Designer**).
+1. **Read `PROJECT_CONTEXT.md` first:** Check which phase was completed last (currently **Phase 6**).
+2. **Follow Serial Order:** Proceed to the next pending phase (**Phase 7: Customer Loyalty Points Scheme**).
 3. **Verify Builds:** Always run `lint_applet` and `compile_applet` before completing work.
 4. **Push to GitHub:** Commit and push changes to the repository `devrupeshgadkhe/Repo_billingOnHands` on branch `main`.
 5. **Update this file (`PROJECT_CONTEXT.md`):** Mark the completed phase and document key architecture changes immediately.

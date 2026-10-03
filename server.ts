@@ -2596,14 +2596,14 @@ app.post("/api/munimji/test-keys", async (req, res) => {
 // Process voice command or text command with multi-key and multi-model fallback
 app.post("/api/munimji/process", async (req, res) => {
   try {
-    const { text, audioBase64, mimeType, currentScreen, language } = req.body || {};
+    const { text, audioBase64, mimeType, currentScreen, language, history } = req.body || {};
     if (!text && !audioBase64) {
       return res.status(400).json({ error: "Text or audio command is required for Munimji." });
     }
 
     const currentDb = readDb();
     const response = await processMunimjiCommand(
-      { text, audioBase64, mimeType, currentScreen, language },
+      { text, audioBase64, mimeType, currentScreen, language, history },
       currentDb
     );
 

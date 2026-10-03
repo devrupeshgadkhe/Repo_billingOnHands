@@ -1057,11 +1057,13 @@ export default function MunimjiDrawer({
     setIsProcessing(true);
 
     try {
+      const historySnapshot = messages.slice(-10).map(m => ({ sender: m.sender, text: m.text }));
       const response: MunimjiResponse = await sendMunimjiCommand({
         text: params.text,
         audioBase64: params.audioBase64,
         mimeType: params.mimeType,
-        language
+        language,
+        history: historySnapshot
       });
 
       // If server returned refined transcript, update the user bubble

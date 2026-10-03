@@ -86,6 +86,7 @@ export async function sendMunimjiCommand(params: {
   mimeType?: string;
   currentScreen?: string;
   language?: "mr" | "hi" | "en";
+  history?: Array<{ sender: string; text: string }>;
 }): Promise<MunimjiResponse> {
   const res = await fetch("/api/munimji/process", {
     method: "POST",

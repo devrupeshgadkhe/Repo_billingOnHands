@@ -555,6 +555,7 @@ export interface MunimjiCommandRequest {
   mimeType?: string;
   currentScreen?: string;
   language?: "mr" | "hi" | "en";
+  history?: Array<{ sender: string; text: string }>;
 }
 
 export interface MunimjiCommandResponse {
@@ -1103,9 +1104,14 @@ Always return a JSON object strictly conforming to this structure:
     }
 
     const textRes = await munimjiPool.executeWithFallback("processMunimjiCommand", async (client, modelName) => {
-      const parts: any[] = [{
-        text: "Merchant Command: \"" + commandText + "\"\n" + dbContext
-      }];
+      const conversationHistory = Array.isArray(req.history) ? req.history : [];
+      const parts: any[] = [];
+      for (const h of conversationHistory) {
+        parts.push({ text: `${h.sender === 'user' ? 'Merchant' : 'Munimji'}: ${h.text}` });
+      }
+      parts.push({
+        text: "Latest Merchant Command: \"" + commandText + "\"\n" + dbContext
+      });
 
       console.info("[Munimji] Processing command with model:", modelName, {
           hasAudio,
