@@ -4,7 +4,8 @@
  */
 
 import React, { useState } from "react";
-import { Invoice, BusinessProfile, Party } from "../types.js";
+import { Invoice, BusinessProfile, Party, ThermalPrintConfig } from "../types.js";
+import { DEFAULT_THERMAL_CONFIG } from "./ThermalDesignerModal.js";
 import { Printer, X } from "lucide-react";
 
 interface InvoicePrintModalProps {
@@ -220,139 +221,234 @@ export default function InvoicePrintModal({
         >
           {printSize.startsWith("thermal") ? (
             /* ========================================================
-               THERMAL RECEIPT (58mm / 72mm) - SIMPLE & NEAT
+               CUSTOMIZABLE THERMAL RECEIPT (58mm / 72mm / 80mm)
                ======================================================== */
-            <div className={`mx-auto ${printSize === "thermal_58" ? "max-w-[250px] text-[10px]" : "max-w-[320px] text-[11px]"} font-mono text-slate-900`}>
-              {/* Header */}
-              <div className="text-center space-y-1 mb-2">
-                <h2 className="text-sm font-bold uppercase">{business.name}</h2>
-                <p className="whitespace-pre-wrap leading-tight text-slate-600 text-[10px]">{business.address}</p>
-                <div className="text-[10px] text-slate-600 space-y-0.5">
-                  {business.gstin && <p>GSTIN: {business.gstin}</p>}
-                  {business.phone && <p>Phone: {business.phone}</p>}
-                </div>
-              </div>
+            (() => {
+              const th: ThermalPrintConfig = business.thermalConfig || {
+                ...DEFAULT_THERMAL_CONFIG,
+                paperWidth: printSize === "thermal_58" ? "58mm" : "80mm"
+              };
 
-              <div className="border-t border-dashed border-slate-400 my-2"></div>
+              const isMarathi = th.language === "mr";
+              const totalDiscount = invoice.items.reduce((s, i) => s + (i.discount || 0), 0);
+              const upiVpa = th.upiId || (business.phone ? `${business.phone}@upi` : "");
+              const upiPayee = encodeURIComponent(th.upiMerchantName || business.name || "Store");
+              const upiPayload = upiVpa ? `upi://pay?pa=${upiVpa}&pn=${upiPayee}&am=${invoice.totalAmount}&cu=INR&tn=Bill-${invoice.invoiceNumber}` : "";
+              const qrUrl = upiPayload ? `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(upiPayload)}` : "";
 
-              {/* Invoice Info */}
-              <div className="space-y-0.5 text-[10.5px]">
-                <div className="flex justify-between">
-                  <span>{invoice.type.includes("return") ? (invoice.type === "sale_return" ? "Credit Note No:" : "Debit Note No:") : "Bill No:"} <strong>#{invoice.invoiceNumber}</strong></span>
-                  <span>Date: {invoice.date}</span>
-                </div>
-                {invoice.originalInvoiceNumber && (
-                  <div className="flex justify-between text-slate-600">
-                    <span>Original Bill Ref:</span>
-                    <strong>#{invoice.originalInvoiceNumber}</strong>
+              return (
+                <div className={`mx-auto ${printSize === "thermal_58" ? "max-w-[250px] text-[10px]" : "max-w-[320px] text-[11px]"} font-mono text-slate-900 leading-tight`}>
+                  
+                  {/* Top Auspicious Greeting */}
+                  {th.headerGreeting && (
+                    <div className="text-center font-bold text-[10px] tracking-wider mb-1">
+                      {th.headerGreeting}
+                    </div>
+                  )}
+
+                  {/* Store Logo */}
+                  {th.showLogo && business.logoUrl && (
+                    <div className="flex justify-center mb-1.5">
+                      <img
+                        src={business.logoUrl}
+                        alt="Logo"
+                        className="object-contain max-h-12 filter grayscale contrast-200"
+                      />
+                    </div>
+                  )}
+
+                  {/* Store Info */}
+                  {th.showBusinessName && (
+                    <h2 className="text-sm font-black uppercase text-center">{business.name}</h2>
+                  )}
+                  {th.customHeaderNote && (
+                    <p className="text-[9.5px] italic text-center text-slate-600 mb-0.5">{th.customHeaderNote}</p>
+                  )}
+
+                  <div className="text-center text-[10px] space-y-0.5 text-slate-700">
+                    {th.showAddress && <p className="whitespace-pre-wrap leading-tight">{business.address}</p>}
+                    {th.showPhone && business.phone && <p>Ph: {business.phone}</p>}
+                    {th.showGstin && business.gstin && <p className="font-bold">GSTIN: {business.gstin}</p>}
+                    {th.showDrugLicense && business.drugLicenseNo && <p>D.L. No: {business.drugLicenseNo}</p>}
+                    {th.showFssai && business.fssaiNo && <p>FSSAI: {business.fssaiNo}</p>}
                   </div>
-                )}
-                <div className="flex justify-between">
-                  <span>{invoice.type.includes("return") ? "Settlement:" : "Payment:"} <strong>{getPaymentModeLabel(invoice.paymentType, invoice.type)}</strong></span>
-                </div>
-              </div>
 
-              <div className="border-t border-dashed border-slate-400 my-2"></div>
+                  <div className="border-t border-dashed border-slate-400 my-2"></div>
 
-              {/* Customer Info */}
-              <div className="space-y-0.5 text-[10.5px]">
-                <p className="text-[9px] uppercase font-bold text-slate-500">Customer Details:</p>
-                <p className="font-bold text-slate-900">{cleanPartyName}</p>
-                {invoice.partyGstin && <p className="text-[10px]">GSTIN: {invoice.partyGstin}</p>}
-                {party?.phone && <p className="text-[10px]">Phone: {party.phone}</p>}
-              </div>
-
-              <div className="border-t border-dashed border-slate-400 my-2"></div>
-
-              {/* Items List */}
-              <div className="space-y-2">
-                <div className="flex justify-between font-bold text-[10px] uppercase text-slate-600 pb-1 border-b border-slate-200">
-                  <span>Item & Qty</span>
-                  <span>Amount</span>
-                </div>
-
-                {invoice.items.map((item, idx) => (
-                  <div key={idx} className="space-y-0.5">
-                    <div className="font-bold text-slate-900 leading-tight">
-                      {idx + 1}. {item.itemName}
+                  {/* Invoice Meta */}
+                  <div className="space-y-0.5 text-[10px]">
+                    <div className="flex justify-between">
+                      <span>{invoice.type.includes("return") ? (invoice.type === "sale_return" ? "Credit Note:" : "Debit Note:") : isMarathi ? "बिल क्र:" : "Bill No:"} <strong>#{invoice.invoiceNumber}</strong></span>
+                      <span>{invoice.date}</span>
                     </div>
-                    <div className="flex justify-between text-slate-700 text-[10px]">
-                      <span>
-                        {item.quantity} x ₹{item.price.toFixed(2)} [GST {item.gstRate}%]
-                      </span>
-                      <span className="font-bold">
-                        ₹{item.totalAmount.toFixed(2)}
-                      </span>
-                    </div>
-                    {(item.batchNumber || item.expiryDate || (item.discount && item.discount > 0)) && (
-                      <div className="text-[9px] text-slate-500 pl-3 flex flex-wrap gap-1.5 mt-0.5 font-mono">
-                        {item.batchNumber && <span>B:{item.batchNumber}</span>}
-                        {item.expiryDate && <span>Exp:{item.expiryDate}</span>}
-                        {item.discount && item.discount > 0 ? <span>Disc:-₹{item.discount.toFixed(2)}</span> : null}
+                    {invoice.originalInvoiceNumber && (
+                      <div className="flex justify-between text-slate-600 text-[9.5px]">
+                        <span>Orig Bill Ref:</span>
+                        <strong>#{invoice.originalInvoiceNumber}</strong>
+                      </div>
+                    )}
+                    {th.showPaymentMode && (
+                      <div className="flex justify-between">
+                        <span>{invoice.type.includes("return") ? "Settlement:" : isMarathi ? "पेमेंट:" : "Payment:"} <strong>{getPaymentModeLabel(invoice.paymentType, invoice.type)}</strong></span>
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
 
-              <div className="border-t border-dashed border-slate-400 my-2.5"></div>
+                  {/* Customer Details */}
+                  {th.showCustomerName && (
+                    <>
+                      <div className="border-t border-dashed border-slate-300 my-1.5"></div>
+                      <div className="space-y-0.5 text-[10px]">
+                        <p className="text-[9px] uppercase font-bold text-slate-500">{isMarathi ? "ग्राहक तपशील:" : "Customer Details:"}</p>
+                        <p className="font-bold text-slate-900">{cleanPartyName}</p>
+                        {th.showCustomerGstin && invoice.partyGstin && <p className="text-[9.5px]">GSTIN: {invoice.partyGstin}</p>}
+                        {th.showCustomerPhone && party?.phone && <p className="text-[9.5px]">Mob: {party.phone}</p>}
+                      </div>
+                    </>
+                  )}
 
-              {/* Calculations */}
-              <div className="space-y-1 font-mono text-right text-[10.5px]">
-                <div className="flex justify-between">
-                  <span>Subtotal (Taxable):</span>
-                  <span>₹{invoice.subtotal.toFixed(2)}</span>
-                </div>
-                {!isInterstate ? (
-                  <>
-                    <div className="flex justify-between">
-                      <span>CGST:</span>
-                      <span>₹{(invoice.cgstTotal || 0).toFixed(2)}</span>
+                  <div className="border-t border-dashed border-slate-400 my-2"></div>
+
+                  {/* Items List */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between font-bold text-[10px] uppercase text-slate-700 pb-0.5 border-b border-slate-300">
+                      <span>{isMarathi ? "तपशील / वस्तू" : "Item & Qty"}</span>
+                      <span>{isMarathi ? "रक्कम" : "Amount"}</span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>SGST:</span>
-                      <span>₹{(invoice.sgstTotal || 0).toFixed(2)}</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex justify-between">
-                    <span>IGST:</span>
-                    <span>₹{(invoice.igstTotal || 0).toFixed(2)}</span>
-                  </div>
-                )}
-                {invoice.extraCharges && invoice.extraCharges.length > 0 && (
-                  <>
-                    {invoice.extraCharges.map((ch, i) => (
-                      <div key={i} className="flex justify-between text-slate-600">
-                        <span>{ch.title}:</span>
-                        <span>₹{ch.amount.toFixed(2)}</span>
+
+                    {invoice.items.map((item, idx) => (
+                      <div key={idx} className="space-y-0.5">
+                        <div className="font-bold text-slate-900 leading-tight">
+                          {th.showItemIndex ? `${idx + 1}. ` : ""}{item.itemName}
+                        </div>
+                        <div className="flex justify-between text-slate-700 text-[10px]">
+                          <span>
+                            {item.quantity} x ₹{item.price.toFixed(2)}
+                            {th.showGstPercent && item.gstRate ? ` [${item.gstRate}%]` : ""}
+                          </span>
+                          <span className="font-bold font-mono">
+                            ₹{item.totalAmount.toFixed(2)}
+                          </span>
+                        </div>
+                        {(th.showBatch && item.batchNumber || th.showExpiry && item.expiryDate || th.showHsn && item.hsn || (th.showDiscount && item.discount && item.discount > 0)) && (
+                          <div className="text-[9px] text-slate-500 pl-2 flex flex-wrap gap-1 mt-0.5 font-mono">
+                            {th.showHsn && item.hsn && <span>HSN:{item.hsn}</span>}
+                            {th.showBatch && item.batchNumber && <span>B:{item.batchNumber}</span>}
+                            {th.showExpiry && item.expiryDate && <span>Exp:{item.expiryDate}</span>}
+                            {th.showDiscount && item.discount && item.discount > 0 ? <span className="text-emerald-700 font-semibold">Disc:-₹{item.discount.toFixed(2)}</span> : null}
+                          </div>
+                        )}
                       </div>
                     ))}
-                  </>
-                )}
+                  </div>
 
-                <div className="border-t border-dashed border-slate-400 my-1"></div>
-                <div className="flex justify-between font-bold text-xs bg-slate-100 p-1 rounded">
-                  <span>TOTAL AMOUNT:</span>
-                  <span>₹{invoice.totalAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-slate-600 pt-0.5">
-                  <span>Paid Amount:</span>
-                  <span>₹{invoice.paidAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-slate-800">
-                  <span>Balance Due:</span>
-                  <span>₹{invoice.remainingAmount.toFixed(2)}</span>
-                </div>
-              </div>
+                  <div className="border-t border-dashed border-slate-400 my-2"></div>
 
-              <div className="border-t border-dashed border-slate-400 my-3"></div>
+                  {/* Totals & Calculations */}
+                  <div className="space-y-0.5 font-mono text-[10.5px]">
+                    <div className="flex justify-between">
+                      <span>Subtotal (Taxable):</span>
+                      <span>₹{invoice.subtotal.toFixed(2)}</span>
+                    </div>
 
-              <div className="text-center space-y-1 text-[10px] text-slate-600">
-                <p className="font-semibold">Thank you for your business!</p>
-                <p className="text-[9px] text-slate-500 pt-1">{business.signatureText || `For ${business.name}`}</p>
-              </div>
-            </div>
+                    {th.showTaxBreakdown && (
+                      !isInterstate ? (
+                        <>
+                          <div className="flex justify-between text-[10px] text-slate-600">
+                            <span>CGST:</span>
+                            <span>₹{(invoice.cgstTotal || 0).toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-[10px] text-slate-600">
+                            <span>SGST:</span>
+                            <span>₹{(invoice.sgstTotal || 0).toFixed(2)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex justify-between text-[10px] text-slate-600">
+                          <span>IGST:</span>
+                          <span>₹{(invoice.igstTotal || 0).toFixed(2)}</span>
+                        </div>
+                      )
+                    )}
+
+                    {invoice.extraCharges && invoice.extraCharges.length > 0 && (
+                      invoice.extraCharges.map((ch, i) => (
+                        <div key={i} className="flex justify-between text-slate-600 text-[10px]">
+                          <span>{ch.title}:</span>
+                          <span>₹{ch.amount.toFixed(2)}</span>
+                        </div>
+                      ))
+                    )}
+
+                    <div className="border-t border-dashed border-slate-400 my-1"></div>
+                    <div className="flex justify-between font-black text-xs bg-slate-100 p-1 rounded">
+                      <span>{isMarathi ? "एकूण रक्कम (TOTAL):" : "TOTAL AMOUNT:"}</span>
+                      <span className="text-sm">₹{invoice.totalAmount.toFixed(2)}</span>
+                    </div>
+
+                    <div className="flex justify-between text-slate-600 pt-0.5 text-[10px]">
+                      <span>Paid Amount:</span>
+                      <span>₹{invoice.paidAmount.toFixed(2)}</span>
+                    </div>
+                    {invoice.remainingAmount > 0 && (
+                      <div className="flex justify-between font-bold text-rose-700 text-[10px]">
+                        <span>Balance Due:</span>
+                        <span>₹{invoice.remainingAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Savings Banner */}
+                  {th.showSavingsBanner && totalDiscount > 0 && (
+                    <div className="my-2 p-1 border border-black text-center font-bold text-[9.5px]">
+                      ★ You Saved ₹{totalDiscount.toFixed(2)} Today! ★
+                    </div>
+                  )}
+
+                  {/* Scan to Pay UPI QR Code */}
+                  {th.showUpiQrCode && qrUrl && (
+                    <div className="my-2.5 text-center flex flex-col items-center justify-center p-1.5 border border-dashed border-slate-400 rounded-sm">
+                      <p className="font-bold text-[9px] uppercase mb-1">Scan & Pay via UPI</p>
+                      <img
+                        src={qrUrl}
+                        alt="UPI QR Code"
+                        className="w-20 h-20 object-contain"
+                      />
+                      <p className="text-[8px] text-slate-600 font-mono mt-0.5">{upiVpa}</p>
+                    </div>
+                  )}
+
+                  {/* Terms & Conditions */}
+                  {th.showTerms && th.termsAndConditions && (
+                    <div className="text-[8.5px] text-slate-600 my-1.5 leading-tight border-t border-dashed border-slate-300 pt-1">
+                      <p className="font-bold uppercase text-[8.5px] mb-0.5">Terms:</p>
+                      <p className="whitespace-pre-line">{th.termsAndConditions}</p>
+                    </div>
+                  )}
+
+                  {/* Footer Message */}
+                  {th.footerNote && (
+                    <div className="text-center font-bold text-[9.5px] my-1.5">
+                      {th.footerNote}
+                    </div>
+                  )}
+
+                  {/* Barcode representation */}
+                  {th.showBarcode && (
+                    <div className="text-center my-1.5">
+                      <div className="font-mono text-base tracking-widest leading-none font-bold">
+                        |||||| | |||| ||||| | |||||
+                      </div>
+                      <p className="text-[8px] font-mono">{invoice.invoiceNumber}</p>
+                    </div>
+                  )}
+
+                  {/* Cutter Spacer */}
+                  <div style={{ height: `${(th.cutterFeedLines || 2) * 12}px` }}></div>
+
+                </div>
+              );
+            })()
           ) : (
             /* ========================================================
                STANDARD INVOICE (A4 / A5 / LETTER) - NEAT & PROFESSIONAL

@@ -67,14 +67,20 @@
 * **Transit Slip Printing:** Rule 138 compliant e-Way Bill summary print with QR code and barcode.
 * **Digital Munimji Sync:** Voice commands ("ई-वे बिल बनवा", "E-Invoice तयार करा") navigate directly to generator with drawer auto-minimize.
 
+### ✅ Phase 6: Custom Thermal Bill Designer (`ThermalDesignerModal.tsx` & `SettingsView.tsx`)
+* **Thermal Receipt Layout Editor (58mm & 80mm):** Customizable header, footer, store logo, barcode, and font sizing.
+* **Dynamic UPI QR Code Generator:** Real-time scannable QR code generated from store UPI ID and merchant name.
+* **Bilingual Marathi/English Labels:** Toggleable receipt language preferences.
+* **Preset Templates:** 5 built-in presets (Retail Standard, Supermarket Compact, Medical Batch, Restaurant KOT, and Minimal).
+* **Digital Munimji Sync:** Voice and text command navigation to thermal bill designer.
+
 ---
 
 ## 🚀 4. Upcoming Roadmap & Next Phases (In Serial Order)
 
 | Phase | Feature Name | Scope & Specifications | Priority |
 | :--- | :--- | :--- | :--- |
-| **Phase 6** | **Custom Thermal Bill Designer** | Drag-and-drop / customizable thermal bill editor for 58mm & 80mm printers (custom headers, footers, store logo, QR code, bilingual English/Marathi labels, font sizes, GST breakdown switches). | **Next / High** |
-| **Phase 7** | **Customer Loyalty Points Scheme** | Points earning rules per ₹100 spent, point redemption in POS checkout, customer points balance ledger, and expiry management. | Medium |
+| **Phase 7** | **Customer Loyalty Points Scheme** | Points earning rules per ₹100 spent, point redemption in POS checkout, customer points balance ledger, and expiry management. | **Next / High** |
 | **Phase 8** | **Automated Scheduled Email Reports** | Automated daily end-of-day (EOD) summary email with sales, cash collection, and low stock snapshot sent to business owner. | Medium |
 | **Phase 9** | **Multi-Godown / Warehouse Stock Transfer** | Multi-location warehouse inventory tracking and intra-warehouse stock transfer vouchers. | Medium |
 

@@ -3,6 +3,73 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+export interface ThermalPrintConfig {
+  paperWidth: '58mm' | '80mm';
+  templatePreset: 'retail_standard' | 'supermarket_compact' | 'medical_batch' | 'restaurant_kot' | 'minimal';
+  fontFamily: 'monospace' | 'sans-serif';
+  fontSize: 'small' | 'medium' | 'large';
+  language: 'mr' | 'en' | 'bilingual';
+  
+  // Header Section
+  showLogo: boolean;
+  logoHeight: number; // 40, 60, 80 px
+  headerGreeting: string; // e.g. "|| श्री गणेशाय नमः ||" or "WELCOME"
+  showBusinessName: boolean;
+  businessNameSize: 'normal' | 'large' | 'huge';
+  showAddress: boolean;
+  showPhone: boolean;
+  showEmail: boolean;
+  showGstin: boolean;
+  showFssai: boolean;
+  showDrugLicense: boolean;
+  customHeaderNote?: string;
+
+  // Invoice & Customer Info
+  showBillNo: boolean;
+  showDate: boolean;
+  showTime: boolean;
+  showCashierName: boolean;
+  showCustomerName: boolean;
+  showCustomerPhone: boolean;
+  showCustomerAddress: boolean;
+  showCustomerGstin: boolean;
+  showPreviousBalance: boolean;
+  showTotalBalance: boolean;
+
+  // Item Table
+  showItemIndex: boolean;
+  showHsn: boolean;
+  showBatch: boolean;
+  showExpiry: boolean;
+  showRate: boolean;
+  showDiscount: boolean;
+  showGstPercent: boolean;
+  wrapItemName: boolean;
+  itemSpacing: 'compact' | 'comfortable';
+
+  // Totals & Tax Section
+  showTaxBreakdown: boolean;
+  showSavingsBanner: boolean;
+  showPaymentMode: boolean;
+  showCashTendered: boolean;
+  showChangeReturned: boolean;
+
+  // Footer & Payment Section
+  showUpiQrCode: boolean;
+  upiId?: string;
+  upiMerchantName?: string;
+  showBankDetails: boolean;
+  bankName?: string;
+  bankAccountNo?: string;
+  bankIfsc?: string;
+  bankBranch?: string;
+  showTerms: boolean;
+  termsAndConditions: string;
+  footerNote: string;
+  showBarcode: boolean;
+  cutterFeedLines: number;
+}
+
 export interface BusinessProfile {
   name: string;
   gstin: string;
@@ -22,6 +89,7 @@ export interface BusinessProfile {
   fssaiNo?: string;
   exciseLicenseNo?: string;
   logoUrl?: string; // base64 or source url of local store logo
+  thermalConfig?: ThermalPrintConfig;
 }
 
 export interface ItemBatch {
@@ -99,6 +167,7 @@ export interface InvoiceItem {
   itemName: string;
   hsn: string;
   quantity: number;
+  unit?: string;
   price: number;
   discount?: number; // Flat discount amount for this line item
   batchNumber?: string; // Batch number for pharmaceutical/FMCG compliance

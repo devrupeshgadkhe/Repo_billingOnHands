@@ -41,10 +41,12 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-  Printer
+  Printer,
+  Sliders
 } from "lucide-react";
 import { InvoiceUploadModal, ParsedInvoiceData } from "./InvoiceUploadModal.js";
 import EWayBillModal from "./EWayBillModal.js";
+import ThermalDesignerModal from "./ThermalDesignerModal.js";
 
 interface InvoicingViewProps {
   key?: React.Key;
@@ -207,6 +209,7 @@ export default function InvoicingView({
 
   // E-Way Bill & E-Invoice Modal state
   const [ewayBillModalInvoice, setEwayBillModalInvoice] = useState<Invoice | null>(null);
+  const [isThermalDesignerOpen, setIsThermalDesignerOpen] = useState(false);
 
   // Supplier Bill Scanner state (Only visible if Gemini AI credits are available)
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -2356,38 +2359,52 @@ export default function InvoicingView({
                 </button>
               </div>
 
-              {/* E-Way Bill & E-Invoice Generator Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  const activeInv: Invoice = {
-                    id: invoiceToEdit?.id || "draft_ewb_" + Date.now(),
-                    invoiceNumber: invoiceNumber || "INV-DRAFT",
-                    date: invoiceDate,
-                    partyId: selectedPartyId,
-                    partyName: activeParty?.name || partySearchText || "Customer",
-                    partyGstin: activeParty?.gstin || "",
-                    type: txSubtype,
-                    items: computedInvoiceDetails.lines,
-                    subtotal: computedInvoiceDetails.subtotal,
-                    taxAmount: computedInvoiceDetails.taxAmount,
-                    cgstTotal: computedInvoiceDetails.cgstTotal,
-                    sgstTotal: computedInvoiceDetails.sgstTotal,
-                    igstTotal: computedInvoiceDetails.igstTotal,
-                    extraCharges,
-                    totalAmount: computedInvoiceDetails.grandTotal,
-                    paymentType,
-                    paidAmount: paidAmt,
-                    remainingAmount: Math.max(0, computedInvoiceDetails.grandTotal - paidAmt),
-                    notes
-                  };
-                  setEwayBillModalInvoice(activeInv);
-                }}
-                className="w-full py-2.5 px-3 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-2xs"
-              >
-                <Truck className="w-3.5 h-3.5 text-blue-600" />
-                <span>ई-वे बिल / E-Invoice JSON (E-Way Bill)</span>
-              </button>
+              {/* Secondary Actions Grid */}
+              <div className="grid grid-cols-2 gap-2">
+                {/* E-Way Bill & E-Invoice Generator Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const activeInv: Invoice = {
+                      id: invoiceToEdit?.id || "draft_ewb_" + Date.now(),
+                      invoiceNumber: invoiceNumber || "INV-DRAFT",
+                      date: invoiceDate,
+                      partyId: selectedPartyId,
+                      partyName: activeParty?.name || partySearchText || "Customer",
+                      partyGstin: activeParty?.gstin || "",
+                      type: txSubtype,
+                      items: computedInvoiceDetails.lines,
+                      subtotal: computedInvoiceDetails.subtotal,
+                      taxAmount: computedInvoiceDetails.taxAmount,
+                      cgstTotal: computedInvoiceDetails.cgstTotal,
+                      sgstTotal: computedInvoiceDetails.sgstTotal,
+                      igstTotal: computedInvoiceDetails.igstTotal,
+                      extraCharges,
+                      totalAmount: computedInvoiceDetails.grandTotal,
+                      paymentType,
+                      paidAmount: paidAmt,
+                      remainingAmount: Math.max(0, computedInvoiceDetails.grandTotal - paidAmt),
+                      notes
+                    };
+                    setEwayBillModalInvoice(activeInv);
+                  }}
+                  className="py-2.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1 cursor-pointer shadow-2xs"
+                >
+                  <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span>ई-वे / E-Inv</span>
+                </button>
+
+                {/* Custom Thermal Designer Button */}
+                <button
+                  type="button"
+                  onClick={() => setIsThermalDesignerOpen(true)}
+                  className="py-2.5 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1 cursor-pointer shadow-2xs"
+                  title="Customize 58mm/80mm Thermal Receipt Layout & QR"
+                >
+                  <Sliders className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  <span>थर्मल डिझाइन</span>
+                </button>
+              </div>
             </div>
 
           </div>
@@ -2482,6 +2499,43 @@ export default function InvoicingView({
         business={business}
         parties={parties}
       />
+
+      {/* Phase 6: Custom Thermal Bill Designer Modal */}
+      {isThermalDesignerOpen && (
+        <ThermalDesignerModal
+          isOpen={isThermalDesignerOpen}
+          onClose={() => setIsThermalDesignerOpen(false)}
+          business={business}
+          sampleInvoice={{
+            id: invoiceToEdit?.id || "draft_sample",
+            invoiceNumber: invoiceNumber || "INV-SAMPLE",
+            date: invoiceDate,
+            partyId: selectedPartyId,
+            partyName: activeParty?.name || partySearchText || "Customer",
+            partyGstin: activeParty?.gstin || "",
+            type: txSubtype,
+            items: computedInvoiceDetails.lines.length > 0 ? computedInvoiceDetails.lines : undefined as any,
+            subtotal: computedInvoiceDetails.subtotal,
+            taxAmount: computedInvoiceDetails.taxAmount,
+            cgstTotal: computedInvoiceDetails.cgstTotal,
+            sgstTotal: computedInvoiceDetails.sgstTotal,
+            igstTotal: computedInvoiceDetails.igstTotal,
+            extraCharges,
+            totalAmount: computedInvoiceDetails.grandTotal,
+            paymentType,
+            paidAmount: paidAmt,
+            remainingAmount: Math.max(0, computedInvoiceDetails.grandTotal - paidAmt),
+            notes
+          }}
+          onSaveConfig={async (updatedConfig) => {
+            await fetch("/api/business", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...business, thermalConfig: updatedConfig })
+            });
+          }}
+        />
+      )}
 
     </div>
   );

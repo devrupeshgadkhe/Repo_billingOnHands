@@ -27,8 +27,12 @@ import {
   ExternalLink,
   Trash2,
   AlertOctagon,
-  AlertTriangle
+  AlertTriangle,
+  Printer,
+  Sliders,
+  Sparkles
 } from "lucide-react";
+import ThermalDesignerModal from "./ThermalDesignerModal.js";
 
 interface SettingsViewProps {
   business: BusinessProfile;
@@ -54,6 +58,7 @@ export default function SettingsView({
   const { showConfirm, showAlert } = useDialog();
   const [formData, setFormData] = useState<BusinessProfile>({ ...business });
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [isThermalDesignerOpen, setIsThermalDesignerOpen] = useState(false);
   const [updaterMsg, setUpdaterMsg] = useState<string | null>(null);
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
@@ -576,6 +581,32 @@ export default function SettingsView({
         {/* Database administration block - Right Panel */}
         <div className="space-y-6">
 
+          {/* Phase 6: Custom Thermal Bill Designer Card */}
+          <div className="bg-linear-to-br from-indigo-900 via-slate-900 to-blue-950 text-white border border-indigo-700/50 rounded-xl p-5 shadow-md space-y-3.5">
+            <div className="flex items-center justify-between pb-2 border-b border-indigo-800/60">
+              <div className="flex items-center space-x-2">
+                <Printer className="w-5 h-5 text-indigo-300" />
+                <h3 className="font-bold text-sm text-white">Custom Thermal Bill Designer</h3>
+              </div>
+              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-mono px-2 py-0.5 rounded-full font-bold">
+                58mm & 80mm
+              </span>
+            </div>
+
+            <p className="text-[11px] text-indigo-200/90 leading-relaxed">
+              सानुकूल थर्मल प्रिंटर लेआउट (58mm व 80mm), दुकान लोगो, डायनॅमिक UPI QR कोड, मराठी/इंग्रजी भाषा, आणि फॉन्ट आकार एडिट करा.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => setIsThermalDesignerOpen(true)}
+              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs tracking-wide transition flex items-center justify-center space-x-2 shadow-sm cursor-pointer"
+            >
+              <Sliders className="w-4 h-4" />
+              <span>Open Thermal Bill Designer</span>
+            </button>
+          </div>
+
           {/* User security access update form */}
           {session && (
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
@@ -847,11 +878,29 @@ export default function SettingsView({
                 <span>{isHardResetting ? "डेटा पुसत आहे..." : "सर्व डेटा पुसा - हार्ड रिसेट (Wipe All & Fresh Start)"}</span>
               </button>
             </div>
+
           </div>
 
         </div>
 
       </div>
+
+      {/* Phase 6: Custom Thermal Bill Designer Modal */}
+      {isThermalDesignerOpen && (
+        <ThermalDesignerModal
+          isOpen={isThermalDesignerOpen}
+          onClose={() => setIsThermalDesignerOpen(false)}
+          business={business}
+          onSaveConfig={async (updatedConfig) => {
+            const updatedProfile: BusinessProfile = {
+              ...business,
+              thermalConfig: updatedConfig
+            };
+            await onSaveBusiness(updatedProfile);
+            setFormData(updatedProfile);
+          }}
+        />
+      )}
 
     </div>
   );
