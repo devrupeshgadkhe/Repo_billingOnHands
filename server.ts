@@ -2631,6 +2631,32 @@ app.post("/api/munimji/process", async (req, res) => {
   }
 });
 
+// Helper to parse traditional Indian quantities and decimals (e.g. पाव, अर्धा किलो, तीन पाव, दीड, 200g, etc.)
+function parseIndianQuantity(input: any): number {
+  if (typeof input === "number") return isNaN(input) || input <= 0 ? 1 : input;
+  if (!input) return 1;
+  const str = String(input).toLowerCase().trim();
+  const num = parseFloat(str);
+  if (!isNaN(num) && num > 0) {
+    if (str.includes("gm") || str.includes("ग्राम") || str.includes("ग्रॅम")) {
+      return num / 1000;
+    }
+    return num;
+  }
+  if (str.includes("पाव")) {
+    if (str.includes("अर्धा")) return 0.125;
+    return 0.25;
+  }
+  if (str.includes("अर्धा") || str.includes("half")) return 0.5;
+  if (str.includes("तीन पाव")) return 0.75;
+  if (str.includes("सव्वा")) return 1.25;
+  if (str.includes("दीड") || str.includes("deed")) return 1.5;
+  if (str.includes("पौने दोन")) return 1.75;
+  if (str.includes("अडीच")) return 2.5;
+  if (str.includes("साडेतीन")) return 3.5;
+  return 1;
+}
+
 // Universal Real-Database CRUD Handler for Digital Munimji across all modules
 function executeMunimjiUniversalCrud(
   actionType: string,
@@ -3143,12 +3169,32 @@ function executeMunimjiUniversalCrud(
       if (!invoice.partyName) invoice.partyName = "रोख ग्राहक (Cash Customer)";
       invoice.type = "sales";
 
-      // Deduct stock
+      // Deduct stock and dynamically auto-add any missing items to inventory catalog
       if (invoice.items && db.items) {
         for (const line of invoice.items) {
+          line.quantity = parseIndianQuantity(line.quantity);
           const prod = db.items.find((it: any) => it.id === line.itemId || it.name.toLowerCase() === (line.itemName || "").toLowerCase());
           if (prod) {
             prod.stockQuantity = Math.max(0, (prod.stockQuantity || 0) - line.quantity);
+            line.itemId = prod.id;
+          } else {
+            // Dynamic Out-of-Catalog Item Auto-Addition
+            const newId = "item_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+            const unitType = line.unit || (line.itemName && (line.itemName.includes("तेल") || line.itemName.includes("oil") || line.itemName.includes("दूध")) ? "LTR" : "KGS");
+            const newProd = {
+              id: newId,
+              name: line.itemName || "नवीन वस्तू",
+              hsn: line.hsn || "9999",
+              purchasePrice: line.price ? Math.round(line.price * 0.85) : 50,
+              salePrice: line.price || 100,
+              mrp: line.price || 100,
+              stockQuantity: Math.max(0, 100 - line.quantity),
+              minStockAlert: 5,
+              gstRate: line.gstRate || 0,
+              unit: unitType
+            };
+            db.items.push(newProd);
+            line.itemId = newId;
           }
         }
       }

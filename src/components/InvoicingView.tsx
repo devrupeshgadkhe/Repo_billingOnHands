@@ -744,11 +744,17 @@ export default function InvoicingView({
     });
   };
 
-  // Stepper increment / decrement
+  // Stepper increment / decrement with fractional support
   const handleStepQuantity = (idx: number, delta: number) => {
     setInvoiceLines(prev => {
       const copy = [...prev];
-      const newQty = (copy[idx].quantity || 1) + delta;
+      const cur = copy[idx].quantity || 1;
+      let stepSize = delta > 0 ? 1 : -1;
+      if (cur < 1 && delta > 0) stepSize = 0.25;
+      else if (cur <= 1 && delta < 0) stepSize = -0.25;
+      else if (cur < 5 && Math.abs(delta) === 1) stepSize = delta * 0.5;
+
+      const newQty = parseFloat(Math.max(0.001, cur + stepSize).toFixed(3));
       if (newQty <= 0) {
         return prev.filter((_, i) => i !== idx);
       }
@@ -1881,11 +1887,12 @@ export default function InvoicingView({
                               </button>
                               <input
                                 type="number"
-                                min="1"
+                                min="0.001"
+                                step="any"
                                 required
                                 value={line.quantity || ""}
-                                onChange={(e) => handleLineValueChange(idx, 'quantity', parseInt(e.target.value) || 0)}
-                                className="w-12 text-center py-1 border border-slate-200 rounded-md text-xs font-bold font-mono outline-none focus:border-emerald-500"
+                                onChange={(e) => handleLineValueChange(idx, 'quantity', parseFloat(e.target.value) || 0)}
+                                className="w-16 text-center py-1 border border-slate-200 rounded-md text-xs font-bold font-mono outline-none focus:border-emerald-500"
                               />
                               <button
                                 type="button"

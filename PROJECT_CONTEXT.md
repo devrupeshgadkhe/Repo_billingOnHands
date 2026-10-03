@@ -67,12 +67,11 @@
 * **Transit Slip Printing:** Rule 138 compliant e-Way Bill summary print with QR code and barcode.
 * **Digital Munimji Sync:** Voice commands ("ई-वे बिल बनवा", "E-Invoice तयार करा") navigate directly to generator with drawer auto-minimize.
 
-### ✅ Phase 6: Custom Thermal Bill Designer (`ThermalDesignerModal.tsx` & `SettingsView.tsx`)
+### ✅ Phase 6: Custom Thermal Bill Designer & Vernacular Fractional POS (`ThermalDesignerModal.tsx` & `InvoicingView.tsx`)
 * **Thermal Receipt Layout Editor (58mm & 80mm):** Customizable header, footer, store logo, barcode, and font sizing.
 * **Dynamic UPI QR Code Generator:** Real-time scannable QR code generated from store UPI ID and merchant name.
-* **Bilingual Marathi/English Labels:** Toggleable receipt language preferences.
-* **Preset Templates:** 5 built-in presets (Retail Standard, Supermarket Compact, Medical Batch, Restaurant KOT, and Minimal).
-* **Digital Munimji Sync:** Voice and text command navigation to thermal bill designer.
+* **Fractional & Traditional Indian Units Handling:** Complete support for sub-1 quantities (0.25, 0.5, 0.75, 1.5 etc.) and vernacular spoken/typed terms (*पाव, अर्धा किलो, तीन पाव, दीड किलो, 200 ग्रॅम*) without minimum quantity validation errors.
+* **Dynamic Out-of-Catalog Item Auto-Addition:** When Munimji processes sales billing with items not currently in inventory (e.g. *शेंगदाणे, तेल, गूळ*), items are automatically created and added to inventory on the fly with estimated pricing and units while simultaneously recording in the bill.
 
 ---
 
