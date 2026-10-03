@@ -147,15 +147,36 @@ export default function App() {
     }
   }, []);
 
-  // Fetch full data state from Express JSON API
-  const fetchState = async () => {
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryAttempt, setRetryAttempt] = useState<number>(0);
+
+  // Fetch full data state from Express JSON API with resilient retry
+  const fetchState = async (isRetry = false) => {
+    if (!isRetry) setIsLoading(true);
+    setLoadError(null);
     try {
       const res = await fetch("/api/db");
-      if (!res.ok) throw new Error("Server communication fault");
+      if (!res.ok) throw new Error(`Server status ${res.status}: Failed to read database`);
       const data: DatabaseState = await res.json();
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid database format received");
+      }
       setDbState(data);
-    } catch (err) {
+      setLoadError(null);
+      setRetryAttempt(0);
+    } catch (err: any) {
       console.error("Failed to load business databases", err);
+      setLoadError(err?.message || "Connection to local database failed");
+      // Resilient auto-retry with backoff up to 5 times
+      setRetryAttempt(prev => {
+        const next = prev + 1;
+        if (next <= 5) {
+          setTimeout(() => {
+            fetchState(true);
+          }, Math.min(next * 1500, 5000));
+        }
+        return next;
+      });
     } finally {
       setIsLoading(false);
     }
@@ -716,13 +737,43 @@ export default function App() {
   // Loading phase rendering
   if (isLoading || !dbState) {
     return (
-      <div id="v-app-loader" className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-slate-300">
-        <div className="flex flex-col items-center space-y-4">
-          <RefreshCw className="w-10 h-10 text-emerald-500 animate-spin" />
-          <h2 className="text-sm font-bold tracking-widest text-slate-200 uppercase font-mono animate-pulse">
-            Booting Billing On Hand Engine...
-          </h2>
-          <p className="text-xs text-slate-400">Connecting file-based databases & tax compliance rules</p>
+      <div id="v-app-loader" className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-slate-300">
+        <div className="max-w-md w-full bg-slate-800/80 border border-slate-700/80 rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center space-y-4">
+          <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-center text-emerald-400">
+            <RefreshCw className={`w-7 h-7 ${!loadError ? "animate-spin" : ""}`} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold tracking-wider text-slate-100 uppercase font-mono">
+              {loadError ? "डेटाबेस जोडणी त्रुटी (Connection Notice)" : "Billing On Hand Engine सुरू होत आहे..."}
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              {loadError ? loadError : "ऑफलाइन डेटाबेस व जीएसटी टॅक्स नियम लोड होत आहेत..."}
+            </p>
+          </div>
+
+          {loadError ? (
+            <div className="w-full flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => fetchState(false)}
+                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                पुन्हा प्रयत्न करा (Retry Now)
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="w-full py-2 px-4 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded-xl transition cursor-pointer"
+              >
+                रिफ्रेश करा (Reload Page)
+              </button>
+            </div>
+          ) : (
+            <div className="text-[11px] text-slate-500 font-mono">
+              {retryAttempt > 0 ? `पुनःप्रयत्न सुरू आहे... (${retryAttempt}/5)` : "प्रारंभिक संरचना तपासत आहे..."}
+            </div>
+          )}
         </div>
       </div>
     );
