@@ -576,6 +576,7 @@ export interface MunimjiCommandResponse {
     | "OFFER_LIST"
     | "OFFER_CREATE"
     | "OFFER_DELETE"
+    | "NAVIGATE"
     | "BUSINESS_AUDIT"
     | "SYSTEM_SELF_TEST"
     | "PRODUCT_LIST"
@@ -1011,17 +1012,36 @@ export async function processMunimjiCommand(
 You understand spoken Marathi, Hindi, and English (including colloquial phrases and mixed Hinglish/Marathi terms).
 
 Your responsibilities across all store modules:
-1. 'ITEM_ADD': When the user asks to add a new product/item to inventory (e.g., "नवीन प्रॉडक्ट ॲड कर: बासमती तांदूळ ६० रुपये भाव १०० किलो स्टॉक", "नवीन वस्तू जोडा: साबण दर ३० रुपये", "Add new item sugar 40 rs").
-   Extract: actionPayload: { "action": "ADD_ITEM", "itemName": string, "salePrice": number, "purchasePrice": number, "stockQuantity": number, "unit": string, "gstRate": number, "hsn": string }
-   Include a 'stock_alert' displayCard with the new product details.
+1. 'ITEM_ADD' / 'ADD_ITEMS': When the user asks to add one or MULTIPLE new products/items to inventory (via voice, text, or handwritten lists/bills/notes, e.g., "नवीन प्रॉडक्ट ॲड कर: बासमती तांदूळ ६० रुपये भाव १०० किलो स्टॉक", "हे ४ आयटम ॲड कर: साखर ४० रु, तेल १२० रु, पोहे ५० रु, चहा २५० रु", "Add 5 items: Sugar 40, Oil 120, Tea 250").
+   CRITICAL FOR MULTIPLE ITEMS: NEVER merge 4-5 items into a single combined item name! If multiple items are provided, extract each one separately into the 'items' array:
+   If multiple items:
+   Extract: actionPayload: {
+     "action": "ADD_ITEMS",
+     "items": Array<{
+       "itemName": string,
+       "salePrice": number,
+       "mrp": number,
+       "purchasePrice": number,
+       "stockQuantity": number,
+       "unit": string,
+       "gstRate": number,
+       "hsn": string
+     }>
+   }
+   If single item:
+   Extract: actionPayload: { "action": "ADD_ITEM", "itemName": string, "salePrice": number, "mrp": number, "purchasePrice": number, "stockQuantity": number, "unit": string, "gstRate": number, "hsn": string }
+   Include a 'stock_alert' displayCard with the added product details.
 2. 'STOCK_UPDATE': When user wants to adjust stock of an existing or new item (e.g., "१० किलो साखर वाढव", "२ नग खराब झाले वजा कर", "साखरेचा स्टॉक ५० कर").
    Extract: actionPayload: { "action": "STOCK_UPDATE", "itemName": string, "quantityChange": number, "operation": "ADD"|"SUBTRACT"|"SET" }
 3. 'PRICE_UPDATE': When user wants to change product price (e.g., "साखरेचा भाव ४५ रुपये कर", "तेलाची खरेदी किंमत १३० कर").
    Extract: actionPayload: { "action": "PRICE_UPDATE", "itemName": string, "salePrice": number, "purchasePrice": number }
 4. 'ITEM_DELETE': When user asks to delete/remove an item (e.g., "हा आयटम डिलीट कर: जुना बल्ब").
    Extract: actionPayload: { "action": "ITEM_DELETE", "itemName": string }
-5. 'PARTY_ADD': When user asks to add a customer or supplier party (e.g., "नवीन ग्राहक ॲड कर: विजय कदम फोन ९८२२१२३४५६", "नवीन सप्लायर ॲड करा: बालाजी ट्रेडर्स").
-   Extract: actionPayload: { "action": "ADD_PARTY", "partyName": string, "type": "customer"|"supplier", "phone": string, "address": string, "initialBalance": number }
+5. 'PARTY_ADD': When user asks to add a customer or supplier party (e.g., "नवीन ग्राहक ॲड कर: विजय कदम फोन ९८२२१२३४५६", "नवीन सप्लायर ॲड करा: बालाजी ट्रेडर्स", "कस्टमर रमेश ॲड कर फोन ९८७६५४३२१०", "ग्राहक सुरेश पत्ता पुणे फोन ९८००११२२३३").
+   CRITICAL FOR PARTY TYPE (CUSTOMER vs SUPPLIER):
+   - If user says 'ग्राहक', 'कस्टमर', 'customer', 'buyer' OR does not specify supplier, type MUST BE "customer".
+   - If user says 'सप्लायर', 'supplier', 'विक्रेता', 'vendor', type MUST BE "supplier".
+   Extract: actionPayload: { "action": "ADD_PARTY", "partyName": string, "type": "customer"|"supplier", "phone": string, "address": string, "initialBalance": number, "gstin": string }
 6. 'PARTY_LIST': When user asks to view customers, suppliers, or ledger credit/dues (e.g., "ग्राहकांची यादी दाखव", "सप्लायरची यादी", "उधारी कोणाकडे बाकी आहे").
    Return intent: 'PARTY_LIST', and include a 'party_list' displayCard.
 7. 'PARTY_DELETE': When user asks to remove a party (e.g., "हा ग्राहक डिलीट कर: रमेश").
@@ -1047,14 +1067,17 @@ Your responsibilities across all store modules:
    Extract: actionPayload: { "action": "OFFER_CREATE", "title": string, "type": "buy_x_get_y"|"percentage_discount"|"flat_discount"|"bill_slab_discount", "targetType": "all"|"brand"|"category"|"item", "targetValue": string, "discountPercent": number, "discountAmount": number, "buyQuantity": number, "freeQuantity": number }
 22. 'OFFER_DELETE': When merchant asks to remove an offer (e.g., "ही ऑफर डिलीट कर: महाधन स्कीम").
    Extract: actionPayload: { "action": "OFFER_DELETE", "title": string }
-23. 'GENERAL_CHAT': Polite, helpful conversation as a loyal Munimji.
+23. 'NAVIGATE': When user commands to open, show, or navigate to any page, screen, or tab (e.g., "रिपोर्ट्स पेज उघड", "बिलिंग वर जा", "आयटम्स दाखव", "पार्टीज उघड", "सेटिंग्ज दाखव", "डॅशबोर्ड उघड", "खर्च पेज वर ने", "open reports", "take me to sales pos").
+   Extract: actionPayload: { "action": "NAVIGATE", "targetTab": "dashboard"|"items"|"parties"|"quotations"|"sales"|"challans"|"purchases"|"transactions"|"reports"|"settings"|"access_control" }
+   Set intent: "NAVIGATE". In replyText, enthusiastically and respectfully confirm the navigation in natural Marathi (e.g., "होय मालक, मी रिपोर्ट्स आणि GST विश्लेषक पेज उघडत आहे.").
+24. 'GENERAL_CHAT': Polite, helpful conversation as a loyal Munimji.
 
 DATABASE COMMIT ENFORCEMENT:
 When the merchant commands ANY create, update, or delete action (adding items, updating stock/price, adding parties, expenses, quotations, challans, offers, or sales), YOU MUST ALWAYS POPULATE the 'actionPayload' with machine-readable fields so our persistent database commits the real changes instantly.
 
 Always return a JSON object strictly conforming to this structure:
 {
-  "intent": "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "ITEM_ADD" | "PRICE_UPDATE" | "ITEM_DELETE" | "PARTY_ADD" | "PARTY_LIST" | "PARTY_DELETE" | "EXPENSE_ADD" | "QUOTATION_CREATE" | "CHALLAN_CREATE" | "OFFER_LIST" | "OFFER_CREATE" | "OFFER_DELETE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "PRODUCT_LIST" | "GENERAL_CHAT",
+  "intent": "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "ITEM_ADD" | "PRICE_UPDATE" | "ITEM_DELETE" | "PARTY_ADD" | "PARTY_LIST" | "PARTY_DELETE" | "EXPENSE_ADD" | "QUOTATION_CREATE" | "CHALLAN_CREATE" | "OFFER_LIST" | "OFFER_CREATE" | "OFFER_DELETE" | "NAVIGATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "PRODUCT_LIST" | "GENERAL_CHAT",
   "userTranscript": "Exact Marathi, Hindi, or English text spoken by the user",
   "replyText": "A warm, natural Marathi, Hindi, or English reply to speak out loud to the merchant",
   "displayCards": [
@@ -1216,9 +1239,13 @@ function pcmToWav(pcmBase64: string, sampleRate = 24000, numChannels = 1, bitDep
   }
 }
 
+// In-memory LRU cache for audio to ensure instantaneous responses and unified voice across model switches
+const speechAudioCache = new Map<string, { audioBase64: string; mimeType: string }>();
+
 /**
  * Generates natural human male speech audio for Munimji's replyText using Gemini TTS.
  * Speaks Marathi, Hindi, and English with an authentic Indian male business accent.
+ * Guarantees a UNIFIED voice ('Fenrir') across all model switches and key rotations.
  */
 export async function generateMunimjiSpeechAudio(
   client: GoogleGenAI | null,
@@ -1236,55 +1263,76 @@ export async function generateMunimjiSpeechAudio(
 
   if (cleanText.length < 2) return null;
 
-  // Build candidate client list: primary client first, then any active pool keys
+  // Check cache first for instant unified response
+  const cacheKey = cleanText.slice(0, 200).toLowerCase();
+  if (speechAudioCache.has(cacheKey)) {
+    return speechAudioCache.get(cacheKey)!;
+  }
+
+  // Build candidate client list: collect all unique active API keys
+  const keysToTry: string[] = [];
+  const poolKeys = munimjiPool.getAllActiveKeys();
+  for (const k of poolKeys) {
+    if (k.key && !keysToTry.includes(k.key)) {
+      keysToTry.push(k.key);
+    }
+  }
+
   const clientsToTry: GoogleGenAI[] = [];
   if (client) {
     clientsToTry.push(client);
   }
-
-  const poolKeys = munimjiPool.getAllActiveKeys();
-  for (const k of poolKeys) {
-    if (k.key && (!client || k.key !== (client as any).apiKey)) {
-      clientsToTry.push(new GoogleGenAI({
-        apiKey: k.key,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
-      }));
-    }
+  for (const apiKey of keysToTry) {
+    clientsToTry.push(new GoogleGenAI({
+      apiKey,
+      httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+    }));
   }
+
+  const ttsModels = ["gemini-3.8-flash-lite-tts", "gemini-3.8-flash-tts"];
 
   // Uniform voice: ALWAYS use "Fenrir" (Deep mature authentic Indian male voice)
   for (const candidateClient of clientsToTry) {
-    try {
-      const res = await withTimeout(
-        candidateClient.models.generateContent({
-          model: "gemini-3.8-flash-lite-tts",
-          contents: cleanText.slice(0, 320),
-          config: {
-            responseModalities: ["AUDIO"],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: {
-                  voiceName: "Fenrir" // Uniform high-fidelity male voice across all models & keys
+    for (const ttsModel of ttsModels) {
+      try {
+        const res = await withTimeout(
+          candidateClient.models.generateContent({
+            model: ttsModel,
+            contents: cleanText.slice(0, 350),
+            config: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: {
+                    voiceName: "Fenrir" // Uniform high-fidelity male voice across all models & keys
+                  }
                 }
               }
             }
-          }
-        }),
-        7000,
-        "TTS generation timeout"
-      );
+          }),
+          10000,
+          "TTS generation timeout"
+        );
 
-      const part = res.candidates?.[0]?.content?.parts?.[0];
-      const pcmData = part?.inlineData?.data;
-      if (pcmData && pcmData.length > 50) {
-        const wavBase64 = pcmToWav(pcmData, 24000, 1, 16);
-        return {
-          audioBase64: wavBase64,
-          mimeType: "audio/wav"
-        };
+        const part = res.candidates?.[0]?.content?.parts?.[0];
+        const pcmData = part?.inlineData?.data;
+        if (pcmData && pcmData.length > 50) {
+          const wavBase64 = pcmToWav(pcmData, 24000, 1, 16);
+          const result = {
+            audioBase64: wavBase64,
+            mimeType: "audio/wav"
+          };
+          // Cache successful audio (keep cache size reasonable)
+          if (speechAudioCache.size > 150) {
+            const firstKey = speechAudioCache.keys().next().value;
+            if (firstKey) speechAudioCache.delete(firstKey);
+          }
+          speechAudioCache.set(cacheKey, result);
+          return result;
+        }
+      } catch (err: any) {
+        // Continue to next key or model silently
       }
-    } catch (err: any) {
-      console.warn("[Munimji Neural TTS pool attempt notice]:", err?.message || err);
     }
   }
 
@@ -1521,6 +1569,79 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
      (query.includes("भाव") || query.includes("दर") || query.includes("किंमत") || query.includes("रेट") || query.includes("रुपये") || query.includes("price") || query.includes("rate") || query.includes("stock") || query.includes("साठा")));
 
   if (isItemAdd) {
+    // Check if multiple items are mentioned (separated by commas, newlines, or 'आणि')
+    const hasMultipleItems =
+      rawQuery.includes("\n") ||
+      (rawQuery.includes(",") && rawQuery.split(",").length > 1) ||
+      (rawQuery.includes(" आणि ") && rawQuery.split(" आणि ").length > 1) ||
+      (rawQuery.includes(" व ") && rawQuery.split(" व ").length > 1);
+
+    if (hasMultipleItems) {
+      const textToSplit = rawQuery
+        .replace(/^(?:कृपया\s*)?(?:मला\s*)?(?:नवीन\s*)?(?:प्रॉडक्ट|वस्तू|आयटम|सामान)?\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो)?[:\-\s]*/i, "");
+      const segments = textToSplit
+        .split(/[\n,;]|(?:\s+आणि\s+)|\band\b|(?:\s+व\s+)/i)
+        .map(s => s.trim())
+        .filter(s => s.length >= 2);
+
+      const parsedItems: any[] = [];
+      for (const seg of segments) {
+        const normSeg = normalizeDigits(seg.toLowerCase());
+        const pMatch = normSeg.match(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|दर|भाव|किंमत|price)/i) || normSeg.match(/(?:दर|भाव|किंमत|price|₹|rs)[:\s]*(\d+(?:\.\d+)?)/i);
+        const qMatch = normSeg.match(/(\d+)\s*(?:किलो|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|ltr|bag)/i);
+        const uMatch = seg.match(/(किलो|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|ltr|bag)/i);
+
+        const sPrice = pMatch ? parseFloat(pMatch[1]) : 0;
+        const sQty = qMatch ? parseFloat(qMatch[1]) : 0;
+        let sUnit = "PCS";
+        if (uMatch) {
+          const u = uMatch[1].toLowerCase();
+          if (u.includes("किलो") || u.includes("kg")) sUnit = "KGS";
+          else if (u.includes("लिटर") || u.includes("ltr")) sUnit = "LTR";
+          else if (u.includes("बॉक्स") || u.includes("box")) sUnit = "BOX";
+          else if (u.includes("बॅग") || u.includes("bag")) sUnit = "BAG";
+        }
+
+        const pName = seg
+          .replace(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|दर|भाव|किंमत|price)/gi, "")
+          .replace(/(?:दर|भाव|किंमत|price|₹|rs)[:\s]*(\d+(?:\.\d+)?)/gi, "")
+          .replace(/(\d+)\s*(?:किलो|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|ltr|bag)/gi, "")
+          .replace(/^(?:आणि|व|and|\+)\s*/i, "")
+          .replace(/^[:\-\s,]+|[:\-\s,]+$/g, "")
+          .trim();
+
+        if (pName.length >= 2) {
+          parsedItems.push({
+            itemName: pName,
+            salePrice: sPrice,
+            mrp: sPrice,
+            purchasePrice: sPrice > 0 ? Math.round(sPrice * 0.85) : 0,
+            stockQuantity: sQty,
+            unit: sUnit,
+            gstRate: 0,
+            hsn: "9999"
+          });
+        }
+      }
+
+      if (parsedItems.length > 1) {
+        const itemNamesStr = parsedItems.map(i => `${i.itemName} (₹${i.salePrice})`).join(", ");
+        return {
+          intent: "ITEM_ADD",
+          replyText: `मालक, मी एकूण ${parsedItems.length} वस्तू इन्व्हेंटरीमध्ये स्वतंत्रपणे जोडल्या आहेत: ${itemNamesStr}.`,
+          displayCards: [{
+            type: "stock_alert",
+            title: `नवीन वस्तू जोडल्या (${parsedItems.length})`,
+            data: { items: parsedItems }
+          }],
+          actionPayload: {
+            action: "ADD_ITEMS",
+            items: parsedItems
+          }
+        };
+      }
+    }
+
     let cleanName = rawQuery
       .replace(/^(?:कृपया\s*)?(?:मला\s*)?(?:एक\s*)?/i, "")
       .replace(/(?:नवीन\s*(?:प्रॉडक्ट|वस्तू|आयटम|सामान|प्रोडक्ट|माल|स्टॉक|इन्व्हेंटरी|इन्व्हेंटरीमध्ये|स्टॉकमध्ये)?\s*(?:ॲड\s*कर|जोडा|करा|टाका|नोंदव|ऐड\s*करो|जोड़ो)?)[:\-\s]*/i, "")
@@ -1689,19 +1810,28 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
   }
 
   // =========================================================================
-  // 8. PARTY ADD (नवीन ग्राहक / नवीन सप्लायर / add customer / add supplier)
+  // 8. PARTY ADD (ग्राहक / सप्लायर / पार्टी ॲड / add customer / add supplier)
   // =========================================================================
-  if ((query.includes("नवीन") || query.includes("add") || query.includes("जोडा")) &&
-      (query.includes("ग्राहक") || query.includes("पार्टी") || query.includes("सप्लायर") || query.includes("कस्टमर") || query.includes("customer") || query.includes("supplier"))) {
-    const isSupplier = query.includes("सप्लायर") || query.includes("supplier") || query.includes("vendor");
+  const isPartyAdd =
+    (query.includes("ग्राहक") || query.includes("सप्लायर") || query.includes("पार्टी") || query.includes("कस्टमर") || query.includes("customer") || query.includes("supplier") || query.includes("party")) &&
+    (query.includes("नवीन") || query.includes("add") || query.includes("जोडा") || query.includes("ॲड") || query.includes("ऐड") || query.includes("करा") || query.includes("नोंदवा") || query.includes("save"));
+
+  if (isPartyAdd) {
+    const mentionsCustomer = query.includes("ग्राहक") || query.includes("कस्टमर") || query.includes("customer");
+    const mentionsSupplier = query.includes("सप्लायर") || query.includes("supplier") || query.includes("vendor") || query.includes("विक्रेता");
+    const isSupplier = mentionsSupplier && !mentionsCustomer;
+
     let phone = "";
-    const phoneMatch = normQuery.match(/\b\d{10}\b/);
+    const phoneMatch = normQuery.match(/\b[6-9]\d{9}\b/) || normQuery.match(/\b\d{10}\b/);
     if (phoneMatch) phone = phoneMatch[0];
 
     let partyName = rawQuery
-      .replace(/नवीन\s*(ग्राहक|पार्टी|सप्लायर|कस्टमर)\s*(ॲड\s*कर|जोडा|करा)?[:\-\s]*/i, "")
-      .replace(/(add\s*(new\s*)?(customer|party|supplier)|new\s*(customer|party|supplier))[:\-\s]*/i, "")
-      .replace(/फोन.*|\d{10}.*/i, "")
+      .replace(/^(?:कृपया\s*)?(?:मला\s*)?/i, "")
+      .replace(/(?:नवीन\s*)?(?:ग्राहक|पार्टी|सप्लायर|कस्टमर|खाते)\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो|नोंदवा)?[:\-\s]*/i, "")
+      .replace(/(add\s*(?:new\s*)?(?:customer|party|supplier)|new\s*(?:customer|party|supplier))[:\-\s]*/i, "")
+      .replace(/(?:फोन|मोबाईल|पत्ता|नंबर|phone|mobile|address)[\s\S]*/i, "")
+      .replace(/[\d]{10}.*/i, "")
+      .replace(/^[:\-\s,]+|[:\-\s,]+$/g, "")
       .trim();
 
     if (!partyName || partyName.length < 2) partyName = isSupplier ? "नवीन सप्लायर" : "नवीन ग्राहक";
@@ -1838,6 +1968,62 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
         amount,
         paymentType: query.includes("बँक") ? "bank" : "cash",
         notes: rawQuery
+      }
+    };
+  }
+
+  // =========================================================================
+  // 13. PAGE NAVIGATION / REDIRECTION (पेज उघड / रिडायरेक्ट / जा / open page)
+  // =========================================================================
+  const isNavQuery =
+    (query.includes("उघड") || query.includes("दाखव") || query.includes("जा") || query.includes("ने") ||
+     query.includes("open") || query.includes("show") || query.includes("go to") || query.includes("navigate") || query.includes("redirect")) &&
+    (query.includes("पेज") || query.includes("page") || query.includes("स्क्रीन") || query.includes("screen") || query.includes("टॅब") || query.includes("tab") ||
+     query.includes("रिपोर्ट") || query.includes("report") || query.includes("बिल") || query.includes("सेल") || query.includes("खरेदी") ||
+     query.includes("आयटम") || query.includes("स्टॉक") || query.includes("इन्व्हेंटरी") || query.includes("पार्टी") || query.includes("ग्राहक") ||
+     query.includes("सप्लायर") || query.includes("कोटेशन") || query.includes("चलन") || query.includes("खर्च") || query.includes("सेटिंग") || query.includes("डॅशबोर्ड"));
+
+  if (isNavQuery) {
+    let targetTab = "dashboard";
+    let tabNameMarathi = "डॅशबोर्ड";
+    if (query.includes("रिपोर्ट") || query.includes("report") || query.includes("gstr") || query.includes("daybook")) {
+      targetTab = "reports";
+      tabNameMarathi = "रिपोर्ट्स आणि GST विश्लेषक";
+    } else if (query.includes("आयटम") || query.includes("प्रॉडक्ट") || query.includes("स्टॉक") || query.includes("इन्व्हेंटरी") || query.includes("item") || query.includes("product") || query.includes("inventory")) {
+      targetTab = "items";
+      tabNameMarathi = "आयटम्स व इन्व्हेंटरी";
+    } else if (query.includes("ग्राहक") || query.includes("सप्लायर") || query.includes("पार्टी") || query.includes("खाते") || query.includes("party") || query.includes("parties") || query.includes("customer") || query.includes("supplier")) {
+      targetTab = "parties";
+      tabNameMarathi = "ग्राहक व सप्लायर (पार्टीज)";
+    } else if (query.includes("विक्री") || query.includes("सेल") || query.includes("बिलिंग") || query.includes("pos") || query.includes("sale") || query.includes("billing")) {
+      targetTab = "sales";
+      tabNameMarathi = "विक्री बिलिंग (Sales POS)";
+    } else if (query.includes("खरेदी") || query.includes("परचेस") || query.includes("purchase")) {
+      targetTab = "purchases";
+      tabNameMarathi = "खरेदी बिले (Purchases)";
+    } else if (query.includes("कोटेशन") || query.includes("अंदाजपत्रक") || query.includes("quotation") || query.includes("quote")) {
+      targetTab = "quotations";
+      tabNameMarathi = "कोटेशन्स (अंदाजपत्रक)";
+    } else if (query.includes("चलन") || query.includes("challan") || query.includes("डिलिव्हरी")) {
+      targetTab = "challans";
+      tabNameMarathi = "डिलिव्हरी चलन";
+    } else if (query.includes("खर्च") || query.includes("उत्पन्न") || query.includes("transaction") || query.includes("expense")) {
+      targetTab = "transactions";
+      tabNameMarathi = "खर्च व उत्पन्न नोंद";
+    } else if (query.includes("सेटिंग") || query.includes("setting") || query.includes("बॅकअप")) {
+      targetTab = "settings";
+      tabNameMarathi = "सेटिंग्ज व प्रोफाईल";
+    } else if (query.includes("युझर") || query.includes("वापरकर्ता") || query.includes("access")) {
+      targetTab = "access_control";
+      tabNameMarathi = "युझर ॲक्सेस कंट्रोल";
+    }
+
+    return {
+      intent: "NAVIGATE",
+      replyText: `होय मालक, मी ${tabNameMarathi} पेज उघडत आहे.`,
+      actionPayload: {
+        action: "NAVIGATE",
+        targetTab
       }
     };
   }

@@ -34,7 +34,7 @@ export default function App() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
   const [isReturnMode, setIsReturnMode] = useState<boolean>(false);
-  const [session, setSession] = useState<{ username: string; name: string; role: string; token: string } | null>(null);
+  const [session, setSession] = useState<{ username: string; name: string; role: string; token: string; permissions?: any } | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
   const isInitialDbLoad = React.useRef(true);
   const autoBackupTimerRef = React.useRef<any>(null);

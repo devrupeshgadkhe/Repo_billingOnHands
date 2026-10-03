@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { Invoice, BusinessProfile, Party, Item, MiscTransaction } from "../types.js";
 import { useDialog } from "../context/DialogContext.js";
 import {
@@ -47,11 +47,11 @@ interface ReportsViewProps {
 }
 
 export default function ReportsView({
-  invoices,
-  parties,
-  items,
-  transactions,
-  business,
+  invoices = [],
+  parties = [],
+  items = [],
+  transactions = [],
+  business = {} as BusinessProfile,
   onOpenInvoice,
   onDeleteInvoice,
   onEditInvoice,
@@ -60,6 +60,11 @@ export default function ReportsView({
   purchasesPermissions
 }: ReportsViewProps) {
   
+  const safeInvoices = useMemo(() => Array.isArray(invoices) ? invoices : [], [invoices]);
+  const safeParties = useMemo(() => Array.isArray(parties) ? parties : [], [parties]);
+  const safeItems = useMemo(() => Array.isArray(items) ? items : [], [items]);
+  const safeTransactions = useMemo(() => Array.isArray(transactions) ? transactions : [], [transactions]);
+
   const sPerms = salesPermissions || { view: true, create: true, update: true, delete: true };
   const pPerms = purchasesPermissions || { view: true, create: true, update: true, delete: true };
   const { showConfirm } = useDialog();
@@ -82,7 +87,8 @@ export default function ReportsView({
   const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Record<string, boolean>>({});
 
   const formatINR = (val: number) => {
-    return "₹" + val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const num = isNaN(val) ? 0 : val;
+    return "₹" + num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
   const handleClearFilters = () => {
@@ -113,7 +119,7 @@ export default function ReportsView({
   // Sales Report Calculations & Filtering
   // --------------------------------------------------------
   const filteredSales = useMemo(() => {
-    const rawSales = invoices.filter(inv => inv.type === "sale" || inv.type === "sale_return");
+    const rawSales = safeInvoices.filter(inv => inv.type === "sale" || inv.type === "sale_return");
     return rawSales.filter(inv => {
       if (startDate && inv.date < startDate) return false;
       if (endDate && inv.date > endDate) return false;
@@ -121,18 +127,18 @@ export default function ReportsView({
       if (paymentFilter && inv.paymentType !== paymentFilter) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        const matchesNum = inv.invoiceNumber.toLowerCase().includes(query);
-        const matchesParty = inv.partyName.toLowerCase().includes(query);
+        const matchesNum = (inv.invoiceNumber || "").toLowerCase().includes(query);
+        const matchesParty = (inv.partyName || "").toLowerCase().includes(query);
         if (!matchesNum && !matchesParty) return false;
       }
       if (gstRateFilter) {
         const rate = parseFloat(gstRateFilter);
-        const hasRate = inv.items.some(i => i.gstRate === rate);
+        const hasRate = (inv.items || []).some(i => i.gstRate === rate);
         if (!hasRate) return false;
       }
       return true;
     });
-  }, [invoices, startDate, endDate, partyFilter, paymentFilter, searchQuery, gstRateFilter]);
+  }, [safeInvoices, startDate, endDate, partyFilter, paymentFilter, searchQuery, gstRateFilter]);
 
   const salesReportStats = useMemo(() => {
     let grossValue = 0;
@@ -145,11 +151,11 @@ export default function ReportsView({
       const isReturn = inv.type === "sale_return";
       const f = isReturn ? -1 : 1;
 
-      grossValue += inv.totalAmount * f;
-      netTaxable += inv.subtotal * f;
-      totalTax += inv.taxAmount * f;
-      totalCharges += (inv.extraCharges || []).reduce((s, c) => s + (c.amount || 0), 0) * f;
-      totalDiscounts += inv.items.reduce((s, curr) => s + (curr.discount || 0), 0) * f;
+      grossValue += (Number(inv.totalAmount) || 0) * f;
+      netTaxable += (Number(inv.subtotal) || 0) * f;
+      totalTax += (Number(inv.taxAmount) || 0) * f;
+      totalCharges += (inv.extraCharges || []).reduce((s, c) => s + (Number(c.amount) || 0), 0) * f;
+      totalDiscounts += (inv.items || []).reduce((s, curr) => s + (Number(curr.discount) || 0), 0) * f;
     });
 
     return { grossValue, netTaxable, totalTax, totalDiscounts, totalCharges };
@@ -159,7 +165,7 @@ export default function ReportsView({
   // Purchases Report Calculations & Filtering
   // --------------------------------------------------------
   const filteredPurchases = useMemo(() => {
-    const rawPurchases = invoices.filter(inv => inv.type === "purchase" || inv.type === "purchase_return");
+    const rawPurchases = safeInvoices.filter(inv => inv.type === "purchase" || inv.type === "purchase_return");
     return rawPurchases.filter(inv => {
       if (startDate && inv.date < startDate) return false;
       if (endDate && inv.date > endDate) return false;
@@ -167,18 +173,18 @@ export default function ReportsView({
       if (paymentFilter && inv.paymentType !== paymentFilter) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        const matchesNum = inv.invoiceNumber.toLowerCase().includes(query);
-        const matchesParty = inv.partyName.toLowerCase().includes(query);
+        const matchesNum = (inv.invoiceNumber || "").toLowerCase().includes(query);
+        const matchesParty = (inv.partyName || "").toLowerCase().includes(query);
         if (!matchesNum && !matchesParty) return false;
       }
       if (gstRateFilter) {
         const rate = parseFloat(gstRateFilter);
-        const hasRate = inv.items.some(i => i.gstRate === rate);
+        const hasRate = (inv.items || []).some(i => i.gstRate === rate);
         if (!hasRate) return false;
       }
       return true;
     });
-  }, [invoices, startDate, endDate, partyFilter, paymentFilter, searchQuery, gstRateFilter]);
+  }, [safeInvoices, startDate, endDate, partyFilter, paymentFilter, searchQuery, gstRateFilter]);
 
   const purchaseReportStats = useMemo(() => {
     let grossValue = 0;
@@ -191,11 +197,11 @@ export default function ReportsView({
       const isReturn = inv.type === "purchase_return";
       const f = isReturn ? -1 : 1;
 
-      grossValue += inv.totalAmount * f;
-      netTaxable += inv.subtotal * f;
-      totalTax += inv.taxAmount * f;
-      totalCharges += (inv.extraCharges || []).reduce((s, c) => s + (c.amount || 0), 0) * f;
-      totalDiscounts += inv.items.reduce((s, curr) => s + (curr.discount || 0), 0) * f;
+      grossValue += (Number(inv.totalAmount) || 0) * f;
+      netTaxable += (Number(inv.subtotal) || 0) * f;
+      totalTax += (Number(inv.taxAmount) || 0) * f;
+      totalCharges += (inv.extraCharges || []).reduce((s, c) => s + (Number(c.amount) || 0), 0) * f;
+      totalDiscounts += (inv.items || []).reduce((s, curr) => s + (Number(curr.discount) || 0), 0) * f;
     });
 
     return { grossValue, netTaxable, totalTax, totalDiscounts, totalCharges };
@@ -205,38 +211,42 @@ export default function ReportsView({
   // Items Report Analysis & Calculations
   // --------------------------------------------------------
   const itemsReportPerformance = useMemo(() => {
-    const records = items.map(p => {
+    const records = safeItems.map(p => {
       let qtySold = 0;
       let revenueExclTax = 0;
       let qtyPurchased = 0;
       let costExclTax = 0;
 
-      invoices.forEach(inv => {
+      safeInvoices.forEach(inv => {
         const isSale = inv.type === "sale";
         const isSaleReturn = inv.type === "sale_return";
         const isPurchase = inv.type === "purchase";
         const isPurchaseReturn = inv.type === "purchase_return";
 
-        inv.items.forEach(line => {
-          if (line.itemId === p.id) {
+        (inv.items || []).forEach(line => {
+          if (line && line.itemId === p.id) {
+            const lineQty = Number(line.quantity) || 0;
+            const lineAmt = Number(line.amountBeforeTax) || 0;
             if (isSale) {
-              qtySold += line.quantity;
-              revenueExclTax += line.amountBeforeTax;
+              qtySold += lineQty;
+              revenueExclTax += lineAmt;
             } else if (isSaleReturn) {
-              qtySold -= line.quantity;
-              revenueExclTax -= line.amountBeforeTax;
+              qtySold -= lineQty;
+              revenueExclTax -= lineAmt;
             } else if (isPurchase) {
-              qtyPurchased += line.quantity;
-              costExclTax += line.amountBeforeTax;
+              qtyPurchased += lineQty;
+              costExclTax += lineAmt;
             } else if (isPurchaseReturn) {
-              qtyPurchased -= line.quantity;
-              costExclTax -= line.amountBeforeTax;
+              qtyPurchased -= lineQty;
+              costExclTax -= lineAmt;
             }
           }
         });
       });
 
-      const stockStatus = p.stockQuantity <= 0 ? "outofstock" : (p.stockQuantity <= p.minStockAlert ? "lowstock" : "instock");
+      const stockQty = Number(p.stockQuantity) || 0;
+      const minAlert = Number(p.minStockAlert) || 5;
+      const stockStatus = stockQty <= 0 ? "outofstock" : (stockQty <= minAlert ? "lowstock" : "instock");
       return {
         item: p,
         qtySold,
@@ -251,36 +261,36 @@ export default function ReportsView({
       if (stockLevelFilter && row.stockStatus !== stockLevelFilter) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        const matchesName = row.item.name.toLowerCase().includes(query);
-        const matchesHsn = (row.item.hsn || "").toLowerCase().includes(query);
+        const matchesName = (row.item?.name || "").toLowerCase().includes(query);
+        const matchesHsn = (row.item?.hsn || "").toLowerCase().includes(query);
         if (!matchesName && !matchesHsn) return false;
       }
       return true;
     });
 
     filtered.sort((a, b) => {
-      if (itemSortFilter === "bestselling") return b.qtySold - a.qtySold;
-      if (itemSortFilter === "revenue") return b.revenueExclTax - a.revenueExclTax;
-      if (itemSortFilter === "higheststock") return b.item.stockQuantity - a.item.stockQuantity;
-      return a.item.name.localeCompare(b.item.name);
+      if (itemSortFilter === "bestselling") return (b.qtySold || 0) - (a.qtySold || 0);
+      if (itemSortFilter === "revenue") return (b.revenueExclTax || 0) - (a.revenueExclTax || 0);
+      if (itemSortFilter === "higheststock") return (Number(b.item?.stockQuantity) || 0) - (Number(a.item?.stockQuantity) || 0);
+      return (a.item?.name || "").localeCompare(b.item?.name || "");
     });
 
     return filtered;
-  }, [items, invoices, stockLevelFilter, searchQuery, itemSortFilter]);
+  }, [safeItems, safeInvoices, stockLevelFilter, searchQuery, itemSortFilter]);
 
   const itemsInventoryTotals = useMemo(() => {
     let carryingValue = 0;
-    items.forEach(it => {
-      carryingValue += it.stockQuantity * it.purchasePrice;
+    safeItems.forEach(it => {
+      carryingValue += (Number(it.stockQuantity) || 0) * (Number(it.purchasePrice) || 0);
     });
     return carryingValue;
-  }, [items]);
+  }, [safeItems]);
 
   // --------------------------------------------------------
   // Incomes & Expenses Calculations
   // --------------------------------------------------------
   const filteredTransactions = useMemo(() => {
-    return transactions.filter(tx => {
+    return safeTransactions.filter(tx => {
       if (startDate && tx.date < startDate) return false;
       if (endDate && tx.date > endDate) return false;
       if (miscCategoryFilter && tx.category !== miscCategoryFilter) return false;
@@ -288,29 +298,30 @@ export default function ReportsView({
       if (paymentFilter && tx.paymentType !== paymentFilter) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
-        const matchesCat = tx.category.toLowerCase().includes(query);
+        const matchesCat = (tx.category || "").toLowerCase().includes(query);
         const matchesNotes = (tx.notes || "").toLowerCase().includes(query);
         if (!matchesCat && !matchesNotes) return false;
       }
       return true;
     });
-  }, [transactions, startDate, endDate, miscCategoryFilter, miscTypeFilter, paymentFilter, searchQuery]);
+  }, [safeTransactions, startDate, endDate, miscCategoryFilter, miscTypeFilter, paymentFilter, searchQuery]);
 
   const transactionSummary = useMemo(() => {
     let incomeSum = 0;
     let expenseSum = 0;
     filteredTransactions.forEach(t => {
-      if (t.type === "income") incomeSum += t.amount;
-      else expenseSum += t.amount;
+      const amt = Number(t.amount) || 0;
+      if (t.type === "income") incomeSum += amt;
+      else expenseSum += amt;
     });
     return { incomeSum, expenseSum, balance: incomeSum - expenseSum };
   }, [filteredTransactions]);
 
   const miscCategories = useMemo(() => {
     const set = new Set<string>();
-    transactions.forEach(t => { if (t.category) set.add(t.category); });
+    safeTransactions.forEach(t => { if (t.category) set.add(t.category); });
     return Array.from(set);
-  }, [transactions]);
+  }, [safeTransactions]);
 
   // --------------------------------------------------------
   // Consolidated Profits & Losses Statement (Overall Profit & Loss)
@@ -327,27 +338,28 @@ export default function ReportsView({
     let salesAdditionalSurcharges = 0;
     let purchaseAdditionalSurcharges = 0;
 
-    invoices.forEach(inv => {
+    safeInvoices.forEach(inv => {
       if (startDate && inv.date < startDate) return;
       if (endDate && inv.date > endDate) return;
 
-      const innerDiscounts = inv.items.reduce((s, c) => s + (c.discount || 0), 0);
-      const innerCharges = (inv.extraCharges || []).reduce((s, c) => s + (c.amount || 0), 0);
+      const innerDiscounts = (inv.items || []).reduce((s, c) => s + (Number(c.discount) || 0), 0);
+      const innerCharges = (inv.extraCharges || []).reduce((s, c) => s + (Number(c.amount) || 0), 0);
+      const subtotalVal = Number(inv.subtotal) || 0;
 
       if (inv.type === "sale") {
-        grossSales += inv.subtotal;
+        grossSales += subtotalVal;
         totalSalesDiscounts += innerDiscounts;
         salesAdditionalSurcharges += innerCharges;
       } else if (inv.type === "sale_return") {
-        salesReturns += inv.subtotal;
+        salesReturns += subtotalVal;
         totalSalesDiscounts -= innerDiscounts;
         salesAdditionalSurcharges -= innerCharges;
       } else if (inv.type === "purchase") {
-        grossPurchases += inv.subtotal;
+        grossPurchases += subtotalVal;
         totalPurchaseDiscounts += innerDiscounts;
         purchaseAdditionalSurcharges += innerCharges;
       } else if (inv.type === "purchase_return") {
-        purchaseReturns += inv.subtotal;
+        purchaseReturns += subtotalVal;
         totalPurchaseDiscounts -= innerDiscounts;
         purchaseAdditionalSurcharges -= innerCharges;
       }
@@ -358,16 +370,17 @@ export default function ReportsView({
     let totalMiscExpenses = 0;
     const expenseBreakdown: Record<string, number> = {};
 
-    transactions.forEach(tx => {
+    safeTransactions.forEach(tx => {
       if (startDate && tx.date < startDate) return;
       if (endDate && tx.date > endDate) return;
 
+      const amt = Number(tx.amount) || 0;
       if (tx.type === "income") {
-        otherMiscIncomes += tx.amount;
+        otherMiscIncomes += amt;
       } else {
-        totalMiscExpenses += tx.amount;
+        totalMiscExpenses += amt;
         const cat = tx.category || "General Overhead";
-        expenseBreakdown[cat] = (expenseBreakdown[cat] || 0) + tx.amount;
+        expenseBreakdown[cat] = (expenseBreakdown[cat] || 0) + amt;
       }
     });
 
@@ -395,11 +408,11 @@ export default function ReportsView({
       expenseBreakdown,
       netPLVal
     };
-  }, [invoices, transactions, startDate, endDate]);
+  }, [safeInvoices, safeTransactions, startDate, endDate]);
 
   // Enhanced GSTR-1 and GSTR-2 aggregates with dynamic date filters
   const gstr1Details = useMemo(() => {
-    const salesInvoices = invoices.filter(inv => {
+    const salesInvoices = safeInvoices.filter(inv => {
       if (inv.type !== "sale") return false;
       if (startDate && inv.date < startDate) return false;
       if (endDate && inv.date > endDate) return false;
@@ -414,11 +427,11 @@ export default function ReportsView({
     let b2cSales: Invoice[] = [];
 
     salesInvoices.forEach(inv => {
-      totalSalesTurnover += inv.totalAmount;
-      totalTaxableTurnover += inv.subtotal;
-      totalCgstLiability += inv.cgstTotal;
-      totalSgstLiability += inv.sgstTotal;
-      totalIgstLiability += inv.igstTotal;
+      totalSalesTurnover += Number(inv.totalAmount) || 0;
+      totalTaxableTurnover += Number(inv.subtotal) || 0;
+      totalCgstLiability += Number(inv.cgstTotal) || 0;
+      totalSgstLiability += Number(inv.sgstTotal) || 0;
+      totalIgstLiability += Number(inv.igstTotal) || 0;
 
       if (inv.partyGstin && inv.partyGstin.trim().length === 15) b2bSales.push(inv);
       else b2cSales.push(inv);
@@ -435,10 +448,10 @@ export default function ReportsView({
       b2bSales,
       b2cSales
     };
-  }, [invoices, startDate, endDate]);
+  }, [safeInvoices, startDate, endDate]);
 
   const gstr2Details = useMemo(() => {
-    const purchaseBills = invoices.filter(inv => {
+    const purchaseBills = safeInvoices.filter(inv => {
       if (inv.type !== "purchase") return false;
       if (startDate && inv.date < startDate) return false;
       if (endDate && inv.date > endDate) return false;
@@ -451,11 +464,11 @@ export default function ReportsView({
     let totalIgstCredit = 0;
 
     purchaseBills.forEach(inv => {
-      totalProcurement += inv.totalAmount;
-      totalTaxableValue += inv.subtotal;
-      totalCgstCredit += inv.cgstTotal;
-      totalSgstCredit += inv.sgstTotal;
-      totalIgstCredit += inv.igstTotal;
+      totalProcurement += Number(inv.totalAmount) || 0;
+      totalTaxableValue += Number(inv.subtotal) || 0;
+      totalCgstCredit += Number(inv.cgstTotal) || 0;
+      totalSgstCredit += Number(inv.sgstTotal) || 0;
+      totalIgstCredit += Number(inv.igstTotal) || 0;
     });
 
     return {
@@ -468,7 +481,7 @@ export default function ReportsView({
       totalIgstCredit,
       purchaseBills
     };
-  }, [invoices, startDate, endDate]);
+  }, [safeInvoices, startDate, endDate]);
 
   const toggleInvoiceExpanded = (id: string) => {
     setExpandedInvoiceIds(prev => ({
@@ -481,77 +494,77 @@ export default function ReportsView({
     let csvRows: string[][] = [];
     
     // Header information
-    csvRows.push([business.name]);
-    csvRows.push([business.address || ""]);
-    if (business.gstin) csvRows.push([`GSTIN: ${business.gstin}`]);
+    csvRows.push([business?.name || "Billing On Hand"]);
+    csvRows.push([business?.address || ""]);
+    if (business?.gstin) csvRows.push([`GSTIN: ${business.gstin}`]);
     csvRows.push([`Report: ${reportSubTab.toUpperCase()}`]);
     csvRows.push([`Period: ${startDate || "All-Time"} to ${endDate || "All-Time"}`]);
     csvRows.push([]); // blank separator
 
     if (reportSubTab === "daybook") {
       csvRows.push(["Invoice No / Ref", "Date", "Party Name", "Type", "Status", "Total Amount (INR)"]);
-      invoices.forEach(inv => {
+      safeInvoices.forEach(inv => {
         csvRows.push([
-          inv.invoiceNumber,
-          inv.date,
-          inv.partyName,
-          inv.type.toUpperCase(),
-          inv.paymentType.toUpperCase(),
-          inv.totalAmount.toString()
+          inv.invoiceNumber || "",
+          inv.date || "",
+          inv.partyName || "",
+          (inv.type || "sale").toUpperCase(),
+          (inv.paymentType || "cash").toUpperCase(),
+          (inv.totalAmount ?? 0).toString()
         ]);
       });
     } else if (reportSubTab === "sales") {
       csvRows.push(["Invoice No", "Date", "Party Name", "GSTIN", "Payment", "Subtotal (INR)", "Tax (INR)", "Total (INR)"]);
       filteredSales.forEach(inv => {
         csvRows.push([
-          inv.invoiceNumber,
-          inv.date,
-          inv.partyName,
+          inv.invoiceNumber || "",
+          inv.date || "",
+          inv.partyName || "",
           inv.partyGstin || "N/A",
-          inv.paymentType.toUpperCase(),
-          inv.subtotal.toString(),
-          inv.taxAmount.toString(),
-          inv.totalAmount.toString()
+          (inv.paymentType || "cash").toUpperCase(),
+          (inv.subtotal ?? 0).toString(),
+          (inv.taxAmount ?? 0).toString(),
+          (inv.totalAmount ?? 0).toString()
         ]);
       });
     } else if (reportSubTab === "purchases") {
       csvRows.push(["Bill No", "Date", "Supplier", "GSTIN", "Payment", "Subtotal (INR)", "Tax (INR)", "Total (INR)"]);
       filteredPurchases.forEach(inv => {
         csvRows.push([
-          inv.invoiceNumber,
-          inv.date,
-          inv.partyName,
+          inv.invoiceNumber || "",
+          inv.date || "",
+          inv.partyName || "",
           inv.partyGstin || "N/A",
-          inv.paymentType.toUpperCase(),
-          inv.subtotal.toString(),
-          inv.taxAmount.toString(),
-          inv.totalAmount.toString()
+          (inv.paymentType || "cash").toUpperCase(),
+          (inv.subtotal ?? 0).toString(),
+          (inv.taxAmount ?? 0).toString(),
+          (inv.totalAmount ?? 0).toString()
         ]);
       });
     } else if (reportSubTab === "items") {
       csvRows.push(["Item Name", "HSN/SAC", "Stock Qty", "Min Alert", "Purchase Price (INR)", "Sale Price (INR)", "Qty Sold", "Gross Sales Revenue (INR)"]);
       itemsReportPerformance.forEach(row => {
         csvRows.push([
-          row.item.name,
+          row.item.name || "",
           row.item.hsn || "N/A",
-          row.item.stockQuantity.toString(),
-          row.item.minStockAlert.toString(),
-          row.item.purchasePrice.toString(),
-          row.item.sellingPrice.toString(),
-          row.qtySold.toString(),
-          row.revenueExclTax.toString()
+          (row.item.stockQuantity ?? 0).toString(),
+          (row.item.minStockAlert ?? 0).toString(),
+          (row.item.purchasePrice ?? 0).toString(),
+          (row.item.salePrice ?? 0).toString(),
+          (row.qtySold ?? 0).toString(),
+          (row.revenueExclTax ?? 0).toString()
         ]);
       });
     } else if (reportSubTab === "incomes_expenses") {
       csvRows.push(["Date", "Ref Voucher", "Type", "Category", "Amount (INR)", "Payment", "Notes"]);
       filteredTransactions.forEach(t => {
         csvRows.push([
-          t.date,
-          t.voucherNumber || "N/A",
-          t.type.toUpperCase(),
-          t.category,
-          t.amount.toString(),
-          t.paymentType.toUpperCase(),
+          t.date || "",
+          (t as any).voucherNumber || t.id || "N/A",
+          (t.type || "expense").toUpperCase(),
+          t.category || "",
+          (t.amount ?? 0).toString(),
+          (t.paymentType || "cash").toUpperCase(),
           t.notes || ""
         ]);
       });
@@ -641,7 +654,7 @@ export default function ReportsView({
       <div className="hidden print:flex flex-col border-b-2 border-slate-900 pb-5 mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-start space-x-4">
-            {business.logoUrl ? (
+            {business?.logoUrl ? (
               <img
                 src={business.logoUrl}
                 referrerPolicy="no-referrer"
@@ -650,16 +663,16 @@ export default function ReportsView({
               />
             ) : (
               <div className="w-16 h-16 bg-slate-900 rounded-xl flex items-center justify-center font-bold text-white text-xl uppercase shrink-0">
-                {business.name.substring(0, 2).toUpperCase()}
+                {(business?.name || "BH").substring(0, 2).toUpperCase()}
               </div>
             )}
             <div>
-              <h1 className="text-xl font-bold text-slate-900">{business.name}</h1>
-              <p className="text-xs text-slate-600 font-medium whitespace-pre-line leading-relaxed max-w-lg mt-1">{business.address}</p>
+              <h1 className="text-xl font-bold text-slate-900">{business?.name || "Billing On Hand"}</h1>
+              <p className="text-xs text-slate-600 font-medium whitespace-pre-line leading-relaxed max-w-lg mt-1">{business?.address || ""}</p>
               <div className="mt-2 text-[11px] font-sans text-slate-700 flex flex-wrap gap-x-4">
-                {business.gstin && <p><span className="font-semibold text-slate-900">GSTIN:</span> {business.gstin}</p>}
-                {business.phone && <p><span className="font-semibold text-slate-900">Phone:</span> {business.phone}</p>}
-                {business.email && <p><span className="font-semibold text-slate-900">Email:</span> {business.email}</p>}
+                {business?.gstin && <p><span className="font-semibold text-slate-900">GSTIN:</span> {business.gstin}</p>}
+                {business?.phone && <p><span className="font-semibold text-slate-900">Phone:</span> {business.phone}</p>}
+                {business?.email && <p><span className="font-semibold text-slate-900">Email:</span> {business.email}</p>}
               </div>
             </div>
           </div>
@@ -688,7 +701,7 @@ export default function ReportsView({
       {/* Header */}
       <div className="pb-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 print:hidden">
         <div className="flex items-center space-x-3">
-          {business.logoUrl ? (
+          {business?.logoUrl ? (
             <img
               src={business.logoUrl}
               referrerPolicy="no-referrer"
@@ -697,7 +710,7 @@ export default function ReportsView({
             />
           ) : (
             <div className="w-12 h-12 bg-gradient-to-tr from-emerald-650 to-indigo-650 rounded-xl flex items-center justify-center font-bold text-white font-sans text-sm shadow-sm shrink-0">
-              {business.name.substring(0, 2).toUpperCase()}
+              {(business?.name || "BH").substring(0, 2).toUpperCase()}
             </div>
           )}
           <div>
@@ -950,12 +963,12 @@ export default function ReportsView({
             </div>
             <div className="text-right">
               <span className="text-[10px] font-bold text-slate-400 uppercase">Aggregates</span>
-              <span className="block font-sans font-black text-slate-800 text-xs">{invoices.length} invoices entries</span>
+              <span className="block font-sans font-black text-slate-800 text-xs">{safeInvoices.length} invoices entries</span>
             </div>
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
-            {invoices.length === 0 ? (
+            {safeInvoices.length === 0 ? (
               <div className="p-8 text-center text-slate-400">
                 <Receipt className="w-12 h-12 text-slate-200 mx-auto mb-1.5" />
                 <p className="text-xs font-bold text-slate-600">No transactions recorded inside daybook.</p>
@@ -974,7 +987,7 @@ export default function ReportsView({
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.slice().reverse().map(inv => {
+                  {safeInvoices.slice().reverse().map(inv => {
                     const isSale = inv.type === "sale";
                     const isSaleReturn = inv.type === "sale_return";
                     const isPurchase = inv.type === "purchase";
@@ -1141,14 +1154,14 @@ export default function ReportsView({
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {inv.items.map((it, lIdx) => (
+                                  {(inv.items || []).map((it, lIdx) => (
                                     <tr key={lIdx} className="border-b border-slate-100 text-slate-700">
                                       <td className="py-1 px-2 font-sans font-semibold text-slate-800">{it.itemName}</td>
                                       <td className="py-1 px-2 text-right font-bold">{it.quantity}</td>
-                                      <td className="py-1 px-2 text-right">{it.price.toFixed(2)}</td>
-                                      <td className="py-1 px-2 text-right text-rose-600">-{it.discount ? it.discount.toFixed(2) : "0.00"}</td>
+                                      <td className="py-1 px-2 text-right">{Number(it.price || 0).toFixed(2)}</td>
+                                      <td className="py-1 px-2 text-right text-rose-600">-{it.discount ? Number(it.discount).toFixed(2) : "0.00"}</td>
                                       <td className="py-1 px-2 text-center">{it.gstRate}%</td>
-                                      <td className="py-1 px-2 text-right font-bold text-slate-900">{it.totalWithTax.toFixed(2)}</td>
+                                      <td className="py-1 px-2 text-right font-bold text-slate-900">{Number(it.totalAmount || 0).toFixed(2)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -1270,14 +1283,14 @@ export default function ReportsView({
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {inv.items.map((it, lIdx) => (
+                                  {(inv.items || []).map((it, lIdx) => (
                                     <tr key={lIdx} className="border-b border-slate-100 text-slate-700">
                                       <td className="py-1 px-2 font-sans font-semibold text-slate-800">{it.itemName}</td>
                                       <td className="py-1 px-2 text-right font-bold">{it.quantity}</td>
-                                      <td className="py-1 px-2 text-right">{it.price.toFixed(2)}</td>
-                                      <td className="py-1 px-2 text-right text-emerald-600 font-bold">-{it.discount ? it.discount.toFixed(2) : "0.00"}</td>
+                                      <td className="py-1 px-2 text-right">{Number(it.price || 0).toFixed(2)}</td>
+                                      <td className="py-1 px-2 text-right text-emerald-600 font-bold">-{it.discount ? Number(it.discount).toFixed(2) : "0.00"}</td>
                                       <td className="py-1 px-2 text-center">{it.gstRate}%</td>
-                                      <td className="py-1 px-2 text-right font-bold text-slate-900">{(it.totalWithTax - it.taxAmount).toFixed(2)}</td>
+                                      <td className="py-1 px-2 text-right font-bold text-slate-900">{Number(it.amountBeforeTax || ((it.totalAmount || 0) - (it.taxAmount || 0))).toFixed(2)}</td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -1344,24 +1357,25 @@ export default function ReportsView({
                 </tr>
               </thead>
               <tbody>
-                {itemsReportPerformance.map(row => {
+                {itemsReportPerformance.map((row, idx) => {
+                  const it = row.item || ({} as any);
                   return (
-                    <tr key={row.item.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                    <tr key={it.id || idx} className="border-b border-slate-100 hover:bg-slate-50 transition">
                       <td className="py-3 px-4 font-semibold text-slate-800">
-                        <div>{row.item.name}</div>
-                        <span className="text-[9px] text-slate-400 block font-normal font-sans">S: {formatINR(row.item.salePrice)} | P: {formatINR(row.item.purchasePrice)}</span>
+                        <div>{it.name || "Unnamed Item"}</div>
+                        <span className="text-[9px] text-slate-400 block font-normal font-sans">S: {formatINR(it.salePrice)} | P: {formatINR(it.purchasePrice)}</span>
                       </td>
-                      <td className="py-3 px-3 font-mono text-slate-500">{row.item.hsn || "-"}</td>
-                      <td className="py-3 px-3 text-right font-mono font-bold text-indigo-700">{row.qtySold} {row.item.unit}</td>
+                      <td className="py-3 px-3 font-mono text-slate-500">{it.hsn || "-"}</td>
+                      <td className="py-3 px-3 text-right font-mono font-bold text-indigo-700">{row.qtySold || 0} {it.unit || "PCS"}</td>
                       <td className="py-3 px-3 text-right font-mono text-slate-900">{formatINR(row.revenueExclTax)}</td>
-                      <td className="py-3 px-3 text-right font-mono text-slate-650">{row.qtyPurchased} {row.item.unit}</td>
+                      <td className="py-3 px-3 text-right font-mono text-slate-650">{row.qtyPurchased || 0} {it.unit || "PCS"}</td>
                       <td className="py-3 px-4 text-center">
                         <span className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full ${
                           row.stockStatus === "outofstock" ? "bg-rose-100 text-rose-800" :
                           row.stockStatus === "lowstock" ? "bg-amber-100 text-amber-800" :
                           "bg-emerald-50 text-emerald-800"
                         }`}>
-                          {row.item.stockQuantity} {row.item.unit}
+                          {it.stockQuantity ?? 0} {it.unit || "PCS"}
                         </span>
                       </td>
                     </tr>
@@ -1683,11 +1697,11 @@ export default function ReportsView({
                         <td className="py-2 px-3 font-bold">{inv.invoiceNumber}</td>
                         <td className="py-2 px-2 font-sans">{inv.partyName}</td>
                         <td className="py-2 px-2 text-center font-bold text-slate-800">{inv.partyGstin}</td>
-                        <td className="py-2 px-2 text-right">{inv.subtotal.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right text-slate-500">{inv.cgstTotal.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right text-slate-500">{inv.sgstTotal.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right text-slate-500">{inv.igstTotal.toFixed(2)}</td>
-                        <td className="py-2 px-3 text-right font-bold text-slate-900">{inv.totalAmount.toFixed(2)}</td>
+                        <td className="py-2 px-2 text-right">{Number(inv.subtotal || 0).toFixed(2)}</td>
+                        <td className="py-2 px-2 text-right text-slate-500">{Number(inv.cgstTotal || 0).toFixed(2)}</td>
+                        <td className="py-2 px-2 text-right text-slate-500">{Number(inv.sgstTotal || 0).toFixed(2)}</td>
+                        <td className="py-2 px-2 text-right text-slate-500">{Number(inv.igstTotal || 0).toFixed(2)}</td>
+                        <td className="py-2 px-3 text-right font-bold text-slate-900">{Number(inv.totalAmount || 0).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1726,11 +1740,11 @@ export default function ReportsView({
                       <tr key={inv.id} className="border-b border-slate-100 hover:bg-slate-100">
                         <td className="py-2 px-3 font-bold">{inv.invoiceNumber}</td>
                         <td className="py-2 px-2 font-sans text-slate-500 italic">Walk-in retail buyer</td>
-                        <td className="py-2 px-2 text-right">{inv.subtotal.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right text-slate-500">{inv.cgstTotal.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right text-slate-500">{inv.sgstTotal.toFixed(2)}</td>
-                        <td className="py-2 px-2 text-right text-slate-500">{inv.igstTotal.toFixed(2)}</td>
-                        <td className="py-2 px-3 text-right font-bold text-slate-900">{inv.totalAmount.toFixed(2)}</td>
+                        <td className="py-2 px-2 text-right">{Number(inv.subtotal || 0).toFixed(2)}</td>
+                        <td className="py-2 px-2 text-right text-slate-500">{Number(inv.cgstTotal || 0).toFixed(2)}</td>
+                        <td className="py-2 px-2 text-right text-slate-500">{Number(inv.sgstTotal || 0).toFixed(2)}</td>
+                        <td className="py-2 px-2 text-right text-slate-500">{Number(inv.igstTotal || 0).toFixed(2)}</td>
+                        <td className="py-2 px-3 text-right font-bold text-slate-900">{Number(inv.totalAmount || 0).toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1805,11 +1819,11 @@ export default function ReportsView({
                       <td className="py-2.5 px-3 font-bold text-slate-800">{inv.invoiceNumber}</td>
                       <td className="py-2.5 px-2 font-sans">{inv.partyName}</td>
                       <td className="py-2.5 px-2 text-center text-slate-700">{inv.partyGstin || "Unregistered Supplier"}</td>
-                      <td className="py-2.5 px-2 text-right">{inv.subtotal.toFixed(2)}</td>
-                      <td className="py-2.5 px-2 text-right font-bold text-purple-700">{inv.cgstTotal.toFixed(2)}</td>
-                      <td className="py-2.5 px-2 text-right font-bold text-purple-700">{inv.sgstTotal.toFixed(2)}</td>
-                      <td className="py-2.5 px-2 text-right font-bold text-purple-700">{inv.igstTotal.toFixed(2)}</td>
-                      <td className="py-2.5 px-3 text-right font-bold text-slate-900">{inv.totalAmount.toFixed(2)}</td>
+                      <td className="py-2.5 px-2 text-right">{Number(inv.subtotal || 0).toFixed(2)}</td>
+                      <td className="py-2.5 px-2 text-right font-bold text-purple-700">{Number(inv.cgstTotal || 0).toFixed(2)}</td>
+                      <td className="py-2.5 px-2 text-right font-bold text-purple-700">{Number(inv.sgstTotal || 0).toFixed(2)}</td>
+                      <td className="py-2.5 px-2 text-right font-bold text-purple-700">{Number(inv.igstTotal || 0).toFixed(2)}</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-slate-900">{Number(inv.totalAmount || 0).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>

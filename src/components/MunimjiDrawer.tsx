@@ -729,26 +729,30 @@ export default function MunimjiDrawer({
             return /male|hemant|madhav|prabhat|ravi|neel|guy|david|mark|george|alex|daniel|oliver|microsoft|google/i.test(n) && !isFemaleVoice(v);
           };
 
-          // 1. Indian Male Voice (Marathi / Hindi)
-          const indianMaleVoice = allVoices.find(v => (v.lang.startsWith("mr") || v.lang.startsWith("hi")) && isMaleName(v) && !isFemaleVoice(v));
+          // 1. Marathi Voice (Native)
+          const marathiMaleVoice = allVoices.find(v => v.lang.startsWith("mr") && isMaleName(v));
+          const anyMarathiVoice = allVoices.find(v => v.lang.startsWith("mr"));
 
-          // 2. English (India) or High-grade English Male Voice (David, Mark, Ravi, Guy)
-          const englishMaleVoice = allVoices.find(v => (v.lang.includes("IN") || v.lang.startsWith("en")) && isMaleName(v) && !isFemaleVoice(v));
+          // 2. Hindi Voice (Reads Devanagari natively and naturally without robotic transliteration)
+          const hindiMaleVoice = allVoices.find(v => v.lang.startsWith("hi") && isMaleName(v));
+          const anyHindiVoice = allVoices.find(v => v.lang.startsWith("hi") && !isFemaleVoice(v)) || allVoices.find(v => v.lang.startsWith("hi"));
 
-          // 3. Any explicit male voice
+          // 3. Indian English Voice (Accented Indian voice)
+          const indianEnglishMaleVoice = allVoices.find(v => v.lang.includes("IN") && isMaleName(v));
+          const anyIndianEnglishVoice = allVoices.find(v => v.lang.includes("IN") && !isFemaleVoice(v)) || allVoices.find(v => v.lang.includes("IN"));
+
+          // 4. Any generic male voice
           const anyMaleVoice = allVoices.find(v => isMaleName(v));
-
-          // 4. Any voice that is strictly NOT female
           const nonFemaleVoice = allVoices.find(v => !isFemaleVoice(v));
 
-          let chosenVoice = indianMaleVoice || englishMaleVoice || anyMaleVoice || nonFemaleVoice || allVoices[0];
+          let chosenVoice = marathiMaleVoice || anyMarathiVoice || hindiMaleVoice || anyHindiVoice || indianEnglishMaleVoice || anyIndianEnglishVoice || anyMaleVoice || nonFemaleVoice || allVoices[0];
 
-          // If chosen voice is an English voice and text is in Devanagari, convert to phonetics so it speaks aloud and never goes silent
+          // Only transliterate to Latin IF chosen voice is strictly non-Indian English (like US/UK voice)
           let textToSpeak = cleaned;
           const isDevanagari = /[\u0900-\u097F]/.test(cleaned);
-          const isEnglishVoice = chosenVoice && !chosenVoice.lang.startsWith("mr") && !chosenVoice.lang.startsWith("hi");
+          const isNonIndianVoice = chosenVoice && !chosenVoice.lang.startsWith("mr") && !chosenVoice.lang.startsWith("hi") && !chosenVoice.lang.includes("IN");
 
-          if (isDevanagari && isEnglishVoice) {
+          if (isDevanagari && isNonIndianVoice) {
             textToSpeak = transliterateDevanagariToLatin(cleaned);
           }
 
@@ -764,8 +768,8 @@ export default function MunimjiDrawer({
           }
 
           // Deep, mature Indian male accountant tone
-          utterance.pitch = 0.85; 
-          utterance.rate = 0.95;  
+          utterance.pitch = 0.90; 
+          utterance.rate = 0.98;  
           utterance.volume = 1.0;
 
           utterance.onend = () => {
@@ -1080,6 +1084,22 @@ export default function MunimjiDrawer({
       if (response.replyText) {
         playMunimjiVoice(response.audioBase64, response.audioMimeType, response.replyText);
       }
+
+      // Check and execute page navigation / redirection across Web & Electron
+      const navTarget =
+        response.actionPayload?.targetTab ||
+        response.actionPayload?.tab ||
+        response.actionPayload?.page ||
+        (response as any).actionResult?.data?.targetTab;
+
+      if (navTarget && onNavigateTab) {
+        try {
+          onNavigateTab(String(navTarget).toLowerCase());
+        } catch (navErr) {
+          console.warn("Navigation trigger notice:", navErr);
+        }
+      }
+
       // Always synchronize global DB state so inventory, billing, parties immediately update
       try {
         await onRefreshDb();
