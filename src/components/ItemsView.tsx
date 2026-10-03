@@ -883,20 +883,64 @@ export default function ItemsView({
                   </p>
                 </div>
 
-                {/* GST Tax Rate Selection */}
+                {/* GST Tax Rate Selection (Dynamic) */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">GST Rate (%)</label>
-                  <select
-                    id="modal-item-gstrate"
-                    name="gstRate"
-                    value={formData.gstRate}
-                    onChange={handleInputChange}
-                    className="w-full px-2 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs bg-white outline-none font-bold"
-                  >
-                    {TAX_RATES.map(rate => (
-                      <option key={rate} value={rate}>{rate}% Tax Bracket</option>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                      GST Rate (%)
+                    </label>
+                    <span className="text-[10px] text-emerald-600 font-bold">Dynamic Tax Slab</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="modal-item-gstrate"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      name="gstRate"
+                      value={formData.gstRate}
+                      onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        setFormData(prev => ({ ...prev, gstRate: isNaN(val) ? 0 : val }));
+                      }}
+                      placeholder="e.g. 18 or 3 or 0.25"
+                      className="w-full px-2.5 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs bg-white outline-none font-bold font-mono"
+                    />
+                    <select
+                      value={TAX_RATES.includes(formData.gstRate) ? formData.gstRate : "custom"}
+                      onChange={(e) => {
+                        if (e.target.value !== "custom") {
+                          setFormData(prev => ({ ...prev, gstRate: parseFloat(e.target.value) || 0 }));
+                        }
+                      }}
+                      className="px-2.5 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs bg-slate-50 outline-none font-bold text-slate-700 shrink-0 cursor-pointer"
+                    >
+                      {TAX_RATES.map(rate => (
+                        <option key={rate} value={rate}>{rate}%</option>
+                      ))}
+                      {!TAX_RATES.includes(formData.gstRate) && (
+                        <option value="custom">Custom ({formData.gstRate}%)</option>
+                      )}
+                    </select>
+                  </div>
+                  {/* Quick Preset Badges */}
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {[0, 0.25, 3, 5, 12, 18, 28].map(slab => (
+                      <button
+                        key={slab}
+                        type="button"
+                        onClick={() => setFormData(prev => ({ ...prev, gstRate: slab }))}
+                        className={`text-[9.5px] px-2 py-0.5 rounded font-bold transition cursor-pointer ${
+                          formData.gstRate === slab
+                            ? "bg-emerald-600 text-white"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+                        }`}
+                      >
+                        {slab}%
+                      </button>
                     ))}
-                  </select>
+                  </div>
                 </div>
 
                 {/* Inventories: Current stock, min alerts */}

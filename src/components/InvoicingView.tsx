@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { Item, Party, Invoice, InvoiceItem, BusinessProfile } from "../types.js";
+import { Item, Party, Invoice, InvoiceItem, BusinessProfile, TAX_RATES } from "../types.js";
 import {
   Plus,
   Minus,
@@ -2009,18 +2009,29 @@ export default function InvoicingView({
                             </div>
                           </td>
 
-                          {/* GST Rate */}
+                          {/* GST Rate (Dynamic) */}
                           <td className="py-2.5 px-2 text-center">
                             <select
-                              value={line.gstRate}
-                              onChange={(e) => handleLineValueChange(idx, 'gstRate', parseInt(e.target.value) || 0)}
-                              className="px-1.5 py-1 border border-slate-200 rounded-md text-[11px] font-mono outline-none bg-white"
+                              value={TAX_RATES.includes(line.gstRate) ? line.gstRate : "custom"}
+                              onChange={(e) => {
+                                if (e.target.value === "custom") {
+                                  const customVal = prompt("Enter custom GST rate (%):", String(line.gstRate || 0));
+                                  if (customVal !== null) {
+                                    handleLineValueChange(idx, 'gstRate', parseFloat(customVal) || 0);
+                                  }
+                                } else {
+                                  handleLineValueChange(idx, 'gstRate', parseFloat(e.target.value) || 0);
+                                }
+                              }}
+                              className="px-1.5 py-1 border border-slate-200 rounded-md text-[11px] font-mono outline-none bg-white font-semibold cursor-pointer"
                             >
-                              <option value="0">0%</option>
-                              <option value="5">5%</option>
-                              <option value="12">12%</option>
-                              <option value="18">18%</option>
-                              <option value="28">28%</option>
+                              {TAX_RATES.map(rate => (
+                                <option key={rate} value={rate}>{rate}%</option>
+                              ))}
+                              {!TAX_RATES.includes(line.gstRate) && (
+                                <option value="custom">{line.gstRate}%</option>
+                              )}
+                              <option value="custom">+ Custom %</option>
                             </select>
                           </td>
 

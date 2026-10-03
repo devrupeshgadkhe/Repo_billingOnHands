@@ -161,13 +161,14 @@ export interface Item {
   brand?: string;
   stockQuantity: number;
   minStockAlert: number;
-  gstRate: number; // e.g., 0, 5, 12, 18, 28
+  gstRate: number; // e.g., 0, 0.25, 3, 5, 12, 18, 28, or custom decimal
   unit: string; // "PCS", "KGS", "BOX", "LIR", "MTR", etc.
   barcodes?: string[];
   batchNumber?: string; // Active/Default batch number (e.g. "B-2026/09")
   expiryDate?: string; // Active/Default expiry date (YYYY-MM-DD or YYYY-MM)
   mfgDate?: string; // Manufacturing date
   batches?: ItemBatch[]; // Multi-batch inventory tracking
+  godownStock?: Record<string, number>; // Godown-wise stock breakdown (godownId -> qty)
 }
 
 export interface LoyaltyLedgerEntry {
@@ -387,10 +388,50 @@ export interface ModulePermissions {
   delete: boolean;
 }
 
+export interface Godown {
+  id: string;
+  name: string;
+  address?: string;
+  managerName?: string;
+  phone?: string;
+  isDefault?: boolean;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface StockTransferItem {
+  itemId: string;
+  itemName: string;
+  hsn?: string;
+  quantity: number;
+  unit: string;
+  batchNumber?: string;
+  expiryDate?: string;
+  purchasePrice?: number;
+}
+
+export interface StockTransferVoucher {
+  id: string;
+  voucherNumber: string;
+  date: string; // YYYY-MM-DD
+  sourceGodownId: string;
+  sourceGodownName: string;
+  destGodownId: string;
+  destGodownName: string;
+  items: StockTransferItem[];
+  totalQuantity: number;
+  driverName?: string;
+  vehicleNumber?: string;
+  notes?: string;
+  status: 'completed' | 'cancelled';
+  createdAt: string;
+}
+
 export interface UserPermissions {
   dashboard: ModulePermissions;
   parties: ModulePermissions;
   items: ModulePermissions;
+  godowns?: ModulePermissions;
   quotations?: ModulePermissions;
   sales: ModulePermissions;
   purchases: ModulePermissions;
@@ -424,6 +465,8 @@ export interface DatabaseState {
   items: Item[];
   parties: Party[];
   invoices: Invoice[];
+  godowns?: Godown[];
+  stockTransfers?: StockTransferVoucher[];
   offers?: OfferScheme[];
   challans?: DeliveryChallan[];
   quotations?: Quotation[];
@@ -488,6 +531,6 @@ export const INDIAN_STATES = [
   "Puducherry"
 ];
 
-export const TAX_RATES = [0, 5, 12, 18, 28];
+export const TAX_RATES = [0, 0.1, 0.25, 1.5, 3, 5, 6, 7.5, 12, 18, 28, 40];
 
 export const UNITS = ["PCS", "KGS", "BOX", "MTR", "LTR", "BAG", "NOS", "SET"];

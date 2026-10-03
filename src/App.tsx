@@ -17,7 +17,8 @@ import TransactionsView from "./components/TransactionsView";
 import AccessControlView from "./components/AccessControlView";
 import DeliveryChallansView from "./components/DeliveryChallansView";
 import QuotationsView from "./components/QuotationsView";
-import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus } from "./types";
+import GodownsView from "./components/GodownsView";
+import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher } from "./types";
 import { RefreshCw, LayoutGrid, CheckCircle, LogOut, Menu } from "lucide-react";
 import { APP_VERSION } from "./version";
 import MunimjiDrawer from "./components/MunimjiDrawer";
@@ -556,6 +557,75 @@ export default function App() {
     }
   };
 
+  // Godown & Stock Transfer handlers (Phase 9)
+  const handleSaveGodown = async (godown: Godown) => {
+    try {
+      const res = await fetch("/api/godowns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(godown)
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save godown");
+      }
+    } catch (err) {
+      console.error("Failed to save godown", err);
+      throw err;
+    }
+  };
+
+  const handleDeleteGodown = async (id: string) => {
+    try {
+      const res = await fetch(`/api/godowns/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete godown");
+      }
+    } catch (err) {
+      console.error("Failed to delete godown", err);
+      throw err;
+    }
+  };
+
+  const handleCreateStockTransfer = async (voucher: StockTransferVoucher) => {
+    try {
+      const res = await fetch("/api/stock-transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(voucher)
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to create stock transfer");
+      }
+    } catch (err) {
+      console.error("Failed to create stock transfer", err);
+      throw err;
+    }
+  };
+
+  const handleCancelStockTransfer = async (id: string) => {
+    try {
+      const res = await fetch(`/api/stock-transfers/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to cancel stock transfer");
+      }
+    } catch (err) {
+      console.error("Failed to cancel stock transfer", err);
+      throw err;
+    }
+  };
+
   const handleEditInvoice = (invoice: Invoice) => {
     setInvoiceToEdit(invoice);
     setIsReturnMode(invoice.type === "sale_return" || invoice.type === "purchase_return");
@@ -915,6 +985,20 @@ export default function App() {
               onDeleteItem={handleDeleteItem}
               onRefreshDb={fetchState}
               permissions={session?.permissions?.items}
+            />
+          )}
+
+          {activeTab === "godowns" && (
+            <GodownsView
+              godowns={dbState.godowns || []}
+              stockTransfers={dbState.stockTransfers || []}
+              items={dbState.items || []}
+              business={dbState.business}
+              onSaveGodown={handleSaveGodown}
+              onDeleteGodown={handleDeleteGodown}
+              onCreateTransfer={handleCreateStockTransfer}
+              onCancelTransfer={handleCancelStockTransfer}
+              permissions={session?.permissions?.godowns || session?.permissions?.items}
             />
           )}
 

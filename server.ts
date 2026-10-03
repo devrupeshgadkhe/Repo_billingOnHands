@@ -11,7 +11,7 @@ dotenv.config({ override: true });
 
 const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import { GoogleGenAI, Type } from "@google/genai";
-import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus } from "./src/types.js";
+import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher, StockTransferItem } from "./src/types.js";
 import { munimjiPool, processMunimjiCommand } from "./src/server/munimjiPool.js";
 import { generateEodSummary, sendEodEmailReport, checkScheduledEodEmailJob } from "./src/server/eodReportService.js";
 
@@ -426,7 +426,8 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
         mrp: Number(b?.mrp) || undefined,
         quantity: Number(b?.quantity) || 0
       })) : undefined,
-      barcodes: Array.isArray(it?.barcodes) ? it.barcodes.map((b: any) => String(b || "")).filter(Boolean) : []
+      barcodes: Array.isArray(it?.barcodes) ? it.barcodes.map((b: any) => String(b || "")).filter(Boolean) : [],
+      godownStock: (it?.godownStock && typeof it.godownStock === "object") ? it.godownStock : { "godown_main": Number(it?.stockQuantity) || 0 }
     };
   }) : [];
 
@@ -532,11 +533,56 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
     { username: "admin", passwordHash: "admin123", name: "Store Manager", role: "owner" }
   ];
 
+  const defaultGodown: Godown = {
+    id: "godown_main",
+    name: "Main Store / मुख्य दुकान",
+    address: business.address || "Main Store Counter",
+    managerName: "Store In-charge",
+    phone: business.phone || "",
+    isDefault: true,
+    notes: "Primary billing and sales godown",
+    createdAt: new Date().toISOString().split("T")[0]
+  };
+
+  const godowns: Godown[] = Array.isArray(raw.godowns) && raw.godowns.length > 0
+    ? raw.godowns.map((g: any, gIdx: number) => ({
+        id: String(g?.id || `godown_${gIdx + 1}`),
+        name: String(g?.name || `Godown ${gIdx + 1}`),
+        address: String(g?.address || ""),
+        managerName: String(g?.managerName || ""),
+        phone: String(g?.phone || ""),
+        isDefault: Boolean(g?.isDefault || gIdx === 0),
+        notes: String(g?.notes || ""),
+        createdAt: String(g?.createdAt || new Date().toISOString().split("T")[0])
+      }))
+    : [defaultGodown];
+
+  const stockTransfers: StockTransferVoucher[] = Array.isArray(raw.stockTransfers)
+    ? raw.stockTransfers.map((st: any, stIdx: number) => ({
+        id: String(st?.id || `stv_${stIdx + 1}`),
+        voucherNumber: String(st?.voucherNumber || `STV-${String(stIdx + 1).padStart(3, "0")}`),
+        date: String(st?.date || new Date().toISOString().split("T")[0]),
+        sourceGodownId: String(st?.sourceGodownId || "godown_main"),
+        sourceGodownName: String(st?.sourceGodownName || "Main Store"),
+        destGodownId: String(st?.destGodownId || ""),
+        destGodownName: String(st?.destGodownName || ""),
+        items: Array.isArray(st?.items) ? st.items : [],
+        totalQuantity: Number(st?.totalQuantity) || 0,
+        driverName: String(st?.driverName || ""),
+        vehicleNumber: String(st?.vehicleNumber || ""),
+        notes: String(st?.notes || ""),
+        status: (st?.status === "cancelled" ? "cancelled" : "completed") as "completed" | "cancelled",
+        createdAt: String(st?.createdAt || new Date().toISOString())
+      }))
+    : [];
+
   return {
     business,
     items,
     parties,
     invoices,
+    godowns,
+    stockTransfers,
     challans,
     quotations,
     transactions,
@@ -2013,6 +2059,144 @@ app.post("/api/reports/send-eod-email", async (req, res) => {
     console.error("Failed to send EOD email report:", err);
     res.status(500).json({ error: "Failed to send EOD email report: " + err.message });
   }
+});
+
+// Multi-Godown / Warehouse & Stock Transfers API Endpoints (Phase 9)
+
+// 1. Get all godowns
+app.get("/api/godowns", (req, res) => {
+  const db = readDb();
+  res.json(db.godowns || []);
+});
+
+// 2. Create or Update Godown
+app.post("/api/godowns", (req, res) => {
+  const db = readDb();
+  if (!db.godowns) db.godowns = [];
+  const incoming = req.body as Godown;
+  
+  if (!incoming.name || !incoming.name.trim()) {
+    return res.status(400).json({ error: "Godown name is required." });
+  }
+
+  const isEdit = !!incoming.id;
+  if (isEdit) {
+    const idx = db.godowns.findIndex(g => g.id === incoming.id);
+    if (idx > -1) {
+      db.godowns[idx] = { ...db.godowns[idx], ...incoming };
+    } else {
+      db.godowns.push(incoming);
+    }
+  } else {
+    incoming.id = incoming.id || "godown_" + Date.now();
+    incoming.createdAt = incoming.createdAt || new Date().toISOString().split("T")[0];
+    db.godowns.push(incoming);
+  }
+
+  writeDb(db);
+  res.json({ message: "Godown saved successfully.", godown: incoming, godowns: db.godowns });
+});
+
+// 3. Delete Godown
+app.delete("/api/godowns/:id", (req, res) => {
+  const db = readDb();
+  const id = req.params.id;
+  const godown = (db.godowns || []).find(g => g.id === id);
+  if (!godown) {
+    return res.status(404).json({ error: "Godown not found." });
+  }
+  if (godown.isDefault) {
+    return res.status(400).json({ error: "Default Godown (Main Store) cannot be deleted." });
+  }
+
+  // Check if any items have stock in this godown
+  const hasStock = (db.items || []).some(item => (item.godownStock?.[id] || 0) > 0);
+  if (hasStock) {
+    return res.status(400).json({ error: "Cannot delete godown that currently contains inventory stock. Please transfer the stock out first." });
+  }
+
+  db.godowns = (db.godowns || []).filter(g => g.id !== id);
+  writeDb(db);
+  res.json({ message: "Godown removed successfully.", godowns: db.godowns });
+});
+
+// 4. Get all Stock Transfer Vouchers
+app.get("/api/stock-transfers", (req, res) => {
+  const db = readDb();
+  res.json(db.stockTransfers || []);
+});
+
+// 5. Create Stock Transfer Voucher (Deducts from source godown, adds to destination godown)
+app.post("/api/stock-transfers", (req, res) => {
+  const db = readDb();
+  if (!db.stockTransfers) db.stockTransfers = [];
+  if (!db.items) db.items = [];
+  const voucher = req.body as StockTransferVoucher;
+
+  if (!voucher.sourceGodownId || !voucher.destGodownId) {
+    return res.status(400).json({ error: "Source and Destination godowns are required." });
+  }
+  if (voucher.sourceGodownId === voucher.destGodownId) {
+    return res.status(400).json({ error: "Source and Destination godowns must be different." });
+  }
+  if (!Array.isArray(voucher.items) || voucher.items.length === 0) {
+    return res.status(400).json({ error: "At least one item is required for stock transfer." });
+  }
+
+  voucher.id = voucher.id || "stv_" + Date.now();
+  voucher.voucherNumber = voucher.voucherNumber || `STV-${new Date().getFullYear()}/${String(db.stockTransfers.length + 1).padStart(3, "0")}`;
+  voucher.date = voucher.date || new Date().toISOString().split("T")[0];
+  voucher.status = "completed";
+  voucher.createdAt = new Date().toISOString();
+
+  // Apply inventory movement across godowns
+  voucher.items.forEach(transferItem => {
+    const dbItem = db.items.find(i => i.id === transferItem.itemId || (transferItem.itemName && i.name.toLowerCase() === transferItem.itemName.toLowerCase()));
+    if (dbItem) {
+      if (!dbItem.godownStock) {
+        dbItem.godownStock = { [voucher.sourceGodownId]: dbItem.stockQuantity || 0 };
+      }
+      const sourceStock = dbItem.godownStock[voucher.sourceGodownId] || 0;
+      const destStock = dbItem.godownStock[voucher.destGodownId] || 0;
+      const transferQty = Number(transferItem.quantity) || 0;
+
+      // Adjust godown balances
+      dbItem.godownStock[voucher.sourceGodownId] = Math.max(0, sourceStock - transferQty);
+      dbItem.godownStock[voucher.destGodownId] = destStock + transferQty;
+    }
+  });
+
+  db.stockTransfers.unshift(voucher);
+  writeDb(db);
+  res.json({ message: "Stock transfer voucher processed successfully.", voucher, stockTransfers: db.stockTransfers });
+});
+
+// 6. Cancel Stock Transfer Voucher (Reverses movement)
+app.delete("/api/stock-transfers/:id", (req, res) => {
+  const db = readDb();
+  if (!db.stockTransfers) db.stockTransfers = [];
+  const id = req.params.id;
+  const voucherIndex = db.stockTransfers.findIndex(v => v.id === id);
+  if (voucherIndex === -1) {
+    return res.status(404).json({ error: "Stock transfer voucher not found." });
+  }
+
+  const voucher = db.stockTransfers[voucherIndex];
+  if (voucher.status !== "cancelled") {
+    // Revert inventory movement
+    voucher.items.forEach(transferItem => {
+      const dbItem = (db.items || []).find(i => i.id === transferItem.itemId);
+      if (dbItem && dbItem.godownStock) {
+        const transferQty = Number(transferItem.quantity) || 0;
+        dbItem.godownStock[voucher.sourceGodownId] = (dbItem.godownStock[voucher.sourceGodownId] || 0) + transferQty;
+        dbItem.godownStock[voucher.destGodownId] = Math.max(0, (dbItem.godownStock[voucher.destGodownId] || 0) - transferQty);
+      }
+    });
+    voucher.status = "cancelled";
+  }
+
+  writeDb(db);
+  res.json({ message: "Stock transfer cancelled and stock reversed successfully.", voucher });
 });
 
 // Delivery Challans API Endpoints
@@ -3592,6 +3776,20 @@ function executeMunimjiUniversalCrud(
       writeDb(db);
       message = `आजचा डे-एंड सारांश तयार करण्यात आला आहे. एकूण विक्री: ₹${summary.sales.netSalesTotal.toFixed(2)} (${summary.sales.invoiceCount} बिले), रोख जमा: ₹${summary.sales.cashCollected.toFixed(2)}. मालकाच्या ईमेलवर अहवाल यशस्वीरीत्या पाठवला आहे!`;
       resultData = { summary };
+      return { success: true, message, data: resultData };
+    }
+
+    // 17. GODOWN & STOCK TRANSFER (Phase 9)
+    else if (
+      act.includes("GODOWN") || act.includes("STOCK_TRANSFER") || act.includes("WAREHOUSE") ||
+      combinedContext.includes("गोदाम") || combinedContext.includes("गोडाऊन") || combinedContext.includes("स्टॉक ट्रान्सफर")
+    ) {
+      if (!db.godowns) db.godowns = [];
+      const gCount = db.godowns.length;
+      const tCount = (db.stockTransfers || []).length;
+      const names = db.godowns.map(g => g.name).join(", ");
+      message = `आपल्याकडे एकूण ${gCount} गोदामांची नोंद आहे (${names}) आणि ${tCount} स्टॉक ट्रान्सफर व्हॉउचर्स आहेत.`;
+      resultData = { godowns: db.godowns, stockTransfers: db.stockTransfers || [] };
       return { success: true, message, data: resultData };
     }
 

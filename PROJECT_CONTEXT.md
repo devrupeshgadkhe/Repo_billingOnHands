@@ -89,14 +89,23 @@
 * **1-Click Reports View Integration (`ReportsView.tsx`):** "ईमेल अहवाल (Email EOD)" header action opens an instant summary dialog with 1-click manual dispatch for today or filtered date.
 * **Digital Munimji Voice Sync (`server.ts`):** Voice commands ("आजचा डे-एंड ईमेल पाठवा", "Send EOD report", "ईमेल रिपोर्ट पाठवा") trigger immediate summary calculation, email dispatch, and vocal confirmation with drawer auto-minimize.
 
+### ✅ Phase 9: Multi-Godown / Warehouse & Stock Transfer Management (`GodownsView.tsx`, `StockTransferPrintModal.tsx`, `server.ts`)
+* **Multi-Warehouse Management (`GodownsView.tsx`):** Create, edit, and manage multiple godowns/warehouses (Main Store, Depot, Cold Storage, etc.) with address, supervisor/manager name, contact phone, and default designation.
+* **Godown-Wise Stock Tracking (`Item` in `types.ts` & `server.ts`):** Granular `godownStock` mapping per item (`Record<string, number>`) ensuring accurate warehouse level inventory balances alongside global stock quantities.
+* **Inter-Godown Stock Transfer Vouchers (`StockTransferVoucher`):** Seamless creation of intra-warehouse stock transfer vouchers with source and destination godowns, multi-item line picker, batch number, expiry date, maximum available stock limits, and transport details (vehicle number, driver name).
+* **Inventory Balancing & Reversal Engine (`server.ts`):** Automated deduction from source godown and addition to destination godown upon transfer creation; automated stock balance restoration on voucher cancellation.
+* **Goods Transit Pass Printing (`StockTransferPrintModal.tsx`):** Professional thermal (80mm) and A4 printable Stock Transfer Delivery Transit Pass with voucher number, dispatch date, source/destination godowns, driver details, and recipient signature block.
+* **Dynamic GST Tax Slab Architecture (`ItemsView.tsx`, `ItemsScanModal.tsx`, `InvoicingView.tsx`, `types.ts`):** Fully dynamic GST rate support accepting standard slabs (0%, 0.1%, 0.25%, 1.5%, 3%, 5%, 6%, 7.5%, 12%, 18%, 28%, 40%) as well as custom decimal tax percentages extracted from scanned vendor bills or entered manually.
+* **Digital Munimji Voice Integration (`MunimjiDrawer.tsx` & `server.ts`):** Voice query support for godowns and warehouse stock ("गोदाम दाखवा", "गोदामातील साठा किती आहे") with automatic drawer auto-minimize.
+
 ---
 
 ## 🚀 4. Upcoming Roadmap & Next Phases (In Serial Order)
 
 | Phase | Feature Name | Scope & Specifications | Priority |
 | :--- | :--- | :--- | :--- |
-| **Phase 9** | **Multi-Godown / Warehouse Stock Transfer** | Multi-location warehouse inventory tracking and intra-warehouse stock transfer vouchers. | **Next / High** |
-| **Phase 10** | **Barcode Generator & Label Sticker Printing** | 24-up / 40-up sticker sheet printing for retail barcodes and thermal barcode printers. | Medium |
+| **Phase 10** | **Barcode Generator & Label Sticker Printing** | 24-up / 40-up sticker sheet printing for retail barcodes and thermal barcode printers. | **Next / High** |
+| **Phase 11** | **Automated WhatsApp Payment Reminders & Invoices** | Direct WhatsApp Web / Cloud API integration for 1-click sharing of PDF bills and payment balance reminder links. | High |
 
 ---
 
@@ -104,11 +113,13 @@
 * `src/App.tsx` - Root UI orchestrator, persistent database sync, view router, and top navigation.
 * `server.ts` - Express API backend, Gemini AI client, Digital Munimji execution engine, database normalization, and backup runner.
 * `src/server/eodReportService.ts` - End-of-Day report engine, HTML email builder, and SMTP scheduler (Phase 8).
-* `src/types.ts` - Central TypeScript interfaces (`Item`, `Party`, `Invoice`, `DeliveryChallan`, `Quotation`, `BusinessProfile`, `ScheduledEmailConfig`, etc.).
+* `src/types.ts` - Central TypeScript interfaces (`Item`, `Party`, `Invoice`, `Godown`, `StockTransferVoucher`, `DeliveryChallan`, `Quotation`, `BusinessProfile`, `ScheduledEmailConfig`, etc.).
+* `src/components/GodownsView.tsx` - Multi-Godown and warehouse stock transfer manager (Phase 9).
+* `src/components/StockTransferPrintModal.tsx` - Inter-godown stock transfer delivery transit pass print modal (Phase 9).
 * `src/components/EWayBillModal.tsx` - Official NIC E-Way Bill & E-Invoice modal (Phase 5).
-* `src/components/InvoicingView.tsx` - High-speed POS Billing, item search, batch selection, checkout, and parked bills.
+* `src/components/InvoicingView.tsx` - High-speed POS Billing, item search, batch selection, dynamic GST, checkout, and parked bills.
 * `src/components/DeliveryChallansView.tsx` - Delivery challan management, vehicle transport tracking, and bill conversion.
-* `src/components/ItemsView.tsx` - Inventory catalog, batch/expiry alerts, low stock badges, AI item scanner.
+* `src/components/ItemsView.tsx` - Inventory catalog, dynamic GST selector, batch/expiry alerts, low stock badges, AI item scanner.
 * `src/components/PartiesView.tsx` - Customer and Supplier Khata ledger, loyalty ledger, and payment reminders.
 * `src/components/ReportsView.tsx` - GSTR-1, GSTR-3B, P&L, Daybook, EOD email dispatch, and CSV export.
 * `src/components/SettingsView.tsx` - Business profile, thermal bill designer, loyalty config, and automated EOD email reports.
@@ -120,8 +131,8 @@
 
 ## 🔄 6. Instructions for Future AI Development Sessions
 Whenever resuming work on this codebase in a new Google AI Studio conversation:
-1. **Read `PROJECT_CONTEXT.md` first:** Check which phase was completed last (currently **Phase 8: Automated Scheduled Email Reports**).
-2. **Follow Serial Order:** Proceed to the next pending phase (**Phase 9: Multi-Godown / Warehouse Stock Transfer**).
+1. **Read `PROJECT_CONTEXT.md` first:** Check which phase was completed last (currently **Phase 9: Multi-Godown / Warehouse Stock Transfer & Dynamic GST**).
+2. **Follow Serial Order:** Proceed to the next pending phase (**Phase 10: Barcode Generator & Label Sticker Printing**).
 3. **Verify Builds:** Always run `lint_applet` and `compile_applet` before completing work.
 4. **Push to GitHub:** Commit and push changes to the repository `devrupeshgadkhe/Repo_billingOnHands` on branch `main`.
 5. **Update this file (`PROJECT_CONTEXT.md`):** Mark the completed phase and document key architecture changes immediately.
