@@ -378,6 +378,19 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
       unit: String(it?.unit || "PCS"),
       brand: it?.brand ? String(it.brand) : undefined,
       category: it?.category ? String(it.category) : undefined,
+      batchNumber: it?.batchNumber ? String(it.batchNumber) : undefined,
+      expiryDate: it?.expiryDate ? String(it.expiryDate) : undefined,
+      mfgDate: it?.mfgDate ? String(it.mfgDate) : undefined,
+      batches: Array.isArray(it?.batches) ? it.batches.map((b: any, bIdx: number) => ({
+        id: String(b?.id || `b_${bIdx + 1}`),
+        batchNumber: String(b?.batchNumber || ""),
+        expiryDate: String(b?.expiryDate || ""),
+        mfgDate: b?.mfgDate ? String(b.mfgDate) : undefined,
+        purchasePrice: Number(b?.purchasePrice) || undefined,
+        salePrice: Number(b?.salePrice) || undefined,
+        mrp: Number(b?.mrp) || undefined,
+        quantity: Number(b?.quantity) || 0
+      })) : undefined,
       barcodes: Array.isArray(it?.barcodes) ? it.barcodes.map((b: any) => String(b || "")).filter(Boolean) : []
     };
   }) : [];
@@ -401,6 +414,9 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
       igst: Number(item?.igst) || 0,
       totalAmount: Number(item?.totalAmount) || 0,
       discount: item?.discount !== undefined ? Number(item.discount) : undefined,
+      batchNumber: item?.batchNumber ? String(item.batchNumber) : undefined,
+      expiryDate: item?.expiryDate ? String(item.expiryDate) : undefined,
+      mfgDate: item?.mfgDate ? String(item.mfgDate) : undefined,
       unit: item?.unit ? String(item.unit) : "PCS"
     })) : [];
 

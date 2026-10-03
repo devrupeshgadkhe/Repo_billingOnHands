@@ -18,10 +18,45 @@ import {
   ArrowRight,
   Database,
   Camera,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Calendar,
+  Clock,
+  AlertCircle,
+  ShieldAlert,
+  CalendarOff
 } from "lucide-react";
 import ItemsScanModal from "./ItemsScanModal.js";
 import DataMigrationModal from "./DataMigrationModal.js";
+
+export function getExpiryStatus(expiryDate?: string): {
+  status: 'none' | 'valid' | 'expiring_soon' | 'expired';
+  daysRemaining: number | null;
+  label: string;
+} {
+  if (!expiryDate || !expiryDate.trim()) return { status: 'none', daysRemaining: null, label: '' };
+  try {
+    const raw = expiryDate.trim();
+    const dateStr = raw.length === 7 ? `${raw}-01` : raw;
+    const expDate = new Date(dateStr);
+    if (isNaN(expDate.getTime())) return { status: 'none', daysRemaining: null, label: '' };
+    
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    expDate.setHours(0, 0, 0, 0);
+    const diffTime = expDate.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays < 0) {
+      return { status: 'expired', daysRemaining: diffDays, label: `मुदत संपली (${Math.abs(diffDays)} दिवस आधी)` };
+    } else if (diffDays <= 45) {
+      return { status: 'expiring_soon', daysRemaining: diffDays, label: `${diffDays} दिवसांत संपेल` };
+    } else {
+      return { status: 'valid', daysRemaining: diffDays, label: `${diffDays} दिवस वैध` };
+    }
+  } catch {
+    return { status: 'none', daysRemaining: null, label: '' };
+  }
+}
 
 interface ItemsViewProps {
   items: Item[];
@@ -44,7 +79,7 @@ export default function ItemsView({
 
   // State managers
   const [searchQuery, setSearchQuery] = useState("");
-  const [lowStockFilter, setLowStockFilter] = useState(false);
+  const [filterTab, setFilterTab] = useState<'all' | 'low_stock' | 'expiring_soon' | 'expired'>('all');
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -68,10 +103,18 @@ export default function ItemsView({
     minStockAlert: 5,
     gstRate: 18,
     unit: "PCS",
+    batchNumber: "",
+    expiryDate: "",
+    mfgDate: "",
     barcodes: []
   });
 
-  // Filter items
+  // Calculate Metrics
+  const lowStockCount = useMemo(() => (items || []).filter(i => (i.stockQuantity || 0) <= (i.minStockAlert || 0)).length, [items]);
+  const expiringSoonCount = useMemo(() => (items || []).filter(i => getExpiryStatus(i.expiryDate).status === 'expiring_soon').length, [items]);
+  const expiredCount = useMemo(() => (items || []).filter(i => getExpiryStatus(i.expiryDate).status === 'expired').length, [items]);
+
+  // Filter items based on search and active tab
   const filteredItems = useMemo(() => {
     const lowerQuery = (searchQuery || "").toLowerCase();
     return (items || []).filter(item => {
@@ -81,13 +124,24 @@ export default function ItemsView({
         (item.hsn || "").toLowerCase().includes(lowerQuery) ||
         (item.brand && item.brand.toLowerCase().includes(lowerQuery)) ||
         (item.category && item.category.toLowerCase().includes(lowerQuery)) ||
+        (item.batchNumber && item.batchNumber.toLowerCase().includes(lowerQuery)) ||
         (Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase().includes(lowerQuery)));
       
-      const matchesLowStock = lowStockFilter ? (item.stockQuantity || 0) <= (item.minStockAlert || 0) : true;
-      
-      return matchesSearch && matchesLowStock;
+      if (!matchesSearch) return false;
+
+      if (filterTab === 'low_stock') {
+        return (item.stockQuantity || 0) <= (item.minStockAlert || 0);
+      }
+      if (filterTab === 'expiring_soon') {
+        return getExpiryStatus(item.expiryDate).status === 'expiring_soon';
+      }
+      if (filterTab === 'expired') {
+        return getExpiryStatus(item.expiryDate).status === 'expired';
+      }
+
+      return true;
     });
-  }, [items, searchQuery, lowStockFilter]);
+  }, [items, searchQuery, filterTab]);
 
   const openAddModal = () => {
     setEditingItem(null);
@@ -108,6 +162,9 @@ export default function ItemsView({
       minStockAlert: 5,
       gstRate: 18,
       unit: "PCS",
+      batchNumber: "",
+      expiryDate: "",
+      mfgDate: "",
       barcodes: []
     });
     setIsModalOpen(true);
@@ -132,6 +189,9 @@ export default function ItemsView({
       minStockAlert: item.minStockAlert,
       gstRate: item.gstRate,
       unit: item.unit,
+      batchNumber: item.batchNumber || "",
+      expiryDate: item.expiryDate || "",
+      mfgDate: item.mfgDate || "",
       barcodes: item.barcodes || []
     });
     setIsModalOpen(true);
@@ -141,7 +201,7 @@ export default function ItemsView({
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
-      [name]: name === "name" || name === "hsn" || name === "unit" || name === "boxUnit" || name === "category" || name === "brand"
+      [name]: ["name", "hsn", "unit", "boxUnit", "category", "brand", "batchNumber", "expiryDate", "mfgDate"].includes(name)
         ? value
         : parseFloat(value) || 0
     }));
@@ -194,8 +254,10 @@ export default function ItemsView({
       {/* Title block */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Inventory Management</h1>
-          <p className="text-xs text-slate-500 mt-1">Configure stock items, trigger supply alerts, and regulate tax/GST HSN codes</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Inventory & Batch Management</h1>
+          <p className="text-xs text-slate-500 mt-1">
+            स्टॉक यादी, बॅच नंबर (Batch No.), एक्सपायरी तारीख (Expiry Tracking) आणि किमान साठा अलर्ट्स
+          </p>
         </div>
         
         <div className="flex flex-wrap items-center gap-2.5">
@@ -231,11 +293,94 @@ export default function ItemsView({
                 className="bg-emerald-600 hover:bg-emerald-700 text-white select-none px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md hover:shadow-lg transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>Add Product</span>
+                <span>नवीन वस्तू जोडा (Add Product)</span>
               </button>
             </>
           )}
         </div>
+      </div>
+
+      {/* 4 Interactive Quick Filter Metric Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+        {/* Total Items */}
+        <button
+          type="button"
+          onClick={() => setFilterTab('all')}
+          className={`p-4 rounded-xl border text-left transition cursor-pointer ${
+            filterTab === 'all'
+              ? 'bg-emerald-50/80 border-emerald-400 ring-2 ring-emerald-500/20 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50/50 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-slate-600">एकूण उत्पादने (Total)</span>
+            <Boxes className={`w-4 h-4 ${filterTab === 'all' ? 'text-emerald-600' : 'text-slate-400'}`} />
+          </div>
+          <div className="mt-2 text-2xl font-black text-slate-900 font-mono">
+            {items.length}
+          </div>
+          <span className="text-[10px] text-slate-400 font-medium">सर्व कॅटलॉग स्टॉक</span>
+        </button>
+
+        {/* Low Stock */}
+        <button
+          type="button"
+          onClick={() => setFilterTab('low_stock')}
+          className={`p-4 rounded-xl border text-left transition cursor-pointer ${
+            filterTab === 'low_stock'
+              ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-500/20 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-amber-300 hover:bg-amber-50/30 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-amber-800">कमी साठा (Low Stock)</span>
+            <AlertTriangle className="w-4 h-4 text-amber-500" />
+          </div>
+          <div className="mt-2 text-2xl font-black text-amber-900 font-mono">
+            {lowStockCount}
+          </div>
+          <span className="text-[10px] text-amber-700/80 font-medium">पुन्हा ऑर्डर करणे आवश्यक</span>
+        </button>
+
+        {/* Expiring Soon */}
+        <button
+          type="button"
+          onClick={() => setFilterTab('expiring_soon')}
+          className={`p-4 rounded-xl border text-left transition cursor-pointer ${
+            filterTab === 'expiring_soon'
+              ? 'bg-orange-50 border-orange-400 ring-2 ring-orange-500/20 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-orange-300 hover:bg-orange-50/30 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-orange-800">लवकर संपणारा (Expiring Soon)</span>
+            <Clock className="w-4 h-4 text-orange-500" />
+          </div>
+          <div className="mt-2 text-2xl font-black text-orange-900 font-mono">
+            {expiringSoonCount}
+          </div>
+          <span className="text-[10px] text-orange-700/80 font-medium">पुढील ४५ दिवसांत मुदत</span>
+        </button>
+
+        {/* Expired Stock */}
+        <button
+          type="button"
+          onClick={() => setFilterTab('expired')}
+          className={`p-4 rounded-xl border text-left transition cursor-pointer ${
+            filterTab === 'expired'
+              ? 'bg-rose-50 border-rose-400 ring-2 ring-rose-500/20 shadow-xs'
+              : 'bg-white border-slate-200 hover:border-rose-300 hover:bg-rose-50/30 shadow-xs'
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-rose-800">मुदत संपलेला (Expired)</span>
+            <CalendarOff className="w-4 h-4 text-rose-500" />
+          </div>
+          <div className="mt-2 text-2xl font-black text-rose-900 font-mono">
+            {expiredCount}
+          </div>
+          <span className="text-[10px] text-rose-700/80 font-medium">विक्री थांबवा / कंपनीला परत</span>
+        </button>
       </div>
 
       {/* Filter and search deck */}
@@ -248,25 +393,50 @@ export default function ItemsView({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search items by name or HSN code..."
+            placeholder="Search items by name, HSN, batch or barcode..."
             className="w-full pl-9 pr-4 py-2 border border-slate-200 focus:border-emerald-500 rounded-xl text-xs outline-none font-medium transition"
           />
         </div>
 
-        {/* Low Stock filter checkbox */}
-        <label className="flex items-center space-x-2.5 cursor-pointer text-xs font-semibold text-slate-600 select-none pb-1 sm:pb-0">
-          <input
-            id="low-stock-check"
-            type="checkbox"
-            checked={lowStockFilter}
-            onChange={(e) => setLowStockFilter(e.target.checked)}
-            className="accent-emerald-600 w-4 h-4 rounded border-slate-300"
-          />
-          <span className="flex items-center space-x-1">
-            <AlertTriangle className={`w-4 h-4 ${lowStockFilter ? "text-amber-500" : "text-slate-400"}`} />
-            <span>Show Low Stock Only ({items.filter(i => i.stockQuantity <= i.minStockAlert).length})</span>
-          </span>
-        </label>
+        {/* Tab Indicator */}
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setFilterTab('all')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              filterTab === 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            सर्व ({items.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTab('low_stock')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              filterTab === 'low_stock' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            कमी साठा ({lowStockCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTab('expiring_soon')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              filterTab === 'expiring_soon' ? 'bg-orange-500 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            एक्सपायरी अलर्ट ({expiringSoonCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilterTab('expired')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+              filterTab === 'expired' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            मुदत संपलेले ({expiredCount})
+          </button>
+        </div>
       </div>
 
       {/* Main Catalog inventory table */}
@@ -274,14 +444,15 @@ export default function ItemsView({
         {filteredItems.length === 0 ? (
           <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center">
             <Boxes className="w-16 h-16 text-slate-200 mb-2" />
-            <p className="text-sm font-bold text-slate-700">No Inventory Match Found</p>
-            <p className="text-xs text-slate-450 mt-1 max-w-xs">Try clearing filters or type a different search name.</p>
+            <p className="text-sm font-bold text-slate-700">कोणतीही वस्तू सापडली नाही (No Item Found)</p>
+            <p className="text-xs text-slate-400 mt-1 max-w-xs">फिल्टर बदलून पहा किंवा सर्च बारमध्ये नवीन नाव टाईप करा.</p>
           </div>
         ) : (
           <table className="w-full text-left border-collapse text-xs">
             <thead>
-              <tr className="bg-slate-55 border-b border-slate-200 font-bold uppercase text-slate-500">
+              <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-slate-500">
                 <th className="py-3 px-4">Product / Item Code</th>
+                <th className="py-3 px-3 text-center">Batch & Expiry</th>
                 <th className="py-3 px-3 text-center">HSN / Brand</th>
                 <th className="py-3 px-3 text-right">Purchase (खरेदी)</th>
                 <th className="py-3 px-3 text-right">Retail (किरकोळ)</th>
@@ -293,7 +464,8 @@ export default function ItemsView({
             </thead>
             <tbody>
               {filteredItems.map(item => {
-                const isShortage = item.stockQuantity <= item.minStockAlert;
+                const isShortage = (item.stockQuantity || 0) <= (item.minStockAlert || 0);
+                const exp = getExpiryStatus(item.expiryDate);
                 return (
                   <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
                     {/* Item Name */}
@@ -324,6 +496,40 @@ export default function ItemsView({
                           </div>
                         </div>
                       </div>
+                    </td>
+
+                    {/* Batch & Expiry Column */}
+                    <td className="py-3.5 px-3 text-center">
+                      {item.batchNumber || item.expiryDate ? (
+                        <div className="space-y-1">
+                          {item.batchNumber && (
+                            <span className="inline-block font-mono text-[10px] font-bold bg-slate-100 border border-slate-200 text-slate-700 px-2 py-0.5 rounded">
+                              बॅच: {item.batchNumber}
+                            </span>
+                          )}
+                          {item.expiryDate && (
+                            <div>
+                              {exp.status === 'expired' ? (
+                                <span className="inline-flex items-center gap-1 font-bold text-[9px] bg-rose-100 border border-rose-300 text-rose-800 px-1.5 py-0.5 rounded-full">
+                                  <AlertCircle className="w-3 h-3 text-rose-600" />
+                                  {exp.label}
+                                </span>
+                              ) : exp.status === 'expiring_soon' ? (
+                                <span className="inline-flex items-center gap-1 font-bold text-[9px] bg-orange-100 border border-orange-300 text-orange-800 px-1.5 py-0.5 rounded-full">
+                                  <Clock className="w-3 h-3 text-orange-600" />
+                                  Exp: {item.expiryDate} ({exp.daysRemaining}d)
+                                </span>
+                              ) : (
+                                <span className="inline-block text-[10px] text-slate-500 font-mono">
+                                  Exp: {item.expiryDate}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-300 text-[11px]">-</span>
+                      )}
                     </td>
 
                     {/* HSN & Brand */}
@@ -627,6 +833,54 @@ export default function ItemsView({
                       <option value="CASE">CASE (केस/पेटी)</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Batch & Expiry Tracking Card */}
+                <div className="p-3.5 bg-amber-50/60 border border-amber-200/80 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-amber-700" />
+                      बॅच व एक्सपायरी ट्रॅकिंग (Batch & Expiry)
+                    </span>
+                    <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">Pharma / FMCG / Kirana</span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <div>
+                      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">Batch No. (बॅच क्र.)</label>
+                      <input
+                        type="text"
+                        name="batchNumber"
+                        value={formData.batchNumber || ""}
+                        onChange={handleInputChange}
+                        placeholder="उदा. B-2026/09"
+                        className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-mono font-bold text-amber-950 placeholder:font-normal"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">Mfg Date (तयार दिनांक)</label>
+                      <input
+                        type="date"
+                        name="mfgDate"
+                        value={formData.mfgDate || ""}
+                        onChange={handleInputChange}
+                        className="w-full px-2 py-1.5 bg-white border border-amber-300 rounded-lg text-[11px] font-mono font-bold text-slate-800"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-rose-800 uppercase mb-1">Expiry Date (मुदत दिनांक)</label>
+                      <input
+                        type="date"
+                        name="expiryDate"
+                        value={formData.expiryDate || ""}
+                        onChange={handleInputChange}
+                        className="w-full px-2 py-1.5 bg-white border border-rose-300 rounded-lg text-[11px] font-mono font-bold text-rose-900"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-amber-700/80 leading-tight">
+                    * ही माहिती बिलावर आपोआप प्रिंट होईल आणि मुदत संपण्यापूर्वी तुम्हाला अलर्ट्स मिळतील.
+                  </p>
                 </div>
 
                 {/* GST Tax Rate Selection */}

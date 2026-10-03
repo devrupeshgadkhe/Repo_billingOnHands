@@ -22,6 +22,17 @@ export interface BusinessProfile {
   logoUrl?: string; // base64 or source url of local store logo
 }
 
+export interface ItemBatch {
+  id: string;
+  batchNumber: string;
+  expiryDate: string; // YYYY-MM or YYYY-MM-DD
+  mfgDate?: string; // YYYY-MM or YYYY-MM-DD
+  purchasePrice?: number;
+  salePrice?: number;
+  mrp?: number;
+  quantity: number;
+}
+
 export interface Item {
   id: string;
   name: string;
@@ -40,6 +51,10 @@ export interface Item {
   gstRate: number; // e.g., 0, 5, 12, 18, 28
   unit: string; // "PCS", "KGS", "BOX", "LIR", "MTR", etc.
   barcodes?: string[];
+  batchNumber?: string; // Active/Default batch number (e.g. "B-2026/09")
+  expiryDate?: string; // Active/Default expiry date (YYYY-MM-DD or YYYY-MM)
+  mfgDate?: string; // Manufacturing date
+  batches?: ItemBatch[]; // Multi-batch inventory tracking
 }
 
 export interface Party {
@@ -84,6 +99,9 @@ export interface InvoiceItem {
   quantity: number;
   price: number;
   discount?: number; // Flat discount amount for this line item
+  batchNumber?: string; // Batch number for pharmaceutical/FMCG compliance
+  expiryDate?: string; // Expiry date (YYYY-MM-DD or YYYY-MM)
+  mfgDate?: string;
   gstRate: number;
   amountBeforeTax: number;
   taxAmount: number;

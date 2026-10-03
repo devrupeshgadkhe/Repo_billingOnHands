@@ -1094,7 +1094,12 @@ export default function MunimjiDrawer({
 
       if (navTarget && onNavigateTab) {
         try {
-          onNavigateTab(String(navTarget).toLowerCase());
+          const target = String(navTarget).toLowerCase();
+          onNavigateTab(target);
+          // Auto-minimize Munimji drawer smoothly upon navigation
+          setTimeout(() => {
+            onClose();
+          }, 850);
         } catch (navErr) {
           console.warn("Navigation trigger notice:", navErr);
         }

@@ -284,11 +284,13 @@ export default function InvoicePrintModal({
                         ₹{item.totalAmount.toFixed(2)}
                       </span>
                     </div>
-                    {item.discount && item.discount > 0 ? (
-                      <div className="text-[9.5px] text-slate-500 pl-3">
-                        Discount: -₹{item.discount.toFixed(2)}
+                    {(item.batchNumber || item.expiryDate || (item.discount && item.discount > 0)) && (
+                      <div className="text-[9px] text-slate-500 pl-3 flex flex-wrap gap-1.5 mt-0.5 font-mono">
+                        {item.batchNumber && <span>B:{item.batchNumber}</span>}
+                        {item.expiryDate && <span>Exp:{item.expiryDate}</span>}
+                        {item.discount && item.discount > 0 ? <span>Disc:-₹{item.discount.toFixed(2)}</span> : null}
                       </div>
-                    ) : null}
+                    )}
                   </div>
                 ))}
               </div>
@@ -474,11 +476,23 @@ export default function InvoicePrintModal({
                         <td className="py-2 px-2 text-center text-slate-500 font-mono">{index + 1}</td>
                         <td className="py-2 px-2 font-medium text-slate-900">
                           <div>{item.itemName}</div>
-                          {item.discount && item.discount > 0 ? (
-                            <div className="text-[10px] text-slate-500 mt-0.5">
-                              Discount: -₹{item.discount.toFixed(2)}
-                            </div>
-                          ) : null}
+                          <div className="flex flex-wrap items-center gap-1.5 text-[9.5px] text-slate-500 mt-0.5">
+                            {item.batchNumber && (
+                              <span className="font-mono bg-slate-100 px-1 py-0.2 rounded border border-slate-200">
+                                Batch: {item.batchNumber}
+                              </span>
+                            )}
+                            {item.expiryDate && (
+                              <span className="font-mono bg-slate-100 px-1 py-0.2 rounded border border-slate-200">
+                                Exp: {item.expiryDate}
+                              </span>
+                            )}
+                            {item.discount && item.discount > 0 ? (
+                              <span className="text-emerald-700">
+                                Discount: -₹{item.discount.toFixed(2)}
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="py-2 px-2 text-center text-slate-600 font-mono">{item.hsn || "-"}</td>
                         <td className="py-2 px-2 text-right font-semibold text-slate-900 font-mono">{item.quantity}</td>

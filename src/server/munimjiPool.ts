@@ -610,6 +610,8 @@ export function buildDatabaseContext(db: DatabaseState): string {
     boxUnit: i.boxUnit || "BOX",
     category: i.category || "",
     brand: i.brand || "",
+    batchNumber: i.batchNumber || undefined,
+    expiryDate: i.expiryDate || undefined,
     purchasePrice: i.purchasePrice,
     stock: i.stockQuantity,
     unit: i.unit,
@@ -1423,6 +1425,85 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
           totalDues: totalCustomerDues
         }
       }]
+    };
+  }
+
+  // =========================================================================
+  // 1.5. EXPIRY & BATCH QUERY (कोणता माल लवकर एक्सपायर होत आहे / एक्सपायरी यादी / मुदत संपलेला माल / batch tracking)
+  // =========================================================================
+  const isExpiryQuery =
+    (query.includes("एक्सपायरी") || query.includes("एक्सपायर") || query.includes("मुदत") || query.includes("expiry") || query.includes("expire") || query.includes("बॅच") || query.includes("batch")) &&
+    (query.includes("कोणता") || query.includes("काय") || query.includes("किती") || query.includes("यादी") || query.includes("दाखव") || query.includes("तपासा") || query.includes("लिस्ट") || query.includes("माल") || query.includes("साठा") || query.includes("चेक"));
+
+  if (isExpiryQuery) {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const expiringOrExpired = (db.items || []).filter(item => {
+      if (!item.expiryDate) return false;
+      const raw = item.expiryDate.trim();
+      const expDate = new Date(raw.length === 7 ? `${raw}-01` : raw);
+      if (isNaN(expDate.getTime())) return false;
+      expDate.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil((expDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays <= 45; // Expired or expiring within 45 days
+    });
+
+    if (expiringOrExpired.length === 0) {
+      return {
+        intent: "PRODUCT_LIST",
+        replyText: "मालक, आपल्या दुकानात सध्या कोणताही माल मुदत संपणारा (Near Expiry) किंवा एक्सपायर्ड नाही. सर्व मालाची एक्सपायरी सुरक्षित आहे!",
+        displayCards: [{
+          type: "stock_alert",
+          title: "एक्सपायरी अहवाल: सर्व माल सुरक्षित",
+          data: { totalCount: 0, items: [] }
+        }]
+      };
+    }
+
+    const expiredItems = expiringOrExpired.filter(i => {
+      const raw = i.expiryDate!.trim();
+      const expDate = new Date(raw.length === 7 ? `${raw}-01` : raw);
+      return expDate.getTime() < now.getTime();
+    });
+
+    const soonItems = expiringOrExpired.filter(i => {
+      const raw = i.expiryDate!.trim();
+      const expDate = new Date(raw.length === 7 ? `${raw}-01` : raw);
+      return expDate.getTime() >= now.getTime();
+    });
+
+    let reply = `मालक, आपल्याकडे एकूण ${expiringOrExpired.length} वस्तूंची एक्सपायरी जवळ आली आहे किंवा संपली आहे. `;
+    if (expiredItems.length > 0) {
+      reply += `यात ${expiredItems.length} वस्तूंची मुदत संपली आहे (${expiredItems.slice(0, 2).map(i => i.name).join(", ")}). `;
+    }
+    if (soonItems.length > 0) {
+      reply += `तसेच ${soonItems.length} वस्तू पुढील ४५ दिवसांत एक्सपायर होणार आहेत. मी तुम्हाला इन्व्हेंटरी पेजवर घेऊन जात आहे.`;
+    }
+
+    return {
+      intent: "NAVIGATE",
+      replyText: reply,
+      displayCards: [{
+        type: "stock_alert",
+        title: "एक्सपायरी व बॅच ट्रॅकिंग अलर्ट (Near Expiry Items)",
+        data: {
+          expiredCount: expiredItems.length,
+          expiringSoonCount: soonItems.length,
+          items: expiringOrExpired.map(i => ({
+            name: i.name,
+            batch: i.batchNumber || "-",
+            expiryDate: i.expiryDate,
+            stock: i.stockQuantity,
+            unit: i.unit
+          }))
+        }
+      }],
+      actionPayload: {
+        action: "NAVIGATE",
+        targetTab: "items",
+        filter: "expiring_soon"
+      }
     };
   }
 
