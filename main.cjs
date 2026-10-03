@@ -18,6 +18,14 @@ autoUpdater.logger = console;
 // Disable differential download to avoid blockmap corruption/hangs
 autoUpdater.disableDifferentialDownload = true;
 autoUpdater.disableWebInstaller = true;
+// Explicitly set GitHub feed
+try {
+  autoUpdater.setFeedURL({
+    provider: "github",
+    owner: "devrupeshgadkhe",
+    repo: "Repo_billingOnHands"
+  });
+} catch {}
 // Bypass code signature check so unsigned releases install smoothly without hanging at 100%
 autoUpdater.verifyUpdateCodeSignature = () => Promise.resolve(null);
 
@@ -141,7 +149,8 @@ function setupAutoUpdater() {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.close();
       }
-      autoUpdater.quitAndInstall(true, true);
+      // Pass isSilent: false so NSIS installer executes properly and installs the update
+      autoUpdater.quitAndInstall(false, true);
     }, 3000);
   });
 }
@@ -168,6 +177,9 @@ function createWindow(port) {
   const appIcon = resolveAppIcon();
   console.log(`[Electron] Using application icon from: ${appIcon}`);
 
+  // Disable default application menu to prevent DevTools menu items
+  Menu.setApplicationMenu(null);
+
   mainWindow = new BrowserWindow({
     width: 1360,
     height: 860,
@@ -182,8 +194,21 @@ function createWindow(port) {
       preload: path.join(__dirname, "preload.cjs"),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false
+      sandbox: false,
+      devTools: false
     }
+  });
+
+  // Security: Immediately close DevTools if opened by any mechanism
+  mainWindow.webContents.on("devtools-opened", () => {
+    try {
+      mainWindow.webContents.closeDevTools();
+    } catch {}
+  });
+
+  // Security: Prevent context menu inspection
+  mainWindow.webContents.on("context-menu", (event) => {
+    event.preventDefault();
   });
 
   // Gracefully show window once ready or when initial content finished rendering
@@ -260,13 +285,24 @@ function createWindow(port) {
     }, 600);
   });
 
-  // F12 or Ctrl+Shift+I for DevTools, F5 / Ctrl+R for Reload
-  mainWindow.webContents.on("before-input-event", (_event, input) => {
-    if (input.key === "F12" || (input.control && input.shift && input.key.toLowerCase() === "i")) {
-      if (mainWindow) {
-        mainWindow.webContents.toggleDevTools();
-      }
+  // Security: Block F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U to protect application integrity
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    // Block F12 (DevTools)
+    if (input.key === "F12") {
+      event.preventDefault();
+      return;
     }
+    // Block Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C (DevTools inspect / console)
+    if ((input.control || input.meta) && input.shift && ["i", "j", "c"].includes(input.key.toLowerCase())) {
+      event.preventDefault();
+      return;
+    }
+    // Block Ctrl+U (View source)
+    if ((input.control || input.meta) && input.key.toLowerCase() === "u") {
+      event.preventDefault();
+      return;
+    }
+    // Allow F5 / Ctrl+R for safe application reload
     if (input.key === "F5" || (input.control && input.key.toLowerCase() === "r")) {
       if (mainWindow) {
         mainWindow.reload();

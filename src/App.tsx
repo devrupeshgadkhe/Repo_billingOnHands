@@ -148,6 +148,47 @@ export default function App() {
     }
   }, []);
 
+  // Security: Prevent DevTools (F12, Inspect, View Source) and casual tampering
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Block F12
+      if (e.key === "F12" || e.keyCode === 123) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+      // 2. Block Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C (Inspect/Console)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && ["I", "i", "J", "j", "C", "c"].includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+      // 3. Block Ctrl+U (View Page Source)
+      if ((e.ctrlKey || e.metaKey) && (e.key === "u" || e.key === "U")) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Allow right-click on input and textarea for copy/paste, block elsewhere to prevent Inspect Element
+      const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (!isInput) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    document.addEventListener("contextmenu", handleContextMenu, { capture: true });
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+      document.removeEventListener("contextmenu", handleContextMenu, { capture: true });
+    };
+  }, []);
+
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryAttempt, setRetryAttempt] = useState<number>(0);
 

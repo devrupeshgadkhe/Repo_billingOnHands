@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from "react";
 import { BusinessProfile, DatabaseState, INDIAN_STATES } from "../types.js";
 import { useDialog } from "../context/DialogContext.js";
-import { APP_VERSION, APP_BUILD_DATE, GITHUB_REPO, GITHUB_RELEASES_URL } from "../version.js";
+import { APP_VERSION, APP_BUILD_DATE } from "../version.js";
 import {
   Settings,
   Building2,
@@ -84,7 +84,7 @@ export default function SettingsView({
       const cleanup = electronAPI.onUpdateStatus((status: any) => {
         if (status.state === "checking") {
           setCheckingUpdate(true);
-          setUpdaterMsg("Checking for updates on GitHub...");
+          setUpdaterMsg("Checking for latest updates...");
         } else if (status.state === "available") {
           setCheckingUpdate(false);
           setUpdateAvailable(status.version);
@@ -113,7 +113,7 @@ export default function SettingsView({
     const electronAPI = (window as any).electronAPI;
     if (electronAPI?.checkForUpdates) {
       setCheckingUpdate(true);
-      setUpdaterMsg("Checking GitHub releases...");
+      setUpdaterMsg("Checking for updates...");
       try {
         const res = await electronAPI.checkForUpdates();
         if (res?.updateAvailable) {
@@ -130,7 +130,7 @@ export default function SettingsView({
       // In web browser preview mode
       await showAlert({
         title: "Desktop Auto-Updater",
-        message: `This feature works automatically in the Windows Desktop application (.exe). When a new release is published to GitHub, it will automatically download and restart.\n\nCurrent Version: v${APP_VERSION}\nGitHub Repo: ${GITHUB_REPO}`,
+        message: `This feature works automatically in the Windows Desktop application (.exe). When a new version is released, it will automatically download and update seamlessly in the background.\n\nCurrent Version: v${APP_VERSION}\nStatus: Official Production Release`,
         variant: "info"
       });
     }
@@ -1423,8 +1423,8 @@ export default function SettingsView({
                 <span className="font-mono text-slate-700">{APP_BUILD_DATE}</span>
               </div>
               <div className="flex justify-between items-center text-slate-600">
-                <span className="text-[11px]">GitHub Repo:</span>
-                <span className="font-mono text-[10px] text-indigo-700 truncate max-w-[150px]">{GITHUB_REPO}</span>
+                <span className="text-[11px]">Update Channel:</span>
+                <span className="font-semibold text-indigo-700">Official Production (Encrypted)</span>
               </div>
             </div>
 
@@ -1466,21 +1466,11 @@ export default function SettingsView({
                 type="button"
                 onClick={handleManualCheckUpdate}
                 disabled={checkingUpdate}
-                className="w-full bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-200"
+                className="w-full bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-200"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? "animate-spin text-indigo-600" : ""}`} />
-                <span>{checkingUpdate ? "Checking releases..." : "Force Check Now (Optional)"}</span>
+                <span>{checkingUpdate ? "Checking updates..." : "Force Check Updates Now"}</span>
               </button>
-
-              <a
-                href={GITHUB_RELEASES_URL}
-                target="_blank"
-                rel="noreferrer"
-                className="w-full bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>GitHub Releases Page</span>
-              </a>
             </div>
           </div>
           

@@ -100,6 +100,10 @@
   - **Instant Switcher & Auto-Persistence:** 1-click toggle on POS billing top bar between `GST Bill` (Tax Invoice) and `Non-GST` (साधी पावती / Bill of Supply / Cash Memo). Selection is permanently remembered in `localStorage` (`billingonhand_billing_mode`) and synced with `business.defaultBillingMode` in Settings so merchants never have to re-select on consecutive bills.
   - **Complete Non-GST Masking:** In Non-GST mode, all GST calculations, CGST/SGST/IGST breakdowns, GST% columns, HSN columns, and GSTIN numbers are completely removed from both on-screen POS calculations and A4/A5/Thermal printouts.
   - **Digital Munimji Voice Sync (`munimjiPool.ts` & `server.ts`):** Digital Munimji automatically creates Non-GST bills with ₹0 tax when commanded ("नॉन जीएसटी बिल दे", "विना जीएसटी साधे बिल बनवा", "कच्चे बिल द्या").
+* **Anti-Tampering & DevTools Security Shield (`main.cjs`, `App.tsx`, `SettingsView.tsx`):**
+  - **DevTools / F12 / Inspect Blocker:** Complete prevention of developer inspection (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U) and right-click context menu inspection across both desktop Windows application and web browser interface to protect application logic and database from unauthorized tampering or piracy.
+  - **Privacy & Repository Security:** Completely removed all exposed GitHub releases URLs, repository names, and direct download links from the Settings view and client code to safeguard project source integrity.
+  - **Seamless NSIS Auto-Updater (`main.cjs`, `scripts/auto-version.cjs`):** Configured explicit feed URL and non-silent NSIS installer execution (`quitAndInstall(false, true)`) resolving version upgrade lockouts, ensuring desktop apps cleanly bump and install latest releases (v1.0.100+).
 * **Digital Munimji Voice Integration (`MunimjiDrawer.tsx` & `server.ts`):** Voice query support for godowns and warehouse stock ("गोदाम दाखवा", "गोदामातील साठा किती आहे") with automatic drawer auto-minimize.
 
 ---

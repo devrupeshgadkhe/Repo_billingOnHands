@@ -12,6 +12,7 @@ dotenv.config({ override: true });
 const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher, StockTransferItem } from "./src/types.js";
+import { APP_VERSION } from "./src/version.js";
 import { munimjiPool, processMunimjiCommand } from "./src/server/munimjiPool.js";
 import { generateEodSummary, sendEodEmailReport, checkScheduledEodEmailJob } from "./src/server/eodReportService.js";
 
@@ -3857,7 +3858,7 @@ app.post("/api/munimji/execute-action", (req, res) => {
 
 // System Health & Version API
 app.get("/api/version", (req, res) => {
-  let appVer = "1.0.15";
+  let appVer = APP_VERSION;
   try {
     const pkgPath = path.join(process.cwd(), "package.json");
     if (fs.existsSync(pkgPath)) {
@@ -3875,7 +3876,7 @@ app.get("/api/version", (req, res) => {
 });
 
 app.get("/api/health", (req, res) => {
-  let appVer = "1.0.15";
+  let appVer = APP_VERSION;
   try {
     const pkgPath = path.join(process.cwd(), "package.json");
     if (fs.existsSync(pkgPath)) {
