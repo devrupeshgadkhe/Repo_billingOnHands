@@ -73,11 +73,13 @@ export default function OffersView({
 
   // Filtered offers
   const filteredOffers = useMemo(() => {
-    return offers.filter(o => {
+    const q = (searchQuery || "").toLowerCase();
+    return (offers || []).filter(o => {
+      if (!o) return false;
       const matchesSearch =
-        o.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (o.targetValue && o.targetValue.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        (o.notes && o.notes.toLowerCase().includes(searchQuery.toLowerCase()));
+        (o.title || "").toLowerCase().includes(q) ||
+        (o.targetValue && o.targetValue.toLowerCase().includes(q)) ||
+        (o.notes && o.notes.toLowerCase().includes(q));
 
       const matchesType = filterType === "all" || o.type === filterType;
       const matchesStatus = filterStatus === "all" || (filterStatus === "active" ? o.isActive : !o.isActive);

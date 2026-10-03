@@ -524,9 +524,9 @@ export default function DashboardView({
                       {inv.type === "sale" ? "SALE INVOICE" : "PURCHASE BILL"}
                     </span>
                     <h4 className="text-xs font-bold text-slate-800 mt-1.5 truncate">
-                      {inv.partyName.replace(/\s*\((Customer|Supplier)\)/gi, "")}
+                      {(inv.partyName || "Cash Customer / General").replace(/\s*\((Customer|Supplier)\)/gi, "")}
                     </h4>
-                    <p className="text-[10px] text-slate-500 mt-0.5">{inv.invoiceNumber} · {inv.date}</p>
+                    <p className="text-[10px] text-slate-500 mt-0.5">{inv.invoiceNumber || "INV"} · {inv.date || "-"}</p>
                   </div>
                   <div className="text-right min-w-[100px]">
                     <span className="text-xs font-bold text-slate-900 block group-hover:text-emerald-600">

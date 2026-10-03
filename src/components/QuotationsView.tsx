@@ -463,10 +463,10 @@ export default function QuotationsView({
       // Search
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
-        const matchesNo = q.quotationNumber.toLowerCase().includes(query);
-        const matchesParty = q.partyName.toLowerCase().includes(query);
-        const matchesPhone = q.partyPhone?.toLowerCase().includes(query) || false;
-        const matchesItem = q.items.some(it => it.itemName.toLowerCase().includes(query));
+        const matchesNo = (q.quotationNumber || "").toLowerCase().includes(query);
+        const matchesParty = (q.partyName || "").toLowerCase().includes(query);
+        const matchesPhone = (q.partyPhone || "").toLowerCase().includes(query);
+        const matchesItem = (q.items || []).some(it => (it.itemName || "").toLowerCase().includes(query));
         if (!matchesNo && !matchesParty && !matchesPhone && !matchesItem) return false;
       }
 

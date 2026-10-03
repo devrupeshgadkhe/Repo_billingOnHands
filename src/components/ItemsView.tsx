@@ -73,16 +73,17 @@ export default function ItemsView({
 
   // Filter items
   const filteredItems = useMemo(() => {
-    return items.filter(item => {
-      const lowerQuery = searchQuery.toLowerCase();
+    const lowerQuery = (searchQuery || "").toLowerCase();
+    return (items || []).filter(item => {
+      if (!item) return false;
       const matchesSearch =
-        item.name.toLowerCase().includes(lowerQuery) ||
-        item.hsn.toLowerCase().includes(lowerQuery) ||
+        (item.name || "").toLowerCase().includes(lowerQuery) ||
+        (item.hsn || "").toLowerCase().includes(lowerQuery) ||
         (item.brand && item.brand.toLowerCase().includes(lowerQuery)) ||
         (item.category && item.category.toLowerCase().includes(lowerQuery)) ||
-        (item.barcodes && item.barcodes.some(b => b.toLowerCase().includes(lowerQuery)));
+        (Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase().includes(lowerQuery)));
       
-      const matchesLowStock = lowStockFilter ? item.stockQuantity <= item.minStockAlert : true;
+      const matchesLowStock = lowStockFilter ? (item.stockQuantity || 0) <= (item.minStockAlert || 0) : true;
       
       return matchesSearch && matchesLowStock;
     });

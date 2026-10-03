@@ -85,11 +85,13 @@ export default function PartiesView({
 
   // Filter parties
   const filteredParties = useMemo(() => {
-    return parties.filter(p => {
+    const q = (searchQuery || "").toLowerCase();
+    return (parties || []).filter(p => {
+      if (!p) return false;
       const matchesSearch =
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.phone.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.gstin.toLowerCase().includes(searchQuery.toLowerCase());
+        (p.name || "").toLowerCase().includes(q) ||
+        (p.phone || "").toLowerCase().includes(q) ||
+        (p.gstin || "").toLowerCase().includes(q);
       
       const matchesType = typeFilter === "all" ? true : p.type === typeFilter;
       

@@ -47,7 +47,7 @@ export default function InvoicePrintModal({
   const cleanPartyName = (invoice.partyName || "").replace(/\s*\((Customer|Supplier)\)/gi, "").trim();
 
   // Compile HSN summary
-  const hsnSummary = invoice.items.reduce((acc, item) => {
+  const hsnSummary = (invoice.items || []).reduce((acc, item) => {
     const existing = acc.find(h => h.hsn === item.hsn && h.gstRate === item.gstRate);
     if (existing) {
       existing.amountBeforeTax += item.amountBeforeTax;

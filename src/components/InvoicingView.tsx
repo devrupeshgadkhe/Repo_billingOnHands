@@ -768,8 +768,8 @@ export default function InvoicingView({
   const matchedParties = useMemo(() => {
     if (!partySearchText.trim()) return relevantParties;
     const lower = partySearchText.toLowerCase();
-    return relevantParties.filter(p => 
-      p.name.toLowerCase().includes(lower) ||
+    return (relevantParties || []).filter(p => 
+      (p.name || "").toLowerCase().includes(lower) ||
       (p.gstin && p.gstin.toLowerCase().includes(lower)) ||
       (p.phone && p.phone.toLowerCase().includes(lower))
     );
@@ -798,17 +798,17 @@ export default function InvoicingView({
     if (!query) return [];
     
     const queryWords = query.toLowerCase().split(/\s+/).filter(Boolean);
-    return items.filter(item => {
-      const hasDirectBarcode = item.barcodes && item.barcodes.some(b => b.toLowerCase() === query.toLowerCase());
+    return (items || []).filter(item => {
+      const hasDirectBarcode = Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase() === query.toLowerCase());
       if (hasDirectBarcode) return true;
 
-      const nameLower = item.name.toLowerCase();
-      const hsnLower = item.hsn.toLowerCase();
+      const nameLower = (item.name || "").toLowerCase();
+      const hsnLower = (item.hsn || "").toLowerCase();
       
       return queryWords.every(word =>
         nameLower.includes(word) ||
         hsnLower.includes(word) ||
-        (item.barcodes && item.barcodes.some(b => b.toLowerCase().includes(word)))
+        (Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase().includes(word)))
       );
     });
   }, [items, parsedQuickTerminal]);
@@ -858,25 +858,26 @@ export default function InvoicingView({
 
   // Filter items for quick-pick catalog tiles
   const filteredCatalogItems = useMemo(() => {
-    return items.filter(item => {
+    return (items || []).filter(item => {
+      if (!item) return false;
       // Search filter
       if (catalogSearch.trim()) {
         const q = catalogSearch.toLowerCase();
-        const matchesName = item.name.toLowerCase().includes(q);
-        const matchesHsn = item.hsn.toLowerCase().includes(q);
-        const matchesBarcode = item.barcodes && item.barcodes.some(b => b.toLowerCase().includes(q));
+        const matchesName = (item.name || "").toLowerCase().includes(q);
+        const matchesHsn = (item.hsn || "").toLowerCase().includes(q);
+        const matchesBarcode = Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase().includes(q));
         if (!matchesName && !matchesHsn && !matchesBarcode) return false;
       }
 
       // Category filter
       if (catalogCategory === "in_stock") {
-        return item.stockQuantity > 0;
+        return (item.stockQuantity || 0) > 0;
       }
       if (catalogCategory === "low_stock") {
-        return item.stockQuantity <= item.minStockAlert;
+        return (item.stockQuantity || 0) <= (item.minStockAlert || 0);
       }
       if (catalogCategory !== "all") {
-        return item.unit.toLowerCase() === catalogCategory.toLowerCase();
+        return (item.unit || "").toLowerCase() === (catalogCategory || "").toLowerCase();
       }
 
       return true;
@@ -1044,7 +1045,7 @@ export default function InvoicingView({
     let resolvedPartyId = effectivePartyId;
 
     if (effectivePartyId === "walkin_customer") {
-      const existingCash = relevantParties.find(p => p.name.toLowerCase().includes("cash") || p.name.toLowerCase().includes("walk-in") || p.name.toLowerCase().includes("रोख"));
+      const existingCash = (relevantParties || []).find(p => (p.name || "").toLowerCase().includes("cash") || (p.name || "").toLowerCase().includes("walk-in") || (p.name || "").toLowerCase().includes("रोख"));
       if (existingCash) {
         resolvedPartyId = existingCash.id;
         resolvedPartyName = existingCash.name;
@@ -1351,7 +1352,7 @@ export default function InvoicingView({
                     type="button"
                     onClick={handleSelectWalkInCustomer}
                     className={`text-xs font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                      selectedPartyId === "walkin_customer" || activeParty?.name.toLowerCase().includes("walk-in") || activeParty?.name.toLowerCase().includes("cash")
+                      selectedPartyId === "walkin_customer" || (activeParty?.name || "").toLowerCase().includes("walk-in") || (activeParty?.name || "").toLowerCase().includes("cash")
                         ? "bg-emerald-600 text-white border-emerald-600 shadow-2xs"
                         : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
                     }`}

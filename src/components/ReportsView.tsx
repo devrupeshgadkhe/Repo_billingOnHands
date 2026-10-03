@@ -590,41 +590,41 @@ export default function ReportsView({
       gstr1Details.b2bSales.forEach(inv => {
         csvRows.push([
           "Registered B2B Supplies",
-          inv.invoiceNumber,
-          inv.partyName,
-          inv.partyGstin,
-          inv.subtotal.toString(),
-          inv.cgstTotal.toString(),
-          inv.sgstTotal.toString(),
-          inv.igstTotal.toString(),
-          inv.totalAmount.toString()
+          inv.invoiceNumber || "",
+          inv.partyName || "",
+          inv.partyGstin || "",
+          (inv.subtotal || 0).toString(),
+          (inv.cgstTotal || 0).toString(),
+          (inv.sgstTotal || 0).toString(),
+          (inv.igstTotal || 0).toString(),
+          (inv.totalAmount || 0).toString()
         ]);
       });
       gstr1Details.b2cSales.forEach(inv => {
         csvRows.push([
           "Unregistered B2C Consumers",
-          inv.invoiceNumber,
+          inv.invoiceNumber || "",
           "Walk-in consumer",
           "N/A",
-          inv.subtotal.toString(),
-          inv.cgstTotal.toString(),
-          inv.sgstTotal.toString(),
-          inv.igstTotal.toString(),
-          inv.totalAmount.toString()
+          (inv.subtotal || 0).toString(),
+          (inv.cgstTotal || 0).toString(),
+          (inv.sgstTotal || 0).toString(),
+          (inv.igstTotal || 0).toString(),
+          (inv.totalAmount || 0).toString()
         ]);
       });
     } else if (reportSubTab === "gstr2") {
       csvRows.push(["Bill No", "Supplier Name", "Supplier GSTIN", "Taxable Value (INR)", "CGST ITC Claim (INR)", "SGST ITC Claim (INR)", "IGST ITC Claim (INR)", "Total Value (INR)"]);
       gstr2Details.purchaseBills.forEach(inv => {
         csvRows.push([
-          inv.invoiceNumber,
-          inv.partyName,
+          inv.invoiceNumber || "",
+          inv.partyName || "",
           inv.partyGstin || "Unregistered Supplier",
-          inv.subtotal.toString(),
-          inv.cgstTotal.toString(),
-          inv.sgstTotal.toString(),
-          inv.igstTotal.toString(),
-          inv.totalAmount.toString()
+          (inv.subtotal || 0).toString(),
+          (inv.cgstTotal || 0).toString(),
+          (inv.sgstTotal || 0).toString(),
+          (inv.igstTotal || 0).toString(),
+          (inv.totalAmount || 0).toString()
         ]);
       });
     }

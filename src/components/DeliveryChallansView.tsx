@@ -129,10 +129,10 @@ export default function DeliveryChallansView({
   const generateNextChallanNumber = () => {
     const year = new Date().getFullYear();
     const prefix = `DC-${year}-`;
-    const existing = challans
-      .filter(c => c.challanNumber && c.challanNumber.startsWith(prefix))
+    const existing = (challans || [])
+      .filter(c => c && c.challanNumber && c.challanNumber.startsWith(prefix))
       .map(c => {
-        const numPart = parseInt(c.challanNumber.replace(prefix, ""), 10);
+        const numPart = parseInt((c.challanNumber || "").replace(prefix, ""), 10);
         return isNaN(numPart) ? 0 : numPart;
       });
     const maxNum = existing.length > 0 ? Math.max(...existing) : 0;
@@ -414,8 +414,8 @@ export default function DeliveryChallansView({
       if (endDate && c.date > endDate) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        const matchesNum = c.challanNumber.toLowerCase().includes(q);
-        const matchesParty = c.partyName.toLowerCase().includes(q);
+        const matchesNum = (c.challanNumber || "").toLowerCase().includes(q);
+        const matchesParty = (c.partyName || "").toLowerCase().includes(q);
         const matchesVeh = (c.vehicleNumber || "").toLowerCase().includes(q);
         const matchesLr = (c.lrNumber || "").toLowerCase().includes(q);
         if (!matchesNum && !matchesParty && !matchesVeh && !matchesLr) return false;

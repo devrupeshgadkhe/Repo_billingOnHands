@@ -331,6 +331,166 @@ const initialData: DatabaseState = {
 };
 
 // Ensure JSON file exists with built-in auth accounts
+export function normalizeDatabaseState(raw: any): DatabaseState {
+  if (!raw || typeof raw !== "object") {
+    return { ...initialData, users: [{ username: "admin", passwordHash: "admin123", name: "Store Manager", role: "owner" }] };
+  }
+
+  const business = {
+    name: String(raw.business?.name || "Apex Electro-Tech Systems"),
+    gstin: String(raw.business?.gstin || "27AAAAA1111A1Z1"),
+    address: String(raw.business?.address || "Suite 405, Tech Green Boulevard, Bandra East"),
+    state: String(raw.business?.state || "Maharashtra"),
+    phone: String(raw.business?.phone || "+91 98765 43210"),
+    email: String(raw.business?.email || "billing@apexelectro.com"),
+    signatureText: String(raw.business?.signatureText || "For Apex Electro-Tech Systems")
+  };
+
+  const partiesMap = new Map<string, string>();
+  const parties = Array.isArray(raw.parties) ? raw.parties.map((p: any, idx: number) => {
+    const id = String(p?.id || `party_${idx + 1}`);
+    const name = String(p?.name || "Customer / Supplier");
+    partiesMap.set(id, name);
+    return {
+      id,
+      name,
+      type: (p?.type === "supplier" ? "supplier" : "customer") as "customer" | "supplier",
+      phone: String(p?.phone || ""),
+      email: String(p?.email || ""),
+      address: String(p?.address || ""),
+      state: String(p?.state || business.state || "Maharashtra"),
+      gstin: String(p?.gstin || ""),
+      initialBalance: Number(p?.initialBalance) || 0,
+      currentBalance: Number(p?.currentBalance) || 0
+    };
+  }) : [];
+
+  const items = Array.isArray(raw.items) ? raw.items.map((it: any, idx: number) => {
+    return {
+      id: String(it?.id || `item_${idx + 1}`),
+      name: String(it?.name || "Product Item"),
+      hsn: String(it?.hsn || "0000"),
+      purchasePrice: Number(it?.purchasePrice) || 0,
+      salePrice: Number(it?.salePrice) || 0,
+      stockQuantity: Number(it?.stockQuantity) || 0,
+      minStockAlert: Number(it?.minStockAlert) || 5,
+      gstRate: Number(it?.gstRate) || 18,
+      unit: String(it?.unit || "PCS"),
+      brand: it?.brand ? String(it.brand) : undefined,
+      category: it?.category ? String(it.category) : undefined,
+      barcodes: Array.isArray(it?.barcodes) ? it.barcodes.map((b: any) => String(b || "")).filter(Boolean) : []
+    };
+  }) : [];
+
+  const invoices = Array.isArray(raw.invoices) ? raw.invoices.map((inv: any, idx: number) => {
+    const partyId = String(inv?.partyId || "");
+    const fallbackPartyName = partyId && partiesMap.has(partyId) ? partiesMap.get(partyId)! : "Walk-in Customer (Cash Sale)";
+    const partyName = String(inv?.partyName || fallbackPartyName);
+    
+    const invoiceItems = Array.isArray(inv?.items) ? inv.items.map((item: any, itemIdx: number) => ({
+      itemId: String(item?.itemId || `item_${itemIdx + 1}`),
+      itemName: String(item?.itemName || "Item"),
+      hsn: String(item?.hsn || "0000"),
+      quantity: Number(item?.quantity) || 1,
+      price: Number(item?.price) || 0,
+      gstRate: Number(item?.gstRate) || 0,
+      amountBeforeTax: Number(item?.amountBeforeTax) || 0,
+      taxAmount: Number(item?.taxAmount) || 0,
+      cgst: Number(item?.cgst) || 0,
+      sgst: Number(item?.sgst) || 0,
+      igst: Number(item?.igst) || 0,
+      totalAmount: Number(item?.totalAmount) || 0,
+      discount: item?.discount !== undefined ? Number(item.discount) : undefined,
+      unit: item?.unit ? String(item.unit) : "PCS"
+    })) : [];
+
+    return {
+      id: String(inv?.id || `inv_${idx + 1}`),
+      invoiceNumber: String(inv?.invoiceNumber || `INV-${String(idx + 1).padStart(3, "0")}`),
+      date: String(inv?.date || new Date().toISOString().split("T")[0]),
+      partyId,
+      partyName,
+      partyGstin: String(inv?.partyGstin || ""),
+      type: (["sale", "purchase", "sale_return", "purchase_return"].includes(inv?.type) ? inv.type : "sale") as "sale" | "purchase" | "sale_return" | "purchase_return",
+      items: invoiceItems,
+      subtotal: Number(inv?.subtotal) || 0,
+      taxAmount: Number(inv?.taxAmount) || 0,
+      cgstTotal: Number(inv?.cgstTotal) || 0,
+      sgstTotal: Number(inv?.sgstTotal) || 0,
+      igstTotal: Number(inv?.igstTotal) || 0,
+      totalAmount: Number(inv?.totalAmount) || 0,
+      paymentType: (inv?.paymentType || "cash") as any,
+      paidAmount: Number(inv?.paidAmount) || 0,
+      remainingAmount: Number(inv?.remainingAmount) || 0,
+      notes: String(inv?.notes || "")
+    };
+  }) : [];
+
+  const challans = Array.isArray(raw.challans) ? raw.challans.map((c: any, idx: number) => ({
+    id: String(c?.id || `dc_${idx + 1}`),
+    challanNumber: String(c?.challanNumber || `DC-${idx + 1}`),
+    date: String(c?.date || new Date().toISOString().split("T")[0]),
+    partyId: String(c?.partyId || ""),
+    partyName: String(c?.partyName || (c?.partyId && partiesMap.has(c.partyId) ? partiesMap.get(c.partyId) : "Recipient")),
+    partyAddress: String(c?.partyAddress || ""),
+    partyState: String(c?.partyState || business.state),
+    partyGstin: String(c?.partyGstin || ""),
+    vehicleNumber: String(c?.vehicleNumber || ""),
+    lrNumber: String(c?.lrNumber || ""),
+    purpose: c?.purpose || "delivery",
+    status: c?.status || "pending",
+    items: Array.isArray(c?.items) ? c.items : [],
+    subtotal: Number(c?.subtotal) || 0,
+    taxAmount: Number(c?.taxAmount) || 0,
+    totalAmount: Number(c?.totalAmount) || 0,
+    notes: String(c?.notes || "")
+  })) : [];
+
+  const quotations = Array.isArray(raw.quotations) ? raw.quotations.map((q: any, idx: number) => ({
+    id: String(q?.id || `quote_${idx + 1}`),
+    quotationNumber: String(q?.quotationNumber || `QTN-${idx + 1}`),
+    date: String(q?.date || new Date().toISOString().split("T")[0]),
+    partyId: String(q?.partyId || ""),
+    partyName: String(q?.partyName || (q?.partyId && partiesMap.has(q.partyId) ? partiesMap.get(q.partyId) : "Customer")),
+    partyPhone: String(q?.partyPhone || ""),
+    partyAddress: String(q?.partyAddress || ""),
+    partyState: String(q?.partyState || business.state),
+    partyGstin: String(q?.partyGstin || ""),
+    status: q?.status || "sent",
+    items: Array.isArray(q?.items) ? q.items : [],
+    subtotal: Number(q?.subtotal) || 0,
+    taxAmount: Number(q?.taxAmount) || 0,
+    totalAmount: Number(q?.totalAmount) || 0,
+    notes: String(q?.notes || "")
+  })) : [];
+
+  const transactions = Array.isArray(raw.transactions) ? raw.transactions.map((t: any, idx: number) => ({
+    id: String(t?.id || `tx_${idx + 1}`),
+    date: String(t?.date || new Date().toISOString().split("T")[0]),
+    type: t?.type || "expense",
+    category: String(t?.category || "General"),
+    amount: Number(t?.amount) || 0,
+    paymentType: t?.paymentType || "cash",
+    notes: String(t?.notes || "")
+  })) : [];
+
+  const users = Array.isArray(raw.users) && raw.users.length > 0 ? raw.users : [
+    { username: "admin", passwordHash: "admin123", name: "Store Manager", role: "owner" }
+  ];
+
+  return {
+    business,
+    items,
+    parties,
+    invoices,
+    challans,
+    quotations,
+    transactions,
+    users,
+    offers: Array.isArray(raw.offers) ? raw.offers : []
+  };
+}
+
 function readDb(): DatabaseState {
   try {
     if (!fs.existsSync(DB_DIR)) {
@@ -364,26 +524,9 @@ function readDb(): DatabaseState {
 
     const raw = fs.readFileSync(DB_PATH, "utf8");
     const parsed = JSON.parse(raw);
+    const normalized = normalizeDatabaseState(parsed);
     
-    // Auto-populate auth users if missing
-    if (!parsed.users || parsed.users.length === 0) {
-      parsed.users = defaultAdmin;
-      fs.writeFileSync(DB_PATH, JSON.stringify(parsed, null, 2), "utf8");
-    }
-
-    if (!parsed.transactions) {
-      parsed.transactions = [];
-    }
-
-    if (!parsed.challans) {
-      parsed.challans = [];
-    }
-
-    if (!parsed.quotations) {
-      parsed.quotations = [];
-    }
-    
-    return parsed;
+    return normalized;
   } catch (error) {
     console.error("Error reading database", error);
     return { ...initialData, users: [{ username: "admin", passwordHash: "admin123", name: "Store Manager", role: "owner" }] };

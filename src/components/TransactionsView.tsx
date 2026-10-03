@@ -218,8 +218,8 @@ export default function TransactionsView({
       // Search match (category or notes)
       if (searchText.trim()) {
         const query = searchText.toLowerCase();
-        const catMatch = t.category.toLowerCase().includes(query);
-        const notesMatch = t.notes.toLowerCase().includes(query);
+        const catMatch = (t.category || "").toLowerCase().includes(query);
+        const notesMatch = (t.notes || "").toLowerCase().includes(query);
         if (!catMatch && !notesMatch) return false;
       }
 
@@ -229,7 +229,7 @@ export default function TransactionsView({
         if (t.date !== today) return false;
       } else if (dateRange === "thisMonth") {
         const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
-        if (!t.date.startsWith(currentMonth)) return false;
+        if (!t.date || !t.date.startsWith(currentMonth)) return false;
       } else if (dateRange === "custom") {
         if (startDate && t.date < startDate) return false;
         if (endDate && t.date > endDate) return false;
