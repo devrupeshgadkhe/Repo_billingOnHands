@@ -188,6 +188,25 @@ export default function InvoicingView({
   const [sourceQuotationId, setSourceQuotationId] = useState<string | undefined>(undefined);
   const [sourceQuotationNumber, setSourceQuotationNumber] = useState<string | undefined>(undefined);
 
+  // GST vs Non-GST billing mode (Persisted across bills and stored in localStorage / business profile)
+  const [billingMode, setBillingMode] = useState<'gst' | 'non_gst'>(() => {
+    if (invoiceToEdit) {
+      return invoiceToEdit.isNonGst || invoiceToEdit.billingMode === 'non_gst' ? 'non_gst' : 'gst';
+    }
+    try {
+      const saved = localStorage.getItem("billingonhand_billing_mode");
+      if (saved === "non_gst" || saved === "gst") return saved;
+    } catch {}
+    return business.defaultBillingMode || "gst";
+  });
+
+  const handleToggleBillingMode = (mode: 'gst' | 'non_gst') => {
+    setBillingMode(mode);
+    try {
+      localStorage.setItem("billingonhand_billing_mode", mode);
+    } catch {}
+  };
+
   // Quick-Pick Catalog UI state
   const [showCatalog, setShowCatalog] = useState(true);
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -578,6 +597,7 @@ export default function InvoicingView({
     let sgstTotal = 0;
     let igstTotal = 0;
     let totalDiscountGiven = 0;
+    const isNonGst = billingMode === "non_gst";
 
     const formattedLines: InvoiceItem[] = invoiceLines.map(line => {
       const originalItem = items.find(i => i.id === line.itemId || (line.itemName && i.name.toLowerCase() === line.itemName.toLowerCase()));
@@ -615,9 +635,9 @@ export default function InvoicingView({
         lineDisc = (grossAmt * Math.min(100, rawDisc)) / 100;
       }
 
-      const lineGstRate = line.gstRate !== undefined ? line.gstRate : (originalItem?.gstRate || 0);
+      const lineGstRate = isNonGst ? 0 : (line.gstRate !== undefined ? line.gstRate : (originalItem?.gstRate || 0));
       const amtBeforeTax = Math.max(0, grossAmt - lineDisc);
-      const rowTax = amtBeforeTax * (lineGstRate / 100);
+      const rowTax = isNonGst ? 0 : (amtBeforeTax * (lineGstRate / 100));
       const rowTotal = amtBeforeTax + rowTax;
 
       // GST determination based on inter-state shipping rules
@@ -625,13 +645,14 @@ export default function InvoicingView({
       let itemSgst = 0;
       let itemIgst = 0;
 
-      const isInterstate = activeParty && activeParty.state && business.state && activeParty.state !== business.state;
-
-      if (!isInterstate) {
-        itemCgst = rowTax / 2;
-        itemSgst = rowTax / 2;
-      } else {
-        itemIgst = rowTax;
+      if (!isNonGst) {
+        const isInterstate = activeParty && activeParty.state && business.state && activeParty.state !== business.state;
+        if (!isInterstate) {
+          itemCgst = rowTax / 2;
+          itemSgst = rowTax / 2;
+        } else {
+          itemIgst = rowTax;
+        }
       }
 
       subtotal += amtBeforeTax;
@@ -1120,7 +1141,7 @@ export default function InvoicingView({
       date: invoiceDate,
       partyId: resolvedPartyId,
       partyName: resolvedPartyName,
-      partyGstin: resolvedPartyGstin,
+      partyGstin: billingMode === "non_gst" ? "" : resolvedPartyGstin,
       type: txSubtype,
       items: validLines,
       subtotal: computedInvoiceDetails.subtotal,
@@ -1141,7 +1162,9 @@ export default function InvoicingView({
       sourceChallanId,
       sourceChallanNumber,
       sourceQuotationId,
-      sourceQuotationNumber
+      sourceQuotationNumber,
+      isNonGst: billingMode === "non_gst",
+      billingMode: billingMode
     };
 
     try {
@@ -1263,6 +1286,36 @@ export default function InvoicingView({
             >
               <RotateCcw className="w-3 h-3" />
               <span>{type === "sale" ? "Credit Note" : "Debit Note"}</span>
+            </button>
+          </div>
+
+          {/* GST vs Non-GST Billing Mode Switcher (Persisted) */}
+          <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => handleToggleBillingMode("gst")}
+              className={`px-3 py-1 rounded-lg transition flex items-center space-x-1.5 cursor-pointer select-none ${
+                billingMode === "gst"
+                  ? "bg-emerald-600 text-white shadow-xs font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+              title="करयुक्त बिल (Tax Invoice with GST breakdown)"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>GST Bill</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleBillingMode("non_gst")}
+              className={`px-3 py-1 rounded-lg transition flex items-center space-x-1.5 cursor-pointer select-none ${
+                billingMode === "non_gst"
+                  ? "bg-amber-600 text-white shadow-xs font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+              title="करमुक्त / साधी पावती (Non-GST / Bill of Supply / Estimate)"
+            >
+              <Receipt className="w-3.5 h-3.5" />
+              <span>Non-GST (साधी पावती)</span>
             </button>
           </div>
 
@@ -2009,30 +2062,36 @@ export default function InvoicingView({
                             </div>
                           </td>
 
-                          {/* GST Rate (Dynamic) */}
+                          {/* GST Rate (Dynamic or Non-GST) */}
                           <td className="py-2.5 px-2 text-center">
-                            <select
-                              value={TAX_RATES.includes(line.gstRate) ? line.gstRate : "custom"}
-                              onChange={(e) => {
-                                if (e.target.value === "custom") {
-                                  const customVal = prompt("Enter custom GST rate (%):", String(line.gstRate || 0));
-                                  if (customVal !== null) {
-                                    handleLineValueChange(idx, 'gstRate', parseFloat(customVal) || 0);
+                            {billingMode === "non_gst" ? (
+                              <span className="text-[10.5px] font-bold font-mono text-amber-900 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-md inline-block">
+                                0% (Non-GST)
+                              </span>
+                            ) : (
+                              <select
+                                value={TAX_RATES.includes(line.gstRate) ? line.gstRate : "custom"}
+                                onChange={(e) => {
+                                  if (e.target.value === "custom") {
+                                    const customVal = prompt("Enter custom GST rate (%):", String(line.gstRate || 0));
+                                    if (customVal !== null) {
+                                      handleLineValueChange(idx, 'gstRate', parseFloat(customVal) || 0);
+                                    }
+                                  } else {
+                                    handleLineValueChange(idx, 'gstRate', parseFloat(e.target.value) || 0);
                                   }
-                                } else {
-                                  handleLineValueChange(idx, 'gstRate', parseFloat(e.target.value) || 0);
-                                }
-                              }}
-                              className="px-1.5 py-1 border border-slate-200 rounded-md text-[11px] font-mono outline-none bg-white font-semibold cursor-pointer"
-                            >
-                              {TAX_RATES.map(rate => (
-                                <option key={rate} value={rate}>{rate}%</option>
-                              ))}
-                              {!TAX_RATES.includes(line.gstRate) && (
-                                <option value="custom">{line.gstRate}%</option>
-                              )}
-                              <option value="custom">+ Custom %</option>
-                            </select>
+                                }}
+                                className="px-1.5 py-1 border border-slate-200 rounded-md text-[11px] font-mono outline-none bg-white font-semibold cursor-pointer"
+                              >
+                                {TAX_RATES.map(rate => (
+                                  <option key={rate} value={rate}>{rate}%</option>
+                                ))}
+                                {!TAX_RATES.includes(line.gstRate) && (
+                                  <option value="custom">{line.gstRate}%</option>
+                                )}
+                                <option value="custom">+ Custom %</option>
+                              </select>
+                            )}
                           </td>
 
                           {/* Line Total */}
@@ -2121,29 +2180,37 @@ export default function InvoicingView({
                 </div>
               )}
 
-              {/* GST Breakdown (CGST + SGST vs IGST) */}
-              {activeParty && activeParty.state === business.state ? (
+              {/* GST Breakdown (CGST + SGST vs IGST) or Non-GST Tag */}
+              {billingMode === "non_gst" ? (
+                <div className="bg-amber-50 border border-amber-200/80 rounded-lg p-2 text-center text-[11px] font-bold text-amber-900">
+                  <span>📄 Non-GST Bill (करमुक्त / विना-GST पावती) • Tax: ₹0.00</span>
+                </div>
+              ) : (
                 <>
-                  <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
-                    <span>CGST (Central):</span>
-                    <span>{formatINR(computedInvoiceDetails.cgstTotal)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
-                    <span>SGST (State):</span>
-                    <span>{formatINR(computedInvoiceDetails.sgstTotal)}</span>
+                  {activeParty && activeParty.state === business.state ? (
+                    <>
+                      <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
+                        <span>CGST (Central):</span>
+                        <span>{formatINR(computedInvoiceDetails.cgstTotal)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
+                        <span>SGST (State):</span>
+                        <span>{formatINR(computedInvoiceDetails.sgstTotal)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
+                      <span>IGST (Integrated):</span>
+                      <span>{formatINR(computedInvoiceDetails.igstTotal)}</span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between items-center text-slate-600 border-b border-slate-100 pb-2">
+                    <span className="font-sans">Total GST Tax:</span>
+                    <span className="font-bold text-slate-800">{formatINR(computedInvoiceDetails.taxAmount)}</span>
                   </div>
                 </>
-              ) : (
-                <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
-                  <span>IGST (Integrated):</span>
-                  <span>{formatINR(computedInvoiceDetails.igstTotal)}</span>
-                </div>
               )}
-
-              <div className="flex justify-between items-center text-slate-600 border-b border-slate-100 pb-2">
-                <span className="font-sans">Total GST Tax:</span>
-                <span className="font-bold text-slate-800">{formatINR(computedInvoiceDetails.taxAmount)}</span>
-              </div>
 
               {/* Extra Charges Section (Delivery, Shipping, Hamali) */}
               <div className="space-y-1.5 pt-0.5">

@@ -133,6 +133,7 @@ export interface BusinessProfile {
   thermalConfig?: ThermalPrintConfig;
   loyaltyConfig?: LoyaltyConfig;
   scheduledEmailConfig?: ScheduledEmailConfig;
+  defaultBillingMode?: 'gst' | 'non_gst';
 }
 
 export interface ItemBatch {
@@ -269,6 +270,8 @@ export interface Invoice {
   sourceChallanNumber?: string;
   sourceQuotationId?: string;
   sourceQuotationNumber?: string;
+  isNonGst?: boolean; // True if created in Non-GST / Cash Memo / Bill of Supply mode
+  billingMode?: 'gst' | 'non_gst';
 }
 
 export type QuotationStatus = 'draft' | 'sent' | 'accepted' | 'converted' | 'rejected' | 'expired';

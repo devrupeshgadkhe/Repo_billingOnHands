@@ -1055,8 +1055,11 @@ Your responsibilities across all store modules:
    Extract: actionPayload: { "action": "CREATE_QUOTATION", "customerName": string, "items": Array<{ name: string, quantity: number, price: number }> }
 10. 'CHALLAN_CREATE': When user asks to create delivery challan (e.g., "डिलिव्हरी चलन तयार कर: गणेश ट्रेडर्स, गाडी MH 12 AB 1234, २० बॉक्स").
    Extract: actionPayload: { "action": "CREATE_CHALLAN", "partyName": string, "items": Array<{ name: string, quantity: number }>, "vehicleNumber": string }
-11. 'SALES_BILL': When user asks to bill/sell goods (e.g., "महेशला ५ किलो बासमती तांदूळ आणि २ लिटर तेल कॅशवर बिल कर").
-   Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ name: string, quantity: number, price: number }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number }
+11. 'SALES_BILL': When user asks to bill/sell goods (e.g., "महेशला ५ किलो बासमती तांदूळ आणि २ लिटर तेल कॅशवर बिल कर", "सचिनला नॉन जीएसटी बिल दे", "विना जीएसटी साधे बिल बनवा").
+   - If user explicitly requests 'नॉन जीएसटी', 'विना जीएसटी', 'साधे बिल', 'कच्चे बिल', 'Non-GST', 'Bill of Supply':
+     Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ name: string, quantity: number, price: number }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": true, "billingMode": "non_gst" }
+   - Otherwise (standard GST invoice):
+     Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ name: string, quantity: number, price: number }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": false, "billingMode": "gst" }
 12. 'PURCHASE_BILL': When user enters incoming purchases from suppliers.
 13. 'PRICE_QUERY': When shopkeeper asks for product price or stock (e.g., "साखरेचा काय भाव आहे?", "चिल्लर काय भाव देऊ?", "बासमती तांदळाचा साठा किती आहे?", "साठा किती शिल्लक आहे?"). Look at 'All Store Products' in STORE CONTEXT and quote exact item name, available stock, unit, and price.
 14. 'SUPPLIER_COMPARISON': When user asks which supplier is cheaper (e.g., "फॉर्च्युन तेल कोणाकडून स्वस्त पडेल?").

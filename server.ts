@@ -372,7 +372,8 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
         loyaltySummary: true
       },
       lastSendStatus: "idle"
-    }
+    },
+    defaultBillingMode: (raw.business?.defaultBillingMode === "non_gst" ? "non_gst" : "gst") as "gst" | "non_gst"
   };
 
   const partiesMap = new Map<string, string>();
@@ -477,7 +478,14 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
       pointsRedeemed: Number(inv?.pointsRedeemed) || 0,
       pointsDiscount: Number(inv?.pointsDiscount) || 0,
       pointsEarned: Number(inv?.pointsEarned) || 0,
-      notes: String(inv?.notes || "")
+      notes: String(inv?.notes || ""),
+      extraCharges: Array.isArray(inv?.extraCharges) ? inv.extraCharges : [],
+      sourceChallanId: inv?.sourceChallanId ? String(inv.sourceChallanId) : undefined,
+      sourceChallanNumber: inv?.sourceChallanNumber ? String(inv.sourceChallanNumber) : undefined,
+      sourceQuotationId: inv?.sourceQuotationId ? String(inv.sourceQuotationId) : undefined,
+      sourceQuotationNumber: inv?.sourceQuotationNumber ? String(inv.sourceQuotationNumber) : undefined,
+      isNonGst: Boolean(inv?.isNonGst || inv?.billingMode === "non_gst"),
+      billingMode: (inv?.billingMode === "non_gst" || inv?.isNonGst ? "non_gst" : "gst") as "gst" | "non_gst"
     };
   }) : [];
 
@@ -3547,10 +3555,29 @@ function executeMunimjiUniversalCrud(
       if (!invoice.partyName) invoice.partyName = "रोख ग्राहक (Cash Customer)";
       invoice.type = "sales";
 
+      const isNonGstBill = Boolean(
+        invoice.isNonGst ||
+        invoice.billingMode === "non_gst" ||
+        act.includes("NON_GST") ||
+        (payload?.billingMode === "non_gst") ||
+        (!invoice.billingMode && db.business?.defaultBillingMode === "non_gst")
+      );
+      invoice.isNonGst = isNonGstBill;
+      invoice.billingMode = isNonGstBill ? "non_gst" : "gst";
+
       // Deduct stock and dynamically auto-add any missing items to inventory catalog
       if (invoice.items && db.items) {
         for (const line of invoice.items) {
           line.quantity = parseIndianQuantity(line.quantity);
+          if (isNonGstBill) {
+            line.gstRate = 0;
+            line.taxAmount = 0;
+            line.cgst = 0;
+            line.sgst = 0;
+            line.igst = 0;
+            line.amountBeforeTax = Number(line.price || 0) * Number(line.quantity || 1);
+            line.totalAmount = line.amountBeforeTax;
+          }
           const prod = db.items.find((it: any) => it.id === line.itemId || it.name.toLowerCase() === (line.itemName || "").toLowerCase());
           if (prod) {
             prod.stockQuantity = Math.max(0, (prod.stockQuantity || 0) - line.quantity);
@@ -3562,19 +3589,26 @@ function executeMunimjiUniversalCrud(
             const newProd = {
               id: newId,
               name: line.itemName || "नवीन वस्तू",
-              hsn: line.hsn || "9999",
+              hsn: isNonGstBill ? "" : (line.hsn || "9999"),
               purchasePrice: line.price ? Math.round(line.price * 0.85) : 50,
               salePrice: line.price || 100,
               mrp: line.price || 100,
               stockQuantity: Math.max(0, 100 - line.quantity),
               minStockAlert: 5,
-              gstRate: line.gstRate || 0,
+              gstRate: isNonGstBill ? 0 : (line.gstRate || 0),
               unit: unitType
             };
             db.items.push(newProd);
             line.itemId = newId;
           }
         }
+      }
+
+      if (isNonGstBill) {
+        invoice.taxAmount = 0;
+        invoice.cgstTotal = 0;
+        invoice.sgstTotal = 0;
+        invoice.igstTotal = 0;
       }
 
       // Update customer credit balance if unpaid

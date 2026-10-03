@@ -576,6 +576,50 @@ export default function SettingsView({
               </div>
             </div>
 
+            {/* Default Billing Mode Preference (GST vs Non-GST) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 uppercase tracking-wide">
+                    डिफॉल्ट बिलिंग मोड (Default Billing Mode)
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    नवीन बिलांसाठी सुरुवातीचा प्रकार निवडा (हे प्रत्येक बिलाच्या वेळीही टॉगल करता येते)
+                  </p>
+                </div>
+                <div className="inline-flex rounded-lg bg-white p-1 border border-slate-200 text-xs font-bold shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, defaultBillingMode: "gst" }));
+                      try { localStorage.setItem("billingonhand_billing_mode", "gst"); } catch {}
+                    }}
+                    className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+                      formData.defaultBillingMode !== "non_gst"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    GST Tax Invoice
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({ ...prev, defaultBillingMode: "non_gst" }));
+                      try { localStorage.setItem("billingonhand_billing_mode", "non_gst"); } catch {}
+                    }}
+                    className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+                      formData.defaultBillingMode === "non_gst"
+                        ? "bg-amber-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900"
+                    }`}
+                  >
+                    Non-GST (साधी पावती)
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* Phase 7: Customer Loyalty Points Scheme Configuration */}
             <div className="pt-5 border-t border-slate-200 space-y-4">
               <div className="flex items-center justify-between">

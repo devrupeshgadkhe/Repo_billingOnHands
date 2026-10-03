@@ -96,6 +96,10 @@
 * **Inventory Balancing & Reversal Engine (`server.ts`):** Automated deduction from source godown and addition to destination godown upon transfer creation; automated stock balance restoration on voucher cancellation.
 * **Goods Transit Pass Printing (`StockTransferPrintModal.tsx`):** Professional thermal (80mm) and A4 printable Stock Transfer Delivery Transit Pass with voucher number, dispatch date, source/destination godowns, driver details, and recipient signature block.
 * **Dynamic GST Tax Slab Architecture (`ItemsView.tsx`, `ItemsScanModal.tsx`, `InvoicingView.tsx`, `types.ts`):** Fully dynamic GST rate support accepting standard slabs (0%, 0.1%, 0.25%, 1.5%, 3%, 5%, 6%, 7.5%, 12%, 18%, 28%, 40%) as well as custom decimal tax percentages extracted from scanned vendor bills or entered manually.
+* **GST vs Non-GST Dual Billing Mode (`InvoicingView.tsx`, `InvoicePrintModal.tsx`, `SettingsView.tsx`, `types.ts`, `server.ts`):**
+  - **Instant Switcher & Auto-Persistence:** 1-click toggle on POS billing top bar between `GST Bill` (Tax Invoice) and `Non-GST` (साधी पावती / Bill of Supply / Cash Memo). Selection is permanently remembered in `localStorage` (`billingonhand_billing_mode`) and synced with `business.defaultBillingMode` in Settings so merchants never have to re-select on consecutive bills.
+  - **Complete Non-GST Masking:** In Non-GST mode, all GST calculations, CGST/SGST/IGST breakdowns, GST% columns, HSN columns, and GSTIN numbers are completely removed from both on-screen POS calculations and A4/A5/Thermal printouts.
+  - **Digital Munimji Voice Sync (`munimjiPool.ts` & `server.ts`):** Digital Munimji automatically creates Non-GST bills with ₹0 tax when commanded ("नॉन जीएसटी बिल दे", "विना जीएसटी साधे बिल बनवा", "कच्चे बिल द्या").
 * **Digital Munimji Voice Integration (`MunimjiDrawer.tsx` & `server.ts`):** Voice query support for godowns and warehouse stock ("गोदाम दाखवा", "गोदामातील साठा किती आहे") with automatic drawer auto-minimize.
 
 ---
