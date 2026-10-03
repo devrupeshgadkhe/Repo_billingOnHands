@@ -67,7 +67,48 @@ export interface ThermalPrintConfig {
   termsAndConditions: string;
   footerNote: string;
   showBarcode: boolean;
+  showLoyaltyPoints?: boolean;
   cutterFeedLines: number;
+}
+
+export interface LoyaltyConfig {
+  enabled: boolean;
+  pointsPer100Rupees: number; // e.g. 1 point earned per ₹100 spent
+  redemptionRate: number; // Value of 1 point in ₹ (e.g. ₹1)
+  minPointsToRedeem: number; // Minimum balance needed to redeem (e.g. 10 or 50)
+  maxRedemptionPercentage: number; // Max percentage of invoice that can be covered by points (e.g. 50%)
+  expiryDays?: number; // Validity period in days (e.g. 365, 0/undefined = no expiry)
+}
+
+export interface ScheduledEmailConfig {
+  enabled: boolean;
+  recipientEmail: string; // Primary store owner email
+  ccEmails?: string; // Comma-separated CC emails
+  senderName?: string; // e.g. "Billing On Hand Store Reports"
+  scheduledTime: string; // e.g. "21:00" for 9:00 PM
+  reportSections: {
+    salesSummary: boolean;
+    paymentModes: boolean;
+    profitAndMargins: boolean;
+    taxSummary: boolean;
+    topSellingItems: boolean;
+    lowStockAlerts: boolean;
+    nearExpiryAlerts: boolean;
+    customerKhata: boolean;
+    loyaltySummary: boolean;
+  };
+  smtpConfig?: {
+    service?: string; // 'gmail' | 'outlook' | 'custom'
+    host?: string;
+    port?: number;
+    secure?: boolean;
+    user?: string;
+    pass?: string;
+  };
+  lastSentDate?: string; // YYYY-MM-DD
+  lastSentAt?: string; // Timestamp
+  lastSendStatus?: 'success' | 'failed' | 'idle';
+  lastSendError?: string;
 }
 
 export interface BusinessProfile {
@@ -90,6 +131,8 @@ export interface BusinessProfile {
   exciseLicenseNo?: string;
   logoUrl?: string; // base64 or source url of local store logo
   thermalConfig?: ThermalPrintConfig;
+  loyaltyConfig?: LoyaltyConfig;
+  scheduledEmailConfig?: ScheduledEmailConfig;
 }
 
 export interface ItemBatch {
@@ -127,6 +170,17 @@ export interface Item {
   batches?: ItemBatch[]; // Multi-batch inventory tracking
 }
 
+export interface LoyaltyLedgerEntry {
+  id: string;
+  date: string; // YYYY-MM-DD
+  invoiceId?: string;
+  invoiceNumber?: string;
+  type: 'EARNED' | 'REDEEMED' | 'ADJUSTMENT' | 'EXPIRED';
+  points: number; // positive or negative
+  balanceAfter: number;
+  description: string;
+}
+
 export interface Party {
   id: string;
   name: string;
@@ -140,6 +194,10 @@ export interface Party {
   currentBalance: number;
   creditLimit?: number; // Maximum Credit Limit in ₹
   creditDays?: number; // Payment terms in days (e.g. 15, 30 days)
+  loyaltyPoints?: number; // Current active points balance
+  totalPointsEarned?: number; // Lifetime earned
+  totalPointsRedeemed?: number; // Lifetime redeemed
+  loyaltyLedger?: LoyaltyLedgerEntry[];
 }
 
 export interface OfferScheme {
@@ -201,6 +259,9 @@ export interface Invoice {
   paymentType: 'cash' | 'bank' | 'unpaid';
   paidAmount: number;
   remainingAmount: number;
+  pointsRedeemed?: number; // Number of loyalty points redeemed
+  pointsDiscount?: number; // Discount in ₹ given for redeemed points
+  pointsEarned?: number; // Loyalty points awarded for this invoice
   notes: string;
   originalInvoiceNumber?: string;
   sourceChallanId?: string;

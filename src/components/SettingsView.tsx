@@ -30,7 +30,14 @@ import {
   AlertTriangle,
   Printer,
   Sliders,
-  Sparkles
+  Sparkles,
+  Star,
+  Award,
+  Gift,
+  Send,
+  Clock,
+  Eye,
+  Calendar
 } from "lucide-react";
 import ThermalDesignerModal from "./ThermalDesignerModal.js";
 
@@ -63,6 +70,13 @@ export default function SettingsView({
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+
+  // Phase 8: Automated Scheduled Email Reports States
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [emailStatusMsg, setEmailStatusMsg] = useState<{ text: string; isError?: boolean } | null>(null);
+  const [isPreviewEmailModalOpen, setIsPreviewEmailModalOpen] = useState(false);
+  const [previewEmailHtml, setPreviewEmailHtml] = useState<string>("");
+  const [showSmtpConfig, setShowSmtpConfig] = useState(false);
 
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
@@ -562,6 +576,594 @@ export default function SettingsView({
               </div>
             </div>
 
+            {/* Phase 7: Customer Loyalty Points Scheme Configuration */}
+            <div className="pt-5 border-t border-slate-200 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
+                    <Star className="w-4 h-4 fill-amber-500 text-amber-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">ग्राहक लॉयल्टी रिवॉर्ड्स (Customer Loyalty Scheme)</h3>
+                    <p className="text-[11px] text-slate-500">Configure customer points earning and redemption rules for POS billing</p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.loyaltyConfig?.enabled !== false}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setFormData(prev => ({
+                        ...prev,
+                        loyaltyConfig: {
+                          ...(prev.loyaltyConfig || {
+                            pointsPer100Rupees: 1,
+                            redemptionRate: 1.0,
+                            minPointsToRedeem: 10,
+                            maxRedemptionPercentage: 50,
+                            expiryDays: 365
+                          }),
+                          enabled
+                        }
+                      }));
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                </label>
+              </div>
+
+              {formData.loyaltyConfig?.enabled !== false && (
+                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 space-y-3.5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* Points Earning Rate */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                        Points Earned per ₹100 Spent
+                      </label>
+                      <input
+                        type="number"
+                        min="0.1"
+                        step="0.1"
+                        value={formData.loyaltyConfig?.pointsPer100Rupees ?? 1}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setFormData(prev => ({
+                            ...prev,
+                            loyaltyConfig: {
+                              ...(prev.loyaltyConfig || {
+                                enabled: true,
+                                redemptionRate: 1.0,
+                                minPointsToRedeem: 10,
+                                maxRedemptionPercentage: 50
+                              }),
+                              enabled: true,
+                              pointsPer100Rupees: val
+                            }
+                          }));
+                        }}
+                        className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. 1 point for every ₹100 purchased</span>
+                    </div>
+
+                    {/* Redemption Value */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                        Value of 1 Point in Rupees (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="0.05"
+                        step="0.05"
+                        value={formData.loyaltyConfig?.redemptionRate ?? 1.0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setFormData(prev => ({
+                            ...prev,
+                            loyaltyConfig: {
+                              ...(prev.loyaltyConfig || {
+                                enabled: true,
+                                pointsPer100Rupees: 1,
+                                minPointsToRedeem: 10,
+                                maxRedemptionPercentage: 50
+                              }),
+                              enabled: true,
+                              redemptionRate: val
+                            }
+                          }));
+                        }}
+                        className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. 1.0 = ₹1 discount per 1 point</span>
+                    </div>
+
+                    {/* Minimum Points to Redeem */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                        Minimum Points to Redeem
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={formData.loyaltyConfig?.minPointsToRedeem ?? 10}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setFormData(prev => ({
+                            ...prev,
+                            loyaltyConfig: {
+                              ...(prev.loyaltyConfig || {
+                                enabled: true,
+                                pointsPer100Rupees: 1,
+                                redemptionRate: 1.0,
+                                maxRedemptionPercentage: 50
+                              }),
+                              enabled: true,
+                              minPointsToRedeem: val
+                            }
+                          }));
+                        }}
+                        className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Customer must have at least this many points</span>
+                    </div>
+
+                    {/* Max Redemption % per Bill */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                        Max Redemption Limit (% of Bill)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={formData.loyaltyConfig?.maxRedemptionPercentage ?? 50}
+                        onChange={(e) => {
+                          const val = Math.min(100, Math.max(1, parseInt(e.target.value) || 50));
+                          setFormData(prev => ({
+                            ...prev,
+                            loyaltyConfig: {
+                              ...(prev.loyaltyConfig || {
+                                enabled: true,
+                                pointsPer100Rupees: 1,
+                                redemptionRate: 1.0,
+                                minPointsToRedeem: 10
+                              }),
+                              enabled: true,
+                              maxRedemptionPercentage: val
+                            }
+                          }));
+                        }}
+                        className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Maximum % of bill payable via points</span>
+                    </div>
+                  </div>
+
+                  {/* Scheme Summary & Example Box */}
+                  <div className="bg-white border border-amber-200/80 rounded-lg p-3 text-xs text-slate-700 flex items-start gap-2.5">
+                    <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <span className="font-bold text-slate-800 block">स्कीमचे स्वरूप व उदाहरण (Scheme Example):</span>
+                      <p className="text-[11px] text-slate-600">
+                        • ग्राहक ₹१,००० ची खरेदी करेल तेव्हा त्याला <strong>{Math.floor((1000 / 100) * (formData.loyaltyConfig?.pointsPer100Rupees || 1))} पॉईंट्स</strong> मिळतील.
+                      </p>
+                      <p className="text-[11px] text-slate-600">
+                        • पुढील बिलावर ५० पॉईंट्स रिडीम केल्यास थेट <strong>₹{(50 * (formData.loyaltyConfig?.redemptionRate || 1)).toFixed(2)}</strong> ची सवलत मिळेल.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Phase 8: Automated Scheduled EOD Email Reports Configuration */}
+            <div className="pt-5 border-t border-slate-200 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-100 text-blue-800 rounded-lg">
+                    <Mail className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-800">स्वयंचलित दैनिक ईमेल अहवाल (Automated EOD Email Reports)</h3>
+                    <p className="text-[11px] text-slate-500">रोज संध्याकाळी दुकान बंद होताना मालकाच्या ईमेलवर डे-एंड सारांश स्वयंचलित पाठवा</p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.scheduledEmailConfig?.enabled === true}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setFormData(prev => ({
+                        ...prev,
+                        scheduledEmailConfig: {
+                          ...(prev.scheduledEmailConfig || {
+                            recipientEmail: prev.email || "rupeshgadkhe@gmail.com",
+                            ccEmails: "",
+                            senderName: "Billing On Hand Store Reports",
+                            scheduledTime: "21:00",
+                            reportSections: {
+                              salesSummary: true,
+                              paymentModes: true,
+                              profitAndMargins: true,
+                              taxSummary: true,
+                              topSellingItems: true,
+                              lowStockAlerts: true,
+                              nearExpiryAlerts: true,
+                              customerKhata: true,
+                              loyaltySummary: true
+                            }
+                          }),
+                          enabled
+                        }
+                      }));
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+              </div>
+
+              {formData.scheduledEmailConfig?.enabled === true && (
+                <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                    {/* Primary Recipient Email */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                        प्राथमिक ईमेल पत्ता (Store Owner Email) *
+                      </label>
+                      <input
+                        type="email"
+                        value={formData.scheduledEmailConfig?.recipientEmail || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            scheduledEmailConfig: {
+                              ...(prev.scheduledEmailConfig || {
+                                enabled: true,
+                                scheduledTime: "21:00",
+                                reportSections: { salesSummary: true, paymentModes: true, profitAndMargins: true, taxSummary: true, topSellingItems: true, lowStockAlerts: true, nearExpiryAlerts: true, customerKhata: true, loyaltySummary: true }
+                              }),
+                              recipientEmail: val
+                            }
+                          }));
+                        }}
+                        placeholder="e.g. storeowner@gmail.com"
+                        className="w-full px-3 py-2 bg-white border border-blue-200 focus:border-blue-500 rounded-lg text-xs outline-none font-medium"
+                      />
+                    </div>
+
+                    {/* Scheduled Delivery Time */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                        ईमेल पाठवण्याची वेळ (Scheduled Time - 24Hr)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="time"
+                          value={formData.scheduledEmailConfig?.scheduledTime || "21:00"}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData(prev => ({
+                              ...prev,
+                              scheduledEmailConfig: {
+                                ...(prev.scheduledEmailConfig || {
+                                  enabled: true,
+                                  recipientEmail: prev.email || "",
+                                  reportSections: { salesSummary: true, paymentModes: true, profitAndMargins: true, taxSummary: true, topSellingItems: true, lowStockAlerts: true, nearExpiryAlerts: true, customerKhata: true, loyaltySummary: true }
+                                }),
+                                scheduledTime: val
+                              }
+                            }));
+                          }}
+                          className="w-full px-3 py-2 bg-white border border-blue-200 focus:border-blue-500 rounded-lg text-xs outline-none font-mono font-bold"
+                        />
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">दुकान बंद झाल्यावर दररोज या वेळेस ईमेल स्वयंचलित पाठवला जाईल</span>
+                    </div>
+
+                    {/* CC Emails */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                        CC ईमेल (पार्टनर किंवा CA चे ईमेल्स - पर्यायी)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.scheduledEmailConfig?.ccEmails || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            scheduledEmailConfig: {
+                              ...(prev.scheduledEmailConfig || {
+                                enabled: true,
+                                recipientEmail: prev.email || "",
+                                scheduledTime: "21:00",
+                                reportSections: { salesSummary: true, paymentModes: true, profitAndMargins: true, taxSummary: true, topSellingItems: true, lowStockAlerts: true, nearExpiryAlerts: true, customerKhata: true, loyaltySummary: true }
+                              }),
+                              ccEmails: val
+                            }
+                          }));
+                        }}
+                        placeholder="accountant@gmail.com, partner@gmail.com"
+                        className="w-full px-3 py-2 bg-white border border-blue-200 focus:border-blue-500 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+
+                    {/* Sender Name */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                        प्रेषकाचे नाव (Sender Display Name)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.scheduledEmailConfig?.senderName || ""}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            scheduledEmailConfig: {
+                              ...(prev.scheduledEmailConfig || {
+                                enabled: true,
+                                recipientEmail: prev.email || "",
+                                scheduledTime: "21:00",
+                                reportSections: { salesSummary: true, paymentModes: true, profitAndMargins: true, taxSummary: true, topSellingItems: true, lowStockAlerts: true, nearExpiryAlerts: true, customerKhata: true, loyaltySummary: true }
+                              }),
+                              senderName: val
+                            }
+                          }));
+                        }}
+                        placeholder="e.g. Apex Electro-Tech Store Reports"
+                        className="w-full px-3 py-2 bg-white border border-blue-200 focus:border-blue-500 rounded-lg text-xs outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Report Sections Selection */}
+                  <div className="pt-2 border-t border-blue-200/60">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
+                      ईमेलमध्ये समाविष्ट करायचे विभाग (Report Content Sections):
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 bg-white/80 p-3 rounded-lg border border-blue-100">
+                      {[
+                        { key: "salesSummary", label: "📊 Sales Summary (एकूण विक्री व बिले)" },
+                        { key: "paymentModes", label: "💵 Cash & Bank UPI (गल्ल्यातील रोख व बँक जमा)" },
+                        { key: "profitAndMargins", label: "📈 Profit & Margin (अंदाजित नफा व मार्जिन)" },
+                        { key: "taxSummary", label: "🏛️ GST Tax (CGST, SGST, IGST कर सारांश)" },
+                        { key: "topSellingItems", label: "🔥 Top Selling Items (सर्वाधिक खप झालेले ५ आयटम्स)" },
+                        { key: "lowStockAlerts", label: "⚠️ Low Stock Alerts (कमी साठा व ऑर्डर आवश्यक)" },
+                        { key: "nearExpiryAlerts", label: "⏳ Near Expiry Alerts (४५ दिवसांत संपणारा माल)" },
+                        { key: "customerKhata", label: "📒 Customer Khata (बाकीदार ग्राहक यादी)" },
+                        { key: "loyaltySummary", label: "⭐ Loyalty Points (लॉयल्टी पॉईंट्स व्यवहार)" }
+                      ].map(({ key, label }) => {
+                        const sections = formData.scheduledEmailConfig?.reportSections || ({} as any);
+                        const isChecked = sections[key] !== false;
+                        return (
+                          <label key={key} className="flex items-center gap-2 cursor-pointer text-xs text-slate-700 select-none py-1">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  scheduledEmailConfig: {
+                                    ...(prev.scheduledEmailConfig || {
+                                      enabled: true,
+                                      recipientEmail: prev.email || "",
+                                      scheduledTime: "21:00"
+                                    }),
+                                    reportSections: {
+                                      ...(prev.scheduledEmailConfig?.reportSections || {
+                                        salesSummary: true,
+                                        paymentModes: true,
+                                        profitAndMargins: true,
+                                        taxSummary: true,
+                                        topSellingItems: true,
+                                        lowStockAlerts: true,
+                                        nearExpiryAlerts: true,
+                                        customerKhata: true,
+                                        loyaltySummary: true
+                                      }),
+                                      [key]: checked
+                                    }
+                                  }
+                                }));
+                              }}
+                              className="w-3.5 h-3.5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <span className="text-[11px] font-medium leading-tight">{label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* SMTP Settings Accordion */}
+                  <div className="border border-blue-200/80 rounded-xl overflow-hidden bg-white">
+                    <button
+                      type="button"
+                      onClick={() => setShowSmtpConfig(!showSmtpConfig)}
+                      className="w-full px-4 py-2.5 bg-blue-50/50 hover:bg-blue-100/50 flex items-center justify-between text-xs font-bold text-blue-900 transition cursor-pointer select-none"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Sliders className="w-3.5 h-3.5 text-blue-600" />
+                        <span>थेट इंटरनेट ईमेल पाठवण्यासाठी SMTP / Gmail सेटिंग्ज (Optional SMTP Configuration)</span>
+                      </div>
+                      <span className="text-[11px] text-blue-600 font-semibold">{showSmtpConfig ? "लपवा ▲" : "दाखवा / बदला ▼"}</span>
+                    </button>
+
+                    {showSmtpConfig && (
+                      <div className="p-4 space-y-3 border-t border-blue-100 text-xs bg-white">
+                        <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 space-y-1">
+                          <p className="font-bold">💡 Gmail वापरकर्त्यांसाठी टीप (Gmail App Password):</p>
+                          <p className="text-slate-600">
+                            गुगल सिक्युरिटीमुळे तुमचा साधा पासवर्ड न वापरता, तुमच्या Google Account मध्ये <strong>2-Step Verification</strong> चालू करा आणि <strong>App Passwords</strong> मधून १६-अंकी पासवर्ड तयार करून खाली पेस्ट करा.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">ईमेल सेवा (Provider)</label>
+                            <select
+                              value={formData.scheduledEmailConfig?.smtpConfig?.service || "gmail"}
+                              onChange={(e) => {
+                                const s = e.target.value;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  scheduledEmailConfig: {
+                                    ...(prev.scheduledEmailConfig || { enabled: true, recipientEmail: "", scheduledTime: "21:00", reportSections: {} as any }),
+                                    smtpConfig: {
+                                      ...(prev.scheduledEmailConfig?.smtpConfig || {}),
+                                      service: s
+                                    }
+                                  }
+                                }));
+                              }}
+                              className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs outline-none bg-white font-medium"
+                            >
+                              <option value="gmail">Google Gmail</option>
+                              <option value="outlook">Microsoft Outlook</option>
+                              <option value="custom">Custom SMTP Server</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">प्रेषक ईमेल (SMTP User/Email)</label>
+                            <input
+                              type="email"
+                              value={formData.scheduledEmailConfig?.smtpConfig?.user || ""}
+                              onChange={(e) => {
+                                const u = e.target.value;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  scheduledEmailConfig: {
+                                    ...(prev.scheduledEmailConfig || { enabled: true, recipientEmail: "", scheduledTime: "21:00", reportSections: {} as any }),
+                                    smtpConfig: {
+                                      ...(prev.scheduledEmailConfig?.smtpConfig || {}),
+                                      user: u
+                                    }
+                                  }
+                                }));
+                              }}
+                              placeholder="yourstore@gmail.com"
+                              className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs outline-none font-medium"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">ॲप पासवर्ड (App Password)</label>
+                            <input
+                              type="password"
+                              value={formData.scheduledEmailConfig?.smtpConfig?.pass || ""}
+                              onChange={(e) => {
+                                const p = e.target.value;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  scheduledEmailConfig: {
+                                    ...(prev.scheduledEmailConfig || { enabled: true, recipientEmail: "", scheduledTime: "21:00", reportSections: {} as any }),
+                                    smtpConfig: {
+                                      ...(prev.scheduledEmailConfig?.smtpConfig || {}),
+                                      pass: p
+                                    }
+                                  }
+                                }));
+                              }}
+                              placeholder="xxxx xxxx xxxx xxxx"
+                              className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-xs outline-none font-mono"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Test & Preview Buttons */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={isTestingEmail}
+                        onClick={async () => {
+                          setIsTestingEmail(true);
+                          setEmailStatusMsg(null);
+                          try {
+                            const res = await fetch("/api/reports/send-eod-email", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                isTest: true,
+                                recipientEmail: formData.scheduledEmailConfig?.recipientEmail
+                              })
+                            });
+                            const data = await res.json();
+                            if (data.success) {
+                              setEmailStatusMsg({ text: data.message, isError: false });
+                              if (data.previewHtml) setPreviewEmailHtml(data.previewHtml);
+                            } else {
+                              setEmailStatusMsg({ text: data.message || "Failed to send email", isError: true });
+                            }
+                          } catch (err: any) {
+                            setEmailStatusMsg({ text: "Error: " + err.message, isError: true });
+                          } finally {
+                            setIsTestingEmail(false);
+                          }
+                        }}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-300 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer select-none"
+                      >
+                        <Send className={`w-3.5 h-3.5 ${isTestingEmail ? "animate-spin" : ""}`} />
+                        <span>{isTestingEmail ? "चाचणी अहवाल पाठवत आहे..." : "चाचणी अहवाल त्वरित पाठवा (Send Test Now)"}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch("/api/reports/send-eod-email", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ isTest: true })
+                            });
+                            const data = await res.json();
+                            if (data.previewHtml) {
+                              setPreviewEmailHtml(data.previewHtml);
+                              setIsPreviewEmailModalOpen(true);
+                            }
+                          } catch (err: any) {
+                            showAlert("Error generating preview: " + err.message);
+                          }
+                        }}
+                        className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg font-bold text-xs flex items-center gap-1.5 transition cursor-pointer select-none"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-slate-500" />
+                        <span>अहवाल पूर्वावलोकन (Preview HTML)</span>
+                      </button>
+                    </div>
+
+                    {formData.scheduledEmailConfig?.lastSentAt && (
+                      <span className="text-[11px] text-slate-500 font-mono">
+                        शेवटचा अहवाल: {new Date(formData.scheduledEmailConfig.lastSentAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} ({formData.scheduledEmailConfig.lastSendStatus === "success" ? "✅ यशस्वी" : "⚠️ अयशस्वी"})
+                      </span>
+                    )}
+                  </div>
+
+                  {emailStatusMsg && (
+                    <div className={`p-3 rounded-lg text-xs font-semibold flex items-center gap-2 ${
+                      emailStatusMsg.isError ? "bg-rose-50 text-rose-800 border border-rose-200" : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                    }`}>
+                      {emailStatusMsg.isError ? <AlertTriangle className="w-4 h-4 shrink-0" /> : <CheckCircle className="w-4 h-4 shrink-0" />}
+                      <span>{emailStatusMsg.text}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Save Button */}
             <div className="pt-4 border-t border-slate-100 flex justify-end">
               <button
@@ -900,6 +1502,41 @@ export default function SettingsView({
             setFormData(updatedProfile);
           }}
         />
+      )}
+
+      {/* Phase 8: EOD Email HTML Preview Modal */}
+      {isPreviewEmailModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 animate-scale-in">
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm leading-tight">दैनिक डे-एंड ईमेल अहवाल पूर्वावलोकन (Daily EOD Email Preview)</h3>
+                  <p className="text-[11px] text-slate-400">This is how the report will appear in your mobile & desktop email inbox</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPreviewEmailModalOpen(false)}
+                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 flex-1 overflow-y-auto bg-slate-100">
+              <div className="bg-white rounded-xl shadow border border-slate-200 overflow-hidden">
+                <iframe
+                  title="EOD Email Preview"
+                  srcDoc={previewEmailHtml}
+                  className="w-full h-[65vh] border-0"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

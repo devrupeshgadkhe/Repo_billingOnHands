@@ -6,7 +6,36 @@
     "state": "Maharashtra",
     "phone": "+91 98765 43210",
     "email": "billing@apexelectro.com",
-    "signatureText": "For Apex Electro-Tech Systems"
+    "signatureText": "For Apex Electro-Tech Systems",
+    "loyaltyConfig": {
+      "enabled": true,
+      "pointsPer100Rupees": 1,
+      "redemptionRate": 1,
+      "minPointsToRedeem": 10,
+      "maxRedemptionPercentage": 50,
+      "expiryDays": 365
+    },
+    "scheduledEmailConfig": {
+      "enabled": false,
+      "recipientEmail": "billing@apexelectro.com",
+      "ccEmails": "",
+      "senderName": "Billing On Hand Store Reports",
+      "scheduledTime": "21:00",
+      "reportSections": {
+        "salesSummary": true,
+        "paymentModes": true,
+        "profitAndMargins": true,
+        "taxSummary": true,
+        "topSellingItems": true,
+        "lowStockAlerts": true,
+        "nearExpiryAlerts": true,
+        "customerKhata": true,
+        "loyaltySummary": true
+      },
+      "lastSendStatus": "success",
+      "lastSentDate": "2026-10-03",
+      "lastSentAt": "2026-10-03T13:36:01.666Z"
+    }
   },
   "items": [
     {
@@ -18,7 +47,8 @@
       "stockQuantity": 45,
       "minStockAlert": 10,
       "gstRate": 18,
-      "unit": "PCS"
+      "unit": "PCS",
+      "barcodes": []
     },
     {
       "id": "item_2",
@@ -29,7 +59,8 @@
       "stockQuantity": 12,
       "minStockAlert": 5,
       "gstRate": 18,
-      "unit": "BOX"
+      "unit": "BOX",
+      "barcodes": []
     },
     {
       "id": "item_3",
@@ -40,7 +71,8 @@
       "stockQuantity": 150,
       "minStockAlert": 30,
       "gstRate": 12,
-      "unit": "PCS"
+      "unit": "PCS",
+      "barcodes": []
     },
     {
       "id": "item_4",
@@ -51,7 +83,8 @@
       "stockQuantity": 6,
       "minStockAlert": 8,
       "gstRate": 18,
-      "unit": "SET"
+      "unit": "SET",
+      "barcodes": []
     },
     {
       "id": "item_5",
@@ -62,7 +95,8 @@
       "stockQuantity": 420,
       "minStockAlert": 100,
       "gstRate": 5,
-      "unit": "MTR"
+      "unit": "MTR",
+      "barcodes": []
     },
     {
       "id": "item_1790861267866",
@@ -72,8 +106,9 @@
       "salePrice": 120,
       "stockQuantity": 52,
       "minStockAlert": 5,
-      "gstRate": 0,
-      "unit": "KGS"
+      "gstRate": 18,
+      "unit": "KGS",
+      "barcodes": []
     },
     {
       "id": "item_1790929265642",
@@ -83,8 +118,9 @@
       "salePrice": 150,
       "stockQuantity": 25,
       "minStockAlert": 5,
-      "gstRate": 0,
-      "unit": "PCS"
+      "gstRate": 18,
+      "unit": "PCS",
+      "barcodes": []
     },
     {
       "id": "item_1790929269936",
@@ -94,8 +130,9 @@
       "salePrice": 14,
       "stockQuantity": 100,
       "minStockAlert": 5,
-      "gstRate": 0,
-      "unit": "PCS"
+      "gstRate": 18,
+      "unit": "PCS",
+      "barcodes": []
     }
   ],
   "parties": [
@@ -109,7 +146,11 @@
       "state": "Maharashtra",
       "gstin": "27BBBCC1234F1Z3",
       "initialBalance": 0,
-      "currentBalance": 12800
+      "currentBalance": 12800,
+      "loyaltyPoints": 0,
+      "totalPointsEarned": 0,
+      "totalPointsRedeemed": 0,
+      "loyaltyLedger": []
     },
     {
       "id": "party_2",
@@ -121,7 +162,11 @@
       "state": "Gujarat",
       "gstin": "24AAAVW5566K1ZN",
       "initialBalance": 0,
-      "currentBalance": 45000
+      "currentBalance": 45000,
+      "loyaltyPoints": 0,
+      "totalPointsEarned": 0,
+      "totalPointsRedeemed": 0,
+      "loyaltyLedger": []
     },
     {
       "id": "party_3",
@@ -133,7 +178,11 @@
       "state": "Karnataka",
       "gstin": "29CCCBB4321A1ZE",
       "initialBalance": 0,
-      "currentBalance": 0
+      "currentBalance": 0,
+      "loyaltyPoints": 0,
+      "totalPointsEarned": 0,
+      "totalPointsRedeemed": 0,
+      "loyaltyLedger": []
     },
     {
       "id": "party_1790929271901",
@@ -145,7 +194,11 @@
       "state": "Maharashtra",
       "gstin": "",
       "initialBalance": 0,
-      "currentBalance": 0
+      "currentBalance": 0,
+      "loyaltyPoints": 0,
+      "totalPointsEarned": 0,
+      "totalPointsRedeemed": 0,
+      "loyaltyLedger": []
     }
   ],
   "invoices": [
@@ -170,7 +223,8 @@
           "cgst": 882,
           "sgst": 882,
           "igst": 0,
-          "totalAmount": 11564
+          "totalAmount": 11564,
+          "unit": "PCS"
         },
         {
           "itemId": "item_3",
@@ -184,7 +238,8 @@
           "cgst": 210,
           "sgst": 210,
           "igst": 0,
-          "totalAmount": 3920
+          "totalAmount": 3920,
+          "unit": "PCS"
         }
       ],
       "subtotal": 13300,
@@ -196,6 +251,9 @@
       "paymentType": "bank",
       "paidAmount": 15484,
       "remainingAmount": 0,
+      "pointsRedeemed": 0,
+      "pointsDiscount": 0,
+      "pointsEarned": 0,
       "notes": "Goods delivered in good condition."
     },
     {
@@ -219,7 +277,8 @@
           "cgst": 0,
           "sgst": 0,
           "igst": 1476,
-          "totalAmount": 9676
+          "totalAmount": 9676,
+          "unit": "PCS"
         }
       ],
       "subtotal": 8200,
@@ -231,6 +290,9 @@
       "paymentType": "unpaid",
       "paidAmount": 0,
       "remainingAmount": 9676,
+      "pointsRedeemed": 0,
+      "pointsDiscount": 0,
+      "pointsEarned": 0,
       "notes": "Interstate supply to Karnataka store."
     },
     {
@@ -254,7 +316,8 @@
           "cgst": 0,
           "sgst": 0,
           "igst": 2880,
-          "totalAmount": 18880
+          "totalAmount": 18880,
+          "unit": "PCS"
         }
       ],
       "subtotal": 16000,
@@ -266,16 +329,19 @@
       "paymentType": "unpaid",
       "paidAmount": 0,
       "remainingAmount": 18880,
+      "pointsRedeemed": 0,
+      "pointsDiscount": 0,
+      "pointsEarned": 0,
       "notes": "Stock procurement of cables."
     },
     {
+      "id": "dn_1790861267900",
       "invoiceNumber": "INV-CASH-7891",
       "date": "2026-10-01",
       "partyId": "walkin_customer",
       "partyName": "रोख ग्राहक (Cash Customer)",
       "partyGstin": "",
-      "type": "sales",
-      "paymentType": "cash",
+      "type": "sale",
       "items": [
         {
           "itemId": "item_1790861267866",
@@ -283,14 +349,15 @@
           "hsn": "9999",
           "quantity": 2,
           "price": 120,
-          "discount": 0,
           "gstRate": 0,
           "amountBeforeTax": 240,
           "taxAmount": 0,
           "cgst": 0,
           "sgst": 0,
           "igst": 0,
-          "totalAmount": 240
+          "totalAmount": 240,
+          "discount": 0,
+          "unit": "PCS"
         }
       ],
       "subtotal": 240,
@@ -298,14 +365,18 @@
       "cgstTotal": 0,
       "sgstTotal": 0,
       "igstTotal": 0,
-      "extraCharges": [],
-      "grandTotal": 240,
+      "totalAmount": 0,
+      "paymentType": "cash",
       "paidAmount": 240,
       "remainingAmount": 0,
-      "notes": "Cash counter sale",
-      "id": "dn_1790861267900"
+      "pointsRedeemed": 0,
+      "pointsDiscount": 0,
+      "pointsEarned": 0,
+      "notes": "Cash counter sale"
     }
   ],
+  "challans": [],
+  "quotations": [],
   "transactions": [
     {
       "id": "tx_1790929275211",
@@ -331,6 +402,5 @@
       "role": "staff"
     }
   ],
-  "challans": [],
-  "quotations": []
+  "offers": []
 }

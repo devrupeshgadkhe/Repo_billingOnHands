@@ -42,7 +42,10 @@ import {
   ChevronDown,
   ChevronUp,
   Printer,
-  Sliders
+  Sliders,
+  Star,
+  Sparkles,
+  Gift
 } from "lucide-react";
 import { InvoiceUploadModal, ParsedInvoiceData } from "./InvoiceUploadModal.js";
 import EWayBillModal from "./EWayBillModal.js";
@@ -178,6 +181,7 @@ export default function InvoicingView({
   const [paidAmt, setPaidAmt] = useState<number>(0);
   const [customPaidAmount, setCustomPaidAmount] = useState<boolean>(false);
   const [notes, setNotes] = useState("");
+  const [redeemPoints, setRedeemPoints] = useState<number>(0);
   const [errorText, setErrorText] = useState("");
   const [sourceChallanId, setSourceChallanId] = useState<string | undefined>(undefined);
   const [sourceChallanNumber, setSourceChallanNumber] = useState<string | undefined>(undefined);
@@ -656,7 +660,36 @@ export default function InvoicingView({
 
     // Sum up dynamic extra charges
     const extraChargesSum = extraCharges.reduce((sum, curr) => sum + (curr.amount || 0), 0);
-    const grandTotal = subtotal + taxAmount + extraChargesSum;
+    const rawGrandTotal = subtotal + taxAmount + extraChargesSum;
+
+    // Customer Loyalty Points Scheme (Phase 7)
+    const loyaltyCfg = business.loyaltyConfig || {
+      enabled: true,
+      pointsPer100Rupees: 1,
+      redemptionRate: 1.0,
+      minPointsToRedeem: 10,
+      maxRedemptionPercentage: 50,
+      expiryDays: 365
+    };
+
+    const isCustomer = txSubtype === "sale" && activeParty?.type === "customer" && activeParty?.id !== "walkin_customer";
+    const availablePoints = isCustomer ? (activeParty.loyaltyPoints || 0) : 0;
+
+    // Calculate maximum points customer is allowed to redeem on this bill
+    const maxRedeemableRupees = (rawGrandTotal * (loyaltyCfg.maxRedemptionPercentage || 50)) / 100;
+    const maxPointsEligible = (loyaltyCfg.enabled !== false && isCustomer && availablePoints >= (loyaltyCfg.minPointsToRedeem || 0))
+      ? Math.min(availablePoints, Math.floor(maxRedeemableRupees / (loyaltyCfg.redemptionRate || 1.0)))
+      : 0;
+
+    const effectivePointsRedeemed = Math.min(Math.max(0, redeemPoints), maxPointsEligible);
+    const pointsDiscount = effectivePointsRedeemed * (loyaltyCfg.redemptionRate || 1.0);
+    const grandTotal = Math.max(0, rawGrandTotal - pointsDiscount);
+
+    // Points that will be earned on this purchase (based on final payable grand total)
+    const pointsToEarn = (loyaltyCfg.enabled !== false && isCustomer)
+      ? Math.floor((grandTotal / 100) * (loyaltyCfg.pointsPer100Rupees || 1))
+      : 0;
+
     const totalUnits = formattedLines.reduce((acc, curr) => acc + curr.quantity, 0);
 
     return {
@@ -667,12 +700,19 @@ export default function InvoicingView({
       igstTotal,
       extraChargesSum,
       totalDiscountGiven,
+      rawGrandTotal,
       grandTotal,
+      pointsDiscount,
+      effectivePointsRedeemed,
+      pointsToEarn,
+      availablePoints,
+      maxPointsEligible,
+      loyaltyCfg,
       itemCount: formattedLines.length,
       totalUnits,
       lines: formattedLines
     };
-  }, [invoiceLines, items, activeParty, business, extraCharges]);
+  }, [invoiceLines, items, activeParty, business, extraCharges, redeemPoints, txSubtype]);
 
   // Monitor total changes to auto-update payment inputs
   useEffect(() => {
@@ -1093,6 +1133,9 @@ export default function InvoicingView({
       paymentType,
       paidAmount: finalPaidAmount,
       remainingAmount: finalRemainingAmount > 0.01 ? finalRemainingAmount : 0,
+      pointsRedeemed: computedInvoiceDetails.effectivePointsRedeemed || 0,
+      pointsDiscount: computedInvoiceDetails.pointsDiscount || 0,
+      pointsEarned: computedInvoiceDetails.pointsToEarn || 0,
       notes,
       originalInvoiceNumber: originalInvoiceNumber.trim() || undefined,
       sourceChallanId,
@@ -1127,6 +1170,7 @@ export default function InvoicingView({
           setInvoiceLines([]);
           setExtraCharges([]);
           setNotes("");
+          setRedeemPoints(0);
           setCustomPaidAmount(false);
           setSourceChallanId(undefined);
           setSourceChallanNumber(undefined);
@@ -1444,15 +1488,34 @@ export default function InvoicingView({
                             {p.phone || "No phone"} • GSTIN: {p.gstin || "Unregistered"}
                           </p>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right flex flex-col items-end gap-1">
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
                             p.currentBalance > 0 ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"
                           }`}>
                             Balance: ₹{p.currentBalance.toFixed(2)}
                           </span>
+                          {p.type === "customer" && (p.loyaltyPoints || 0) > 0 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-0.5">
+                              <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                              <span>{p.loyaltyPoints} Pts</span>
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {/* Selected Registered Customer Loyalty Details Badge */}
+                {txSubtype.includes("sale") && activeParty && activeParty.id !== "walkin_customer" && activeParty.type === "customer" && (
+                  <div className="mt-1 flex items-center justify-between text-[11px] px-1 text-slate-600">
+                    <span className="truncate max-w-[60%]">
+                      {activeParty.phone ? `📞 ${activeParty.phone}` : ""} {activeParty.address ? `• 📍 ${activeParty.address}` : ""}
+                    </span>
+                    <span className="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 shrink-0">
+                      <Star className="w-3 h-3 text-amber-500 fill-amber-400" />
+                      <span>{activeParty.loyaltyPoints || 0} Pts (₹{((activeParty.loyaltyPoints || 0) * (computedInvoiceDetails.loyaltyCfg?.redemptionRate || 1)).toFixed(2)})</span>
+                    </span>
                   </div>
                 )}
               </div>
@@ -2137,7 +2200,113 @@ export default function InvoicingView({
                 )}
               </div>
 
+              {/* Loyalty Points Discount Line Item */}
+              {computedInvoiceDetails.pointsDiscount > 0 && (
+                <div className="flex justify-between items-center text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
+                  <span className="font-semibold text-xs flex items-center gap-1.5">
+                    <Star className="w-3.5 h-3.5 fill-emerald-500 text-emerald-600" />
+                    <span>Loyalty Points Discount ({computedInvoiceDetails.effectivePointsRedeemed} Pts):</span>
+                  </span>
+                  <span className="font-bold text-xs font-mono">- {formatINR(computedInvoiceDetails.pointsDiscount)}</span>
+                </div>
+              )}
+
             </div>
+
+            {/* Customer Loyalty Points Redemption & Rewards Box (Phase 7) */}
+            {txSubtype === "sale" && activeParty && activeParty.id !== "walkin_customer" && activeParty.type === "customer" && computedInvoiceDetails.loyaltyCfg?.enabled !== false && (
+              <div className="bg-gradient-to-r from-amber-50/90 to-orange-50/90 border border-amber-200 rounded-xl p-3 space-y-2.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                      <Star className="w-4 h-4 fill-white" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-amber-950 block">Customer Loyalty Points</span>
+                      <span className="text-[10px] text-amber-800 font-medium">
+                        Balance: <strong>{computedInvoiceDetails.availablePoints} Pts</strong> (₹{((computedInvoiceDetails.availablePoints) * (computedInvoiceDetails.loyaltyCfg?.redemptionRate || 1)).toFixed(2)})
+                      </span>
+                    </div>
+                  </div>
+                  {computedInvoiceDetails.maxPointsEligible > 0 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                      Eligible: {computedInvoiceDetails.maxPointsEligible} Pts
+                    </span>
+                  )}
+                </div>
+
+                {computedInvoiceDetails.availablePoints < (computedInvoiceDetails.loyaltyCfg?.minPointsToRedeem || 10) ? (
+                  <div className="text-[11px] text-amber-800 bg-amber-100/60 px-2 py-1 rounded-lg">
+                    ℹ️ Minimum {computedInvoiceDetails.loyaltyCfg?.minPointsToRedeem || 10} points required to redeem (Customer has {computedInvoiceDetails.availablePoints} pts).
+                  </div>
+                ) : computedInvoiceDetails.maxPointsEligible <= 0 ? (
+                  <div className="text-[11px] text-amber-800 bg-amber-100/60 px-2 py-1 rounded-lg">
+                    Add bill items to redeem loyalty points.
+                  </div>
+                ) : (
+                  <div className="space-y-2 pt-0.5">
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          min="0"
+                          max={computedInvoiceDetails.maxPointsEligible}
+                          value={redeemPoints || ""}
+                          onChange={(e) => {
+                            const val = Math.max(0, Math.min(computedInvoiceDetails.maxPointsEligible, parseInt(e.target.value) || 0));
+                            setRedeemPoints(val);
+                            setCustomPaidAmount(false);
+                          }}
+                          placeholder={`0 to ${computedInvoiceDetails.maxPointsEligible}`}
+                          className="w-full px-2.5 py-1.5 bg-white border border-amber-300 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
+                        />
+                        <span className="absolute right-2 top-1.5 text-[10px] text-amber-700 font-bold">PTS</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRedeemPoints(computedInvoiceDetails.maxPointsEligible);
+                          setCustomPaidAmount(false);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shrink-0 cursor-pointer shadow-2xs"
+                        title="Redeem maximum allowed points on this bill"
+                      >
+                        Redeem Max ({computedInvoiceDetails.maxPointsEligible})
+                      </button>
+
+                      {redeemPoints > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRedeemPoints(0);
+                            setCustomPaidAmount(false);
+                          }}
+                          className="px-2 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition shrink-0 cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+
+                    {computedInvoiceDetails.effectivePointsRedeemed > 0 && (
+                      <div className="flex items-center justify-between text-xs font-bold text-emerald-800 bg-white/90 px-2.5 py-1 rounded-lg border border-emerald-200">
+                        <span>🎉 Discount on this bill:</span>
+                        <span>- {formatINR(computedInvoiceDetails.pointsDiscount)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Points to be earned on this bill banner */}
+                {computedInvoiceDetails.pointsToEarn > 0 && (
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-950 bg-white/80 px-2.5 py-1.5 rounded-lg border border-amber-200/60">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Customer will earn +{computedInvoiceDetails.pointsToEarn} loyalty points on this bill!</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* GRAND TOTAL HERO DISPLAY */}
             <div className="bg-slate-900 text-white rounded-xl p-4 shadow-md text-center space-y-1">

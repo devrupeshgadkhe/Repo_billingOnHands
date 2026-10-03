@@ -380,6 +380,14 @@ export default function InvoicePrintModal({
                       ))
                     )}
 
+                    {/* Loyalty Points Discount Line */}
+                    {invoice.pointsDiscount && invoice.pointsDiscount > 0 ? (
+                      <div className="flex justify-between text-emerald-800 font-bold text-[10px]">
+                        <span>{isMarathi ? "लॉयल्टी सवलत:" : "Loyalty Disc:"}</span>
+                        <span>-₹{invoice.pointsDiscount.toFixed(2)} ({invoice.pointsRedeemed} pts)</span>
+                      </div>
+                    ) : null}
+
                     <div className="border-t border-dashed border-slate-400 my-1"></div>
                     <div className="flex justify-between font-black text-xs bg-slate-100 p-1 rounded">
                       <span>{isMarathi ? "एकूण रक्कम (TOTAL):" : "TOTAL AMOUNT:"}</span>
@@ -396,6 +404,13 @@ export default function InvoicePrintModal({
                         <span>₹{invoice.remainingAmount.toFixed(2)}</span>
                       </div>
                     )}
+
+                    {/* Loyalty Points Earned Banner */}
+                    {invoice.pointsEarned && invoice.pointsEarned > 0 ? (
+                      <div className="my-1.5 p-1 border border-dashed border-amber-500 rounded bg-amber-50 text-center font-bold text-[9.5px] text-amber-950">
+                        ★ {isMarathi ? `या बिलावर मिळालेले पॉईंट्स: +${invoice.pointsEarned} Pts` : `Points Earned Today: +${invoice.pointsEarned} Pts`} ★
+                      </div>
+                    ) : null}
                   </div>
 
                   {/* Savings Banner */}
@@ -647,6 +662,11 @@ export default function InvoicePrintModal({
                         <p className="italic">"{invoice.notes}"</p>
                       </div>
                     )}
+                    {invoice.pointsEarned && invoice.pointsEarned > 0 ? (
+                      <div className="pt-2 border-t border-slate-200 text-[11px] font-bold text-amber-900 bg-amber-50/80 p-2 rounded border border-amber-200 flex items-center gap-1.5">
+                        <span>⭐ Loyalty Points Awarded: +{invoice.pointsEarned} Pts</span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -685,6 +705,14 @@ export default function InvoicePrintModal({
                       ))}
                     </div>
                   )}
+
+                  {/* Loyalty Points Discount Line */}
+                  {invoice.pointsDiscount && invoice.pointsDiscount > 0 ? (
+                    <div className="flex justify-between items-center text-emerald-800 bg-emerald-50 px-2 py-1 rounded text-xs font-semibold border border-emerald-200">
+                      <span>Loyalty Points Disc ({invoice.pointsRedeemed} pts):</span>
+                      <span className="font-mono font-bold">- {formatRupees(invoice.pointsDiscount)}</span>
+                    </div>
+                  ) : null}
 
                   <div className="flex justify-between items-center text-sm font-bold bg-slate-900 text-white rounded-lg px-3 py-2 mt-2">
                     <span>Grand Total:</span>

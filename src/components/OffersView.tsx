@@ -286,6 +286,29 @@ export default function OffersView({
         </div>
       </div>
 
+      {/* Loyalty Program Banner Notice */}
+      <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+            <Sparkles className="w-4 h-4 fill-white" />
+          </div>
+          <div>
+            <span className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+              <span>⭐ ग्राहक लॉयल्टी रिवॉर्ड्स स्कीम (Customer Loyalty Points)</span>
+              <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-1.5 py-0.2 rounded">सक्रिय / Active</span>
+            </span>
+            <p className="text-[11px] text-slate-600 mt-0.5">
+              खरेदीवर ग्राहकांना स्वयंचलित लॉयल्टी पॉईंट्स जमा होतात आणि POS चेकआउटमध्ये थेट सवलतीसाठी रिडीम होतात.
+            </p>
+          </div>
+        </div>
+        <div className="text-right shrink-0">
+          <span className="text-[10px] font-bold text-amber-800 bg-amber-100/70 px-2 py-1 rounded-md border border-amber-200">
+            नियम: Settings • ग्राहक खाते: Parties
+          </span>
+        </div>
+      </div>
+
       {/* Filter & Search Bar */}
       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-3 items-center justify-between">
         <div className="relative flex-1 w-full">

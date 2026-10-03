@@ -13,6 +13,7 @@ const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus } from "./src/types.js";
 import { munimjiPool, processMunimjiCommand } from "./src/server/munimjiPool.js";
+import { generateEodSummary, sendEodEmailReport, checkScheduledEodEmailJob } from "./src/server/eodReportService.js";
 
 const app = express();
 // AI Studio dev environment requires port 3000; Electron uses dynamic port passed via process.env.PORT
@@ -337,13 +338,41 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
   }
 
   const business = {
+    ...raw.business,
     name: String(raw.business?.name || "Apex Electro-Tech Systems"),
     gstin: String(raw.business?.gstin || "27AAAAA1111A1Z1"),
     address: String(raw.business?.address || "Suite 405, Tech Green Boulevard, Bandra East"),
     state: String(raw.business?.state || "Maharashtra"),
     phone: String(raw.business?.phone || "+91 98765 43210"),
     email: String(raw.business?.email || "billing@apexelectro.com"),
-    signatureText: String(raw.business?.signatureText || "For Apex Electro-Tech Systems")
+    signatureText: String(raw.business?.signatureText || "For Apex Electro-Tech Systems"),
+    loyaltyConfig: raw.business?.loyaltyConfig || {
+      enabled: true,
+      pointsPer100Rupees: 1,
+      redemptionRate: 1.0,
+      minPointsToRedeem: 10,
+      maxRedemptionPercentage: 50,
+      expiryDays: 365
+    },
+    scheduledEmailConfig: raw.business?.scheduledEmailConfig || {
+      enabled: false,
+      recipientEmail: raw.business?.email || "rupeshgadkhe@gmail.com",
+      ccEmails: "",
+      senderName: "Billing On Hand Store Reports",
+      scheduledTime: "21:00",
+      reportSections: {
+        salesSummary: true,
+        paymentModes: true,
+        profitAndMargins: true,
+        taxSummary: true,
+        topSellingItems: true,
+        lowStockAlerts: true,
+        nearExpiryAlerts: true,
+        customerKhata: true,
+        loyaltySummary: true
+      },
+      lastSendStatus: "idle"
+    }
   };
 
   const partiesMap = new Map<string, string>();
@@ -361,7 +390,13 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
       state: String(p?.state || business.state || "Maharashtra"),
       gstin: String(p?.gstin || ""),
       initialBalance: Number(p?.initialBalance) || 0,
-      currentBalance: Number(p?.currentBalance) || 0
+      currentBalance: Number(p?.currentBalance) || 0,
+      creditLimit: p?.creditLimit !== undefined ? Number(p.creditLimit) : undefined,
+      creditDays: p?.creditDays !== undefined ? Number(p.creditDays) : undefined,
+      loyaltyPoints: Number(p?.loyaltyPoints) || 0,
+      totalPointsEarned: Number(p?.totalPointsEarned) || 0,
+      totalPointsRedeemed: Number(p?.totalPointsRedeemed) || 0,
+      loyaltyLedger: Array.isArray(p?.loyaltyLedger) ? p.loyaltyLedger : []
     };
   }) : [];
 
@@ -438,6 +473,9 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
       paymentType: (inv?.paymentType || "cash") as any,
       paidAmount: Number(inv?.paidAmount) || 0,
       remainingAmount: Number(inv?.remainingAmount) || 0,
+      pointsRedeemed: Number(inv?.pointsRedeemed) || 0,
+      pointsDiscount: Number(inv?.pointsDiscount) || 0,
+      pointsEarned: Number(inv?.pointsEarned) || 0,
       notes: String(inv?.notes || "")
     };
   }) : [];
@@ -1569,18 +1607,72 @@ app.post("/api/parties", (req, res) => {
   const existingIndex = db.parties.findIndex(p => p.id === incoming.id);
   
   if (existingIndex > -1) {
-    // Preserve balance unless specified
+    // Preserve balance and loyalty fields unless specified
     const prev = db.parties[existingIndex];
     incoming.currentBalance = incoming.currentBalance !== undefined ? incoming.currentBalance : prev.currentBalance;
+    incoming.loyaltyPoints = incoming.loyaltyPoints !== undefined ? incoming.loyaltyPoints : (prev.loyaltyPoints || 0);
+    incoming.totalPointsEarned = incoming.totalPointsEarned !== undefined ? incoming.totalPointsEarned : (prev.totalPointsEarned || 0);
+    incoming.totalPointsRedeemed = incoming.totalPointsRedeemed !== undefined ? incoming.totalPointsRedeemed : (prev.totalPointsRedeemed || 0);
+    incoming.loyaltyLedger = incoming.loyaltyLedger || prev.loyaltyLedger || [];
     db.parties[existingIndex] = incoming;
   } else {
     incoming.id = incoming.id || "party_" + Date.now();
     incoming.currentBalance = incoming.currentBalance || incoming.initialBalance || 0;
+    incoming.loyaltyPoints = incoming.loyaltyPoints || 0;
+    incoming.totalPointsEarned = incoming.totalPointsEarned || 0;
+    incoming.totalPointsRedeemed = incoming.totalPointsRedeemed || 0;
+    incoming.loyaltyLedger = incoming.loyaltyLedger || [];
     db.parties.push(incoming);
   }
   
   writeDb(db);
   res.json({ message: "Party saved successfully.", party: incoming });
+});
+
+// Manual Loyalty Points Adjustment (Add or Deduct points with reason)
+app.post("/api/parties/:id/loyalty-adjust", (req, res) => {
+  const db = readDb();
+  const id = req.params.id;
+  const { points, reason } = req.body;
+  
+  const party = db.parties.find(p => p.id === id);
+  if (!party) {
+    return res.status(404).json({ error: "Customer not found." });
+  }
+
+  const pts = Number(points);
+  if (isNaN(pts) || pts === 0) {
+    return res.status(400).json({ error: "Please enter a valid non-zero points adjustment." });
+  }
+
+  if (party.loyaltyPoints === undefined) party.loyaltyPoints = 0;
+  if (party.totalPointsEarned === undefined) party.totalPointsEarned = 0;
+  if (party.totalPointsRedeemed === undefined) party.totalPointsRedeemed = 0;
+  if (!party.loyaltyLedger) party.loyaltyLedger = [];
+
+  // Prevent balance from going negative
+  if (pts < 0 && party.loyaltyPoints + pts < 0) {
+    return res.status(400).json({ error: `Cannot deduct ${Math.abs(pts)} points. Customer only has ${party.loyaltyPoints} points.` });
+  }
+
+  party.loyaltyPoints = Math.max(0, party.loyaltyPoints + pts);
+  if (pts > 0) {
+    party.totalPointsEarned += pts;
+  } else {
+    party.totalPointsRedeemed += Math.abs(pts);
+  }
+
+  party.loyaltyLedger.unshift({
+    id: "ll_" + Date.now() + "_adj_" + Math.random().toString(36).substr(2, 4),
+    date: new Date().toISOString().split("T")[0],
+    type: "ADJUSTMENT",
+    points: pts,
+    balanceAfter: party.loyaltyPoints,
+    description: reason ? String(reason) : (pts > 0 ? "Manual points bonus / adjustment" : "Manual points deduction")
+  });
+
+  writeDb(db);
+  res.json({ message: "Loyalty points adjusted successfully.", party });
 });
 
 // Delete Party
@@ -1684,6 +1776,18 @@ app.post("/api/invoices", (req, res) => {
           // "sale_return" or "purchase_return"
           oldParty.currentBalance += oldInvoice.remainingAmount;
         }
+
+        // Revert previous loyalty points adjustments if this was a sale
+        if (oldInvoice.type === "sale") {
+          if (oldInvoice.pointsRedeemed && oldInvoice.pointsRedeemed > 0) {
+            oldParty.loyaltyPoints = (oldParty.loyaltyPoints || 0) + oldInvoice.pointsRedeemed;
+            oldParty.totalPointsRedeemed = Math.max(0, (oldParty.totalPointsRedeemed || 0) - oldInvoice.pointsRedeemed);
+          }
+          if (oldInvoice.pointsEarned && oldInvoice.pointsEarned > 0) {
+            oldParty.loyaltyPoints = Math.max(0, (oldParty.loyaltyPoints || 0) - oldInvoice.pointsEarned);
+            oldParty.totalPointsEarned = Math.max(0, (oldParty.totalPointsEarned || 0) - oldInvoice.pointsEarned);
+          }
+        }
       }
       
       db.invoices.splice(oldInvoiceIndex, 1);
@@ -1743,7 +1847,7 @@ app.post("/api/invoices", (req, res) => {
     }
   }
 
-  // Apply Party ledger adjustment
+  // Apply Party ledger adjustment & Customer Loyalty Points
   const party = db.parties.find(p => p.id === invoice.partyId);
   if (party) {
     if (invoice.type === "sale" || invoice.type === "purchase") {
@@ -1751,6 +1855,51 @@ app.post("/api/invoices", (req, res) => {
     } else {
       // "sale_return" or "purchase_return"
       party.currentBalance -= invoice.remainingAmount;
+    }
+
+    // Process customer loyalty rewards for sales
+    if (invoice.type === "sale" && party.type === "customer") {
+      if (party.loyaltyPoints === undefined) party.loyaltyPoints = 0;
+      if (party.totalPointsEarned === undefined) party.totalPointsEarned = 0;
+      if (party.totalPointsRedeemed === undefined) party.totalPointsRedeemed = 0;
+      if (!party.loyaltyLedger) party.loyaltyLedger = [];
+
+      const invDate = invoice.date || new Date().toISOString().split("T")[0];
+      const invNum = invoice.invoiceNumber || invoice.id;
+
+      // 1. If points were redeemed on this invoice
+      const ptsRedeemed = Number(invoice.pointsRedeemed) || 0;
+      if (ptsRedeemed > 0) {
+        party.loyaltyPoints = Math.max(0, party.loyaltyPoints - ptsRedeemed);
+        party.totalPointsRedeemed += ptsRedeemed;
+        party.loyaltyLedger.unshift({
+          id: "ll_" + Date.now() + "_red_" + Math.random().toString(36).substr(2, 4),
+          date: invDate,
+          invoiceId: invoice.id,
+          invoiceNumber: invNum,
+          type: "REDEEMED",
+          points: -ptsRedeemed,
+          balanceAfter: party.loyaltyPoints,
+          description: `Redeemed ${ptsRedeemed} pts (₹${Number(invoice.pointsDiscount || ptsRedeemed).toFixed(2)}) on Bill #${invNum}`
+        });
+      }
+
+      // 2. If points were earned on this invoice
+      const ptsEarned = Number(invoice.pointsEarned) || 0;
+      if (ptsEarned > 0) {
+        party.loyaltyPoints += ptsEarned;
+        party.totalPointsEarned += ptsEarned;
+        party.loyaltyLedger.unshift({
+          id: "ll_" + Date.now() + "_earn_" + Math.random().toString(36).substr(2, 4),
+          date: invDate,
+          invoiceId: invoice.id,
+          invoiceNumber: invNum,
+          type: "EARNED",
+          points: ptsEarned,
+          balanceAfter: party.loyaltyPoints,
+          description: `Earned +${ptsEarned} pts on Bill #${invNum}`
+        });
+      }
     }
   }
 
@@ -1805,7 +1954,7 @@ app.delete("/api/invoices/:id", (req, res) => {
     }
   }
 
-  // Revert party outstanding balance
+  // Revert party outstanding balance and loyalty points
   const party = db.parties.find(p => p.id === invoice.partyId);
   if (party) {
     if (invoice.type === "sale" || invoice.type === "purchase") {
@@ -1814,11 +1963,56 @@ app.delete("/api/invoices/:id", (req, res) => {
       // "sale_return" or "purchase_return"
       party.currentBalance += invoice.remainingAmount; // Restore balance
     }
+
+    if (invoice.type === "sale") {
+      if (invoice.pointsRedeemed && invoice.pointsRedeemed > 0) {
+        party.loyaltyPoints = (party.loyaltyPoints || 0) + invoice.pointsRedeemed;
+        party.totalPointsRedeemed = Math.max(0, (party.totalPointsRedeemed || 0) - invoice.pointsRedeemed);
+      }
+      if (invoice.pointsEarned && invoice.pointsEarned > 0) {
+        party.loyaltyPoints = Math.max(0, (party.loyaltyPoints || 0) - invoice.pointsEarned);
+        party.totalPointsEarned = Math.max(0, (party.totalPointsEarned || 0) - invoice.pointsEarned);
+      }
+    }
   }
 
   db.invoices.splice(invoiceIndex, 1);
   writeDb(db);
   res.json({ message: "Invoice deleted and ledger balances reverted successfully." });
+});
+
+// Automated Daily End-of-Day (EOD) Reports API Endpoints (Phase 8)
+
+// 1. Get Daily EOD summary calculations
+app.get("/api/reports/daily-eod-summary", (req, res) => {
+  try {
+    const db = readDb();
+    const dateQuery = typeof req.query.date === "string" ? req.query.date : undefined;
+    const summary = generateEodSummary(db, dateQuery);
+    res.json({ success: true, summary });
+  } catch (err: any) {
+    console.error("Failed to generate EOD summary:", err);
+    res.status(500).json({ error: "Failed to generate EOD summary: " + err.message });
+  }
+});
+
+// 2. Trigger or Test Daily EOD Email Dispatch
+app.post("/api/reports/send-eod-email", async (req, res) => {
+  try {
+    const db = readDb();
+    const { date, recipientEmail, isTest } = req.body || {};
+    const result = await sendEodEmailReport(db, {
+      targetDate: typeof date === "string" ? date : undefined,
+      overrideRecipient: typeof recipientEmail === "string" ? recipientEmail : undefined,
+      isTest: !!isTest
+    });
+
+    writeDb(db);
+    res.json(result);
+  } catch (err: any) {
+    console.error("Failed to send EOD email report:", err);
+    res.status(500).json({ error: "Failed to send EOD email report: " + err.message });
+  }
 });
 
 // Delivery Challans API Endpoints
@@ -3316,6 +3510,7 @@ function executeMunimjiUniversalCrud(
         else if (textToSearch.includes("चलन") || textToSearch.includes("challan") || textToSearch.includes("डिलिव्हरी")) targetTab = "challans";
         else if (textToSearch.includes("खर्च") || textToSearch.includes("उत्पन्न") || textToSearch.includes("expense") || textToSearch.includes("transaction")) targetTab = "transactions";
         else if (textToSearch.includes("सेटिंग") || textToSearch.includes("बॅकअप") || textToSearch.includes("setting")) targetTab = "settings";
+        else if (textToSearch.includes("लॉयल्टी") || textToSearch.includes("loyalty") || textToSearch.includes("पॉईंट्स") || textToSearch.includes("points")) targetTab = "parties";
         else if (textToSearch.includes("वापरकर्ता") || textToSearch.includes("युझर") || textToSearch.includes("user") || textToSearch.includes("access")) targetTab = "access_control";
         else targetTab = "dashboard";
       }
@@ -3337,6 +3532,66 @@ function executeMunimjiUniversalCrud(
       const tabTitle = TAB_NAMES[targetTab] || targetTab;
       message = `मालक, मी ${tabTitle} पेज उघडत आहे.`;
       resultData = { targetTab, tabTitle };
+      return { success: true, message, data: resultData };
+    }
+
+    // 15. LOYALTY POINTS INQUIRY & ADJUSTMENT
+    else if (act.includes("LOYALTY") || act.includes("POINTS") || intent === "CHECK_LOYALTY" || intent === "ADJUST_LOYALTY") {
+      if (!db.parties) db.parties = [];
+      const partyQuery = String(payload?.partyName || payload?.name || payload?.customerName || "").toLowerCase();
+      let party = db.parties.find(p => p.type === "customer" && partyQuery && (p.name.toLowerCase().includes(partyQuery) || (p.phone && p.phone.includes(partyQuery))));
+      
+      // Fallback: search party in userText
+      if (!party) {
+        const textToSearch = (userText || replyText || "").toLowerCase();
+        party = db.parties.find(p => p.type === "customer" && p.name && textToSearch.includes(p.name.toLowerCase()));
+      }
+
+      if (party) {
+        const pts = party.loyaltyPoints || 0;
+        const rate = db.business?.loyaltyConfig?.redemptionRate || 1.0;
+        const rupeeVal = (pts * rate).toFixed(2);
+        
+        if (act.includes("ADD") || act.includes("BONUS") || act.includes("ADJUST")) {
+          const addPts = Number(payload?.points || payload?.amount || 0);
+          if (addPts !== 0) {
+            party.loyaltyPoints = Math.max(0, (party.loyaltyPoints || 0) + addPts);
+            if (addPts > 0) party.totalPointsEarned = (party.totalPointsEarned || 0) + addPts;
+            if (!party.loyaltyLedger) party.loyaltyLedger = [];
+            party.loyaltyLedger.unshift({
+              id: "ll_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
+              date: new Date().toISOString().split("T")[0],
+              type: "ADJUSTMENT",
+              points: addPts,
+              balanceAfter: party.loyaltyPoints,
+              description: payload?.reason || "Munimji Voice Loyalty Adjustment"
+            });
+            modified = true;
+            message = `${party.name} यांच्या खात्यात ${addPts > 0 ? '+' + addPts : addPts} पॉईंट्स ॲडजस्ट केले. नवीन शिल्लक: ${party.loyaltyPoints} पॉईंट्स (मूल्य: ₹${(party.loyaltyPoints * rate).toFixed(2)}).`;
+          }
+        } else {
+          message = `ग्राहक ${party.name} यांच्याकडे ${pts} लॉयल्टी पॉईंट्स शिल्लक आहेत (रोख मूल्य: ₹${rupeeVal}).`;
+        }
+        resultData = { party, loyaltyPoints: party.loyaltyPoints, valueInRupees: rupeeVal };
+        return { success: true, message, data: resultData };
+      } else {
+        message = `माफ करा, संबंधित ग्राहक सिस्टीममध्ये सापडला नाही.`;
+        return { success: false, message };
+      }
+    }
+
+    // 16. EOD REPORT & EMAIL DISPATCH (Phase 8)
+    else if (
+      act.includes("EOD") || act.includes("SEND_EMAIL") || act.includes("DAILY_REPORT") ||
+      act.includes("EMAIL_REPORT") || intent === "SEND_EOD_EMAIL" || intent === "DAILY_SUMMARY" ||
+      combinedContext.includes("ईमेल अहवाल") || combinedContext.includes("डे एंड") || combinedContext.includes("eod email") ||
+      combinedContext.includes("आजचा अहवाल पाठवा") || combinedContext.includes("ईमेल पाठवा")
+    ) {
+      const summary = generateEodSummary(db);
+      sendEodEmailReport(db).catch(e => console.warn("Munimji voice triggered email send error:", e));
+      writeDb(db);
+      message = `आजचा डे-एंड सारांश तयार करण्यात आला आहे. एकूण विक्री: ₹${summary.sales.netSalesTotal.toFixed(2)} (${summary.sales.invoiceCount} बिले), रोख जमा: ₹${summary.sales.cashCollected.toFixed(2)}. मालकाच्या ईमेलवर अहवाल यशस्वीरीत्या पाठवला आहे!`;
+      resultData = { summary };
       return { success: true, message, data: resultData };
     }
 
@@ -3524,6 +3779,14 @@ if (!process.env.ELECTRON_ENV) {
         console.warn("Periodic automated backup error:", err);
       }
     }, 15 * 60 * 1000);
+
+    // Periodic automated EOD email dispatcher check (every 60 seconds)
+    setInterval(() => {
+      checkScheduledEodEmailJob(
+        () => readDb(),
+        (updatedDb) => writeDb(updatedDb)
+      );
+    }, 60 * 1000);
   }).catch((err) => {
     console.error("Auto start server failed:", err);
   });

@@ -29,7 +29,13 @@ import {
   PlusCircle,
   Clock,
   Briefcase,
-  CheckCircle
+  CheckCircle,
+  Star,
+  Sparkles,
+  Gift,
+  History,
+  Award,
+  X
 } from "lucide-react";
 
 interface PartiesViewProps {
@@ -70,6 +76,14 @@ export default function PartiesView({
   const [payNotes, setPayNotes] = useState("");
   const [recordingPayment, setRecordingPayment] = useState(false);
   const [paySuccessMsg, setPaySuccessMsg] = useState(false);
+
+  // Customer Loyalty Points States (Phase 7)
+  const [loyaltyModalParty, setLoyaltyModalParty] = useState<Party | null>(null);
+  const [adjustPoints, setAdjustPoints] = useState<string>("");
+  const [adjustReason, setAdjustReason] = useState<string>("");
+  const [adjustType, setAdjustType] = useState<"add" | "deduct">("add");
+  const [isAdjusting, setIsAdjusting] = useState<boolean>(false);
+  const [adjustSuccessMsg, setAdjustSuccessMsg] = useState<string>("");
 
   // Form State for Party creation
   const [formData, setFormData] = useState<Omit<Party, "id" | "currentBalance">>({
@@ -405,6 +419,70 @@ export default function PartiesView({
     }
   };
 
+  // Handle Manual Customer Loyalty Points Adjustment
+  const handleLoyaltyAdjust = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!loyaltyModalParty) return;
+
+    const rawPts = parseInt(adjustPoints);
+    if (isNaN(rawPts) || rawPts <= 0) {
+      await showAlert({
+        title: "Invalid Points",
+        message: "Please enter a valid positive number of points.",
+        variant: "warning"
+      });
+      return;
+    }
+
+    const finalPts = adjustType === "deduct" ? -rawPts : rawPts;
+
+    if (adjustType === "deduct" && (loyaltyModalParty.loyaltyPoints || 0) + finalPts < 0) {
+      await showAlert({
+        title: "Insufficient Points",
+        message: `Cannot deduct ${rawPts} points. Customer currently has ${loyaltyModalParty.loyaltyPoints || 0} points.`,
+        variant: "warning"
+      });
+      return;
+    }
+
+    try {
+      setIsAdjusting(true);
+      const res = await fetch(`/api/parties/${loyaltyModalParty.id}/loyalty-adjust`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          points: finalPts,
+          reason: adjustReason.trim() || (adjustType === "add" ? "Manual loyalty bonus" : "Manual loyalty points deduction")
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        await onSaveParty(data.party);
+        setLoyaltyModalParty(data.party);
+        setAdjustPoints("");
+        setAdjustReason("");
+        setAdjustSuccessMsg(`Successfully ${adjustType === "add" ? "credited" : "deducted"} ${rawPts} points!`);
+        setTimeout(() => setAdjustSuccessMsg(""), 3500);
+      } else {
+        const err = await res.json();
+        await showAlert({
+          title: "Adjustment Failed",
+          message: err?.error || "Failed to adjust loyalty points.",
+          variant: "danger"
+        });
+      }
+    } catch (err: any) {
+      await showAlert({
+        title: "Network Error",
+        message: err?.message || "Failed to adjust loyalty points.",
+        variant: "danger"
+      });
+    } finally {
+      setIsAdjusting(false);
+    }
+  };
+
   // Sync state if selected ledger party edited/changed
   const activePartyInLedger = useMemo(() => {
     if (!selectedLedgerParty) return null;
@@ -487,7 +565,7 @@ export default function PartiesView({
         </div>
 
         {/* Ledger Statistics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 print:grid-cols-3">
+        <div className={`grid grid-cols-1 ${isCustomer ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'} gap-5 print:grid-cols-3`}>
           
           <div className="p-4 bg-white border border-slate-200 rounded-xl shadow-xs">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Opening Account balance</span>
@@ -515,6 +593,40 @@ export default function PartiesView({
               {isCustomer ? "Cash Received" : "Cash Disbursed"}
             </span>
           </div>
+
+          {isCustomer && (
+            <div className="p-4 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-xl shadow-xs flex flex-col justify-between print:hidden">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-widest block">Loyalty Points</span>
+                  <span className="p-1 bg-amber-200/60 rounded-md text-amber-800">
+                    <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-600" />
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className="text-xl font-black font-mono text-amber-950">
+                    {activePartyInLedger.loyaltyPoints || 0}
+                  </span>
+                  <span className="text-xs font-bold text-amber-800">Pts</span>
+                  <span className="text-[11px] text-amber-700 font-semibold font-mono ml-1">
+                    (₹{((activePartyInLedger.loyaltyPoints || 0) * 1.0).toFixed(2)})
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-amber-800 mt-1 font-medium">
+                  <span>Earned: {activePartyInLedger.totalPointsEarned || 0}</span>
+                  <span>Redeemed: {activePartyInLedger.totalPointsRedeemed || 0}</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLoyaltyModalParty(activePartyInLedger)}
+                className="mt-2.5 w-full py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>पॉईंट्स लेजर व ॲडजस्ट</span>
+              </button>
+            </div>
+          )}
 
         </div>
 
@@ -862,6 +974,12 @@ export default function PartiesView({
                         <div>
                           <p id={`party-row-${p.id}-name`} className="font-bold text-slate-800 text-sm group-hover:text-indigo-600 transition flex items-center space-x-1">
                             <span>{p.name}</span>
+                            {isCustomer && (p.loyaltyPoints || 0) > 0 && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 inline-flex items-center gap-1 ml-1.5 shadow-2xs">
+                                <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                                <span>{p.loyaltyPoints} Pts</span>
+                              </span>
+                            )}
                             <span className="hidden group-hover:inline-block text-[9px] font-mono font-bold leading-none bg-indigo-50 text-indigo-600 px-1 py-0.5 rounded uppercase mt-0.5 ml-2.5 shadow-xs">
                               🔗 Ledger Table
                             </span>
@@ -926,6 +1044,20 @@ export default function PartiesView({
                     {/* Action buttons */}
                     <td className="py-3.5 px-4 text-center">
                       <div className="flex items-center justify-center space-x-1">
+                        {isCustomer && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setLoyaltyModalParty(p);
+                            }}
+                            className="p-1 px-2 text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded transition cursor-pointer flex items-center gap-1 font-bold text-[11px] shadow-2xs"
+                            title="Customer Loyalty Points History & Adjustments"
+                          >
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                            <span>{p.loyaltyPoints || 0} Pts</span>
+                          </button>
+                        )}
                         {perms.update && (
                           <button
                             id={`edit-party-${p.id}-btn`}
@@ -1120,6 +1252,229 @@ export default function PartiesView({
               </div>
 
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Loyalty Points & History Modal (Phase 7) */}
+      {loyaltyModalParty && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-scale-in border border-slate-200">
+            
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white p-4.5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center shadow-inner">
+                  <Star className="w-5 h-5 fill-white text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base leading-tight">Customer Loyalty Points & Ledger</h3>
+                  <p className="text-xs text-amber-100 flex items-center gap-1.5 mt-0.5">
+                    <span>{loyaltyModalParty.name}</span>
+                    {loyaltyModalParty.phone && <span>• 📞 {loyaltyModalParty.phone}</span>}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setLoyaltyModalParty(null)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Content Scrollable Area */}
+            <div className="p-5 overflow-y-auto space-y-5 text-slate-800">
+              
+              {/* Top Summary Cards */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-center">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block">Available Points</span>
+                  <span className="text-xl font-black font-mono text-amber-950 block mt-0.5">
+                    {loyaltyModalParty.loyaltyPoints || 0}
+                  </span>
+                  <span className="text-[10px] text-amber-700 font-semibold block font-mono">
+                    = ₹{((loyaltyModalParty.loyaltyPoints || 0) * 1.0).toFixed(2)} Value
+                  </span>
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block">Lifetime Earned</span>
+                  <span className="text-xl font-black font-mono text-emerald-900 block mt-0.5">
+                    {loyaltyModalParty.totalPointsEarned || 0}
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-semibold block font-mono">
+                    Total Credits
+                  </span>
+                </div>
+
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-center">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-rose-800 block">Lifetime Redeemed</span>
+                  <span className="text-xl font-black font-mono text-rose-900 block mt-0.5">
+                    {loyaltyModalParty.totalPointsRedeemed || 0}
+                  </span>
+                  <span className="text-[10px] text-rose-700 font-semibold block font-mono">
+                    Discounts Used
+                  </span>
+                </div>
+              </div>
+
+              {/* Manual Adjustment Card */}
+              {perms.update && (
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Manual Points Adjustment / Bonus</span>
+                    </span>
+                    <div className="flex bg-white rounded-lg p-0.5 border border-slate-200 text-[11px] font-bold">
+                      <button
+                        type="button"
+                        onClick={() => setAdjustType("add")}
+                        className={`px-2.5 py-0.5 rounded-md transition cursor-pointer ${
+                          adjustType === "add" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        + Credit Bonus
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAdjustType("deduct")}
+                        className={`px-2.5 py-0.5 rounded-md transition cursor-pointer ${
+                          adjustType === "deduct" ? "bg-rose-600 text-white shadow-xs" : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        - Deduct
+                      </button>
+                    </div>
+                  </div>
+
+                  {adjustSuccessMsg && (
+                    <div className="bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5">
+                      <CheckCircle className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>{adjustSuccessMsg}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleLoyaltyAdjust} className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                        {adjustType === "add" ? "Points to Credit" : "Points to Deduct"}
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        required
+                        value={adjustPoints}
+                        onChange={(e) => setAdjustPoints(e.target.value)}
+                        placeholder="e.g. 50"
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                        Reason / Note
+                      </label>
+                      <input
+                        type="text"
+                        value={adjustReason}
+                        onChange={(e) => setAdjustReason(e.target.value)}
+                        placeholder="e.g. Festival bonus / reward"
+                        className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isAdjusting}
+                      className={`w-full py-1.5 px-3 rounded-lg text-xs font-bold text-white transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs ${
+                        adjustType === "add" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-rose-600 hover:bg-rose-700"
+                      } ${isAdjusting ? "opacity-50" : ""}`}
+                    >
+                      <Award className="w-3.5 h-3.5" />
+                      <span>{isAdjusting ? "Saving..." : adjustType === "add" ? "Add Points" : "Deduct Points"}</span>
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Transaction History Table */}
+              <div className="space-y-2">
+                <span className="text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Points Transaction History ({loyaltyModalParty.loyaltyLedger?.length || 0})</span>
+                </span>
+
+                {!loyaltyModalParty.loyaltyLedger || loyaltyModalParty.loyaltyLedger.length === 0 ? (
+                  <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-6 text-center text-slate-500 text-xs">
+                    <p className="font-semibold text-slate-700">No loyalty transactions recorded yet.</p>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Points will be automatically recorded whenever this customer shops in POS Billing or via manual bonus above.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden shadow-2xs">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-200 text-slate-600 uppercase text-[10px] font-bold">
+                          <th className="py-2 px-3">Date</th>
+                          <th className="py-2 px-2 text-center">Type</th>
+                          <th className="py-2 px-3 text-right">Points</th>
+                          <th className="py-2 px-3 text-right">Balance After</th>
+                          <th className="py-2 px-3">Details / Bill</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-mono">
+                        {loyaltyModalParty.loyaltyLedger.map((tx, idx) => (
+                          <tr key={tx.id || idx} className="hover:bg-slate-50/80 transition">
+                            <td className="py-2 px-3 text-slate-600 whitespace-nowrap text-[11px]">
+                              {tx.date}
+                            </td>
+                            <td className="py-2 px-2 text-center">
+                              <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                                tx.type === "EARNED"
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : tx.type === "REDEEMED"
+                                  ? "bg-rose-100 text-rose-800"
+                                  : "bg-blue-100 text-blue-800"
+                              }`}>
+                                {tx.type}
+                              </span>
+                            </td>
+                            <td className={`py-2 px-3 text-right font-black ${
+                              tx.points > 0 ? "text-emerald-700" : "text-rose-600"
+                            }`}>
+                              {tx.points > 0 ? `+${tx.points}` : tx.points}
+                            </td>
+                            <td className="py-2 px-3 text-right font-bold text-slate-800">
+                              {tx.balanceAfter} Pts
+                            </td>
+                            <td className="py-2 px-3 font-sans text-[11px] text-slate-700 max-w-[200px] truncate" title={tx.description}>
+                              {tx.description}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => setLoyaltyModalParty(null)}
+                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
           </div>
         </div>
       )}

@@ -30,7 +30,9 @@ import {
   ArrowUpRight,
   ArrowDownLeft,
   Truck,
-  X
+  X,
+  Mail,
+  Send
 } from "lucide-react";
 import EWayBillModal from "./EWayBillModal.js";
 
@@ -88,6 +90,51 @@ export default function ReportsView({
 
   const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Record<string, boolean>>({});
   const [ewayBillModalInvoice, setEwayBillModalInvoice] = useState<Invoice | null>(null);
+
+  // Phase 8: EOD Report Email State
+  const [isEodModalOpen, setIsEodModalOpen] = useState(false);
+  const [eodSummaryData, setEodSummaryData] = useState<any>(null);
+  const [isSendingEodEmail, setIsSendingEodEmail] = useState(false);
+  const [eodStatusMsg, setEodStatusMsg] = useState<{ text: string; isError?: boolean } | null>(null);
+
+  const handleOpenEodEmailModal = async () => {
+    setIsEodModalOpen(true);
+    setEodStatusMsg(null);
+    try {
+      const res = await fetch("/api/reports/daily-eod-summary" + (startDate ? `?date=${startDate}` : ""));
+      const data = await res.json();
+      if (data.success) {
+        setEodSummaryData(data.summary);
+      }
+    } catch (err: any) {
+      console.warn("Failed to load EOD summary:", err);
+    }
+  };
+
+  const handleSendEodEmail = async () => {
+    setIsSendingEodEmail(true);
+    setEodStatusMsg(null);
+    try {
+      const res = await fetch("/api/reports/send-eod-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: startDate || undefined,
+          isTest: false
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setEodStatusMsg({ text: data.message, isError: false });
+      } else {
+        setEodStatusMsg({ text: data.message || "Failed to dispatch email", isError: true });
+      }
+    } catch (err: any) {
+      setEodStatusMsg({ text: "Error: " + err.message, isError: true });
+    } finally {
+      setIsSendingEodEmail(false);
+    }
+  };
 
   const formatINR = (val: number) => {
     const num = isNaN(val) ? 0 : val;
@@ -738,6 +785,15 @@ export default function ReportsView({
           >
             <Download className="w-3.5 h-3.5" />
             <span>Export Excel</span>
+          </button>
+
+          <button
+            onClick={() => handleOpenEodEmailModal()}
+            className="bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 py-1.5 px-3 rounded-lg text-xs font-bold flex items-center space-x-1.5 shadow-xs transition cursor-pointer select-none"
+            title="Send daily summary report to registered business email"
+          >
+            <Mail className="w-3.5 h-3.5 text-blue-600" />
+            <span>ईमेल अहवाल (Email EOD)</span>
           </button>
 
           <button
@@ -1852,6 +1908,126 @@ export default function ReportsView({
         business={business}
         parties={safeParties}
       />
+
+      {/* Phase 8: Send EOD Email Report Modal */}
+      {isEodModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-scale-in">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4.5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/20 backdrop-blur-xs flex items-center justify-center">
+                  <Mail className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base leading-tight">दैनिक डे-एंड ईमेल अहवाल (Daily EOD Report)</h3>
+                  <p className="text-xs text-blue-100 mt-0.5">
+                    तारीख: <strong>{eodSummaryData?.date || startDate || new Date().toISOString().split("T")[0]}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEodModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+              {eodSummaryData ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2.5 text-center">
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-emerald-800 uppercase block">Total Net Sales</span>
+                      <span className="text-lg font-black font-mono text-emerald-950 block mt-0.5">
+                        {formatINR(eodSummaryData.sales?.netSalesTotal || 0)}
+                      </span>
+                      <span className="text-[10px] text-emerald-700 block">
+                        {eodSummaryData.sales?.invoiceCount || 0} Bills Generated
+                      </span>
+                    </div>
+
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-blue-800 uppercase block">Cash in Drawer</span>
+                      <span className="text-lg font-black font-mono text-blue-950 block mt-0.5">
+                        {formatINR(eodSummaryData.sales?.cashCollected || 0)}
+                      </span>
+                      <span className="text-[10px] text-blue-700 block">Cash Counter</span>
+                    </div>
+
+                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-purple-800 uppercase block">Bank / UPI</span>
+                      <span className="text-lg font-black font-mono text-purple-950 block mt-0.5">
+                        {formatINR(eodSummaryData.sales?.bankCollected || 0)}
+                      </span>
+                      <span className="text-[10px] text-purple-700 block">Digital Credits</span>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-slate-800 uppercase block">Estimated Profit</span>
+                      <span className="text-lg font-black font-mono text-slate-950 block mt-0.5">
+                        {formatINR(eodSummaryData.profitEstimate?.netEstimatedProfit || 0)}
+                      </span>
+                      <span className="text-[10px] text-slate-600 block">
+                        ~{eodSummaryData.profitEstimate?.marginPercentage?.toFixed(1) || 0}% Margin
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                    <div className="flex justify-between text-slate-600">
+                      <span>प्राप्तकर्ता ईमेल (Recipient Email):</span>
+                      <span className="font-bold text-slate-800 font-mono">
+                        {business.scheduledEmailConfig?.recipientEmail || business.email || "rupeshgadkhe@gmail.com"}
+                      </span>
+                    </div>
+                    {business.scheduledEmailConfig?.ccEmails && (
+                      <div className="flex justify-between text-slate-500 text-[11px]">
+                        <span>CC Emails:</span>
+                        <span className="font-mono">{business.scheduledEmailConfig.ccEmails}</span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="p-6 text-center text-slate-400 text-xs">
+                  अहवाल माहिती लोड होत आहे...
+                </div>
+              )}
+
+              {eodStatusMsg && (
+                <div className={`p-3 rounded-lg text-xs font-semibold ${
+                  eodStatusMsg.isError ? "bg-rose-50 text-rose-800 border border-rose-200" : "bg-emerald-50 text-emerald-800 border border-emerald-200"
+                }`}>
+                  {eodStatusMsg.text}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEodModalOpen(false)}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  बंद करा (Close)
+                </button>
+                <button
+                  type="button"
+                  disabled={isSendingEodEmail}
+                  onClick={handleSendEodEmail}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-300 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm cursor-pointer select-none"
+                >
+                  <Send className={`w-3.5 h-3.5 ${isSendingEodEmail ? "animate-spin" : ""}`} />
+                  <span>{isSendingEodEmail ? "ईमेल पाठवत आहे..." : "ईमेल अहवाल त्वरित पाठवा (Send Now)"}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

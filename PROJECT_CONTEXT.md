@@ -73,28 +73,45 @@
 * **Fractional & Traditional Indian Units Handling:** Complete support for sub-1 quantities (0.25, 0.5, 0.75, 1.5 etc.) and vernacular spoken/typed terms (*पाव, अर्धा किलो, तीन पाव, दीड किलो, 200 ग्रॅम*) without minimum quantity validation errors.
 * **Dynamic Out-of-Catalog Item Auto-Addition:** When Munimji processes sales billing with items not currently in inventory (e.g. *शेंगदाणे, तेल, गूळ*), items are automatically created and added to inventory on the fly with estimated pricing and units while simultaneously recording in the bill.
 
+### ✅ Phase 7: Customer Loyalty Points Scheme (`InvoicingView.tsx`, `PartiesView.tsx`, `SettingsView.tsx`, `InvoicePrintModal.tsx`)
+* **Configurable Loyalty Rules Engine (`SettingsView.tsx`):** Enable/disable toggle, points earning rate per ₹100 spent (default: 1 pt / ₹100), redemption rate in ₹ (default: 1 pt = ₹1.00), minimum threshold to redeem (e.g. 10 pts), maximum redemption cap (% of invoice total, default: 50%), and validity expiry days.
+* **Customer Loyalty Ledger & Model (`Party` in `types.ts` & `server.ts`):** `loyaltyPoints` balance, `totalPointsEarned`, `totalPointsRedeemed`, and complete audit trail `loyaltyLedger` records (`EARNED`, `REDEEMED`, `ADJUSTMENT`).
+* **High-Speed POS Checkout Redemption (`InvoicingView.tsx`):** Real-time badge display for registered customer's available points and rupee value; 1-click "Redeem Max Eligible" and custom points input with instant bill discount calculation (`pointsDiscount`); automatic award of newly earned points on net bill.
+* **Customer Parties & Khata Management (`PartiesView.tsx`):** Gold star badges on customer rows; dedicated "Customer Loyalty Points & Ledger" modal with 3 KPI metric cards, manual points credit/bonus or deduction form with reason notes, and chronologically sorted points ledger table.
+* **Thermal & A4 Print Templates (`InvoicePrintModal.tsx` & `ThermalDesignerModal.tsx`):** Prints redeemed points discount and awarded loyalty points banner on 58mm/80mm receipts and A4/A5 invoices with customizable designer toggle `showLoyaltyPoints`.
+* **Digital Munimji Voice Integration (`MunimjiDrawer.tsx` & `server.ts`):** Voice query for loyalty balance ("रमेशचे लॉयल्टी पॉईंट्स किती आहेत?") and loyalty adjustments with drawer auto-minimize.
+
+### ✅ Phase 8: Automated Scheduled Email Reports (`eodReportService.ts`, `SettingsView.tsx`, `ReportsView.tsx`, `server.ts`)
+* **Comprehensive EOD Engine (`src/server/eodReportService.ts`):** Calculates day's net sales, cash in drawer, UPI/bank collection, unpaid credit, customer returns, shop expenses, estimated profit & margin %, GST tax breakdown, top 5 selling items, low stock alerts, near expiry warnings, and loyalty activity.
+* **Mobile-Responsive HTML Email Template (`buildEodHtmlEmail`):** Clean, professional branded HTML email formatted for mobile and desktop inboxes with 4 KPI hero cards and styled tables.
+* **Background Automated Scheduler (`checkScheduledEodEmailJob`):** 60-second background timer checks `scheduledTime` (e.g. 21:00 / 9:00 PM) and store closing time, automatically dispatching the summary report once per day with zero manual intervention.
+* **Interactive Store Configuration (`SettingsView.tsx`):** Toggle automated daily reports, primary owner email, CC emails, scheduled time picker, customizable section checkboxes, and optional SMTP / Gmail App Password configurator with test send and live HTML preview modal.
+* **1-Click Reports View Integration (`ReportsView.tsx`):** "ईमेल अहवाल (Email EOD)" header action opens an instant summary dialog with 1-click manual dispatch for today or filtered date.
+* **Digital Munimji Voice Sync (`server.ts`):** Voice commands ("आजचा डे-एंड ईमेल पाठवा", "Send EOD report", "ईमेल रिपोर्ट पाठवा") trigger immediate summary calculation, email dispatch, and vocal confirmation with drawer auto-minimize.
+
 ---
 
 ## 🚀 4. Upcoming Roadmap & Next Phases (In Serial Order)
 
 | Phase | Feature Name | Scope & Specifications | Priority |
 | :--- | :--- | :--- | :--- |
-| **Phase 7** | **Customer Loyalty Points Scheme** | Points earning rules per ₹100 spent, point redemption in POS checkout, customer points balance ledger, and expiry management. | **Next / High** |
-| **Phase 8** | **Automated Scheduled Email Reports** | Automated daily end-of-day (EOD) summary email with sales, cash collection, and low stock snapshot sent to business owner. | Medium |
-| **Phase 9** | **Multi-Godown / Warehouse Stock Transfer** | Multi-location warehouse inventory tracking and intra-warehouse stock transfer vouchers. | Medium |
+| **Phase 9** | **Multi-Godown / Warehouse Stock Transfer** | Multi-location warehouse inventory tracking and intra-warehouse stock transfer vouchers. | **Next / High** |
+| **Phase 10** | **Barcode Generator & Label Sticker Printing** | 24-up / 40-up sticker sheet printing for retail barcodes and thermal barcode printers. | Medium |
 
 ---
 
 ## 💻 5. Key File Index for Quick Navigation
 * `src/App.tsx` - Root UI orchestrator, persistent database sync, view router, and top navigation.
 * `server.ts` - Express API backend, Gemini AI client, Digital Munimji execution engine, database normalization, and backup runner.
-* `src/types.ts` - Central TypeScript interfaces (`Item`, `Party`, `Invoice`, `DeliveryChallan`, `Quotation`, `BusinessProfile`, `ItemBatch`, etc.).
+* `src/server/eodReportService.ts` - End-of-Day report engine, HTML email builder, and SMTP scheduler (Phase 8).
+* `src/types.ts` - Central TypeScript interfaces (`Item`, `Party`, `Invoice`, `DeliveryChallan`, `Quotation`, `BusinessProfile`, `ScheduledEmailConfig`, etc.).
 * `src/components/EWayBillModal.tsx` - Official NIC E-Way Bill & E-Invoice modal (Phase 5).
 * `src/components/InvoicingView.tsx` - High-speed POS Billing, item search, batch selection, checkout, and parked bills.
 * `src/components/DeliveryChallansView.tsx` - Delivery challan management, vehicle transport tracking, and bill conversion.
 * `src/components/ItemsView.tsx` - Inventory catalog, batch/expiry alerts, low stock badges, AI item scanner.
-* `src/components/PartiesView.tsx` - Customer and Supplier Khata ledger and payment reminders.
-* `src/components/ReportsView.tsx` - GSTR-1, GSTR-3B, P&L, Daybook, and CSV export.
+* `src/components/PartiesView.tsx` - Customer and Supplier Khata ledger, loyalty ledger, and payment reminders.
+* `src/components/ReportsView.tsx` - GSTR-1, GSTR-3B, P&L, Daybook, EOD email dispatch, and CSV export.
+* `src/components/SettingsView.tsx` - Business profile, thermal bill designer, loyalty config, and automated EOD email reports.
 * `src/components/MunimjiDrawer.tsx` - Digital Munimji AI floating voice assistant drawer.
 * `src/services/munimjiClient.ts` - Frontend client service for voice recording, streaming, and command processing.
 * `docs/FEATURE_ROADMAP_AND_STATUS.md` - Detailed Marathi & English feature completion and status breakdown.
@@ -103,8 +120,8 @@
 
 ## 🔄 6. Instructions for Future AI Development Sessions
 Whenever resuming work on this codebase in a new Google AI Studio conversation:
-1. **Read `PROJECT_CONTEXT.md` first:** Check which phase was completed last (currently **Phase 6**).
-2. **Follow Serial Order:** Proceed to the next pending phase (**Phase 7: Customer Loyalty Points Scheme**).
+1. **Read `PROJECT_CONTEXT.md` first:** Check which phase was completed last (currently **Phase 8: Automated Scheduled Email Reports**).
+2. **Follow Serial Order:** Proceed to the next pending phase (**Phase 9: Multi-Godown / Warehouse Stock Transfer**).
 3. **Verify Builds:** Always run `lint_applet` and `compile_applet` before completing work.
 4. **Push to GitHub:** Commit and push changes to the repository `devrupeshgadkhe/Repo_billingOnHands` on branch `main`.
 5. **Update this file (`PROJECT_CONTEXT.md`):** Mark the completed phase and document key architecture changes immediately.
