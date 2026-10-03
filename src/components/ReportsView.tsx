@@ -29,8 +29,10 @@ import {
   ChevronUp,
   ArrowUpRight,
   ArrowDownLeft,
+  Truck,
   X
 } from "lucide-react";
+import EWayBillModal from "./EWayBillModal.js";
 
 interface ReportsViewProps {
   invoices: Invoice[];
@@ -85,6 +87,7 @@ export default function ReportsView({
   const [miscTypeFilter, setMiscTypeFilter] = useState("");
 
   const [expandedInvoiceIds, setExpandedInvoiceIds] = useState<Record<string, boolean>>({});
+  const [ewayBillModalInvoice, setEwayBillModalInvoice] = useState<Invoice | null>(null);
 
   const formatINR = (val: number) => {
     const num = isNaN(val) ? 0 : val;
@@ -1013,6 +1016,14 @@ export default function ReportsView({
                         <td className="py-3 px-4 text-center">
                           <div className="flex items-center justify-center space-x-1">
                             <button
+                              type="button"
+                              onClick={() => setEwayBillModalInvoice(inv)}
+                              className="text-blue-600 bg-blue-50 hover:bg-blue-100 p-1 rounded transition border border-blue-200 cursor-pointer"
+                              title="Generate NIC E-Way Bill & E-Invoice JSON"
+                            >
+                              <Truck className="w-3.5 h-3.5" />
+                            </button>
+                            <button
                               id={`daybook-print-${inv.id}-btn`}
                               onClick={() => onOpenInvoice(inv)}
                               className="text-slate-600 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 p-1 rounded transition border border-transparent cursor-pointer"
@@ -1832,6 +1843,15 @@ export default function ReportsView({
           </div>
         </div>
       )}
+
+      {/* Official Government NIC E-Way Bill & E-Invoice Generator Modal */}
+      <EWayBillModal
+        isOpen={Boolean(ewayBillModalInvoice)}
+        onClose={() => setEwayBillModalInvoice(null)}
+        invoice={ewayBillModalInvoice}
+        business={business}
+        parties={safeParties}
+      />
 
     </div>
   );

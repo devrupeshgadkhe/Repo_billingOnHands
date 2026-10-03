@@ -117,6 +117,7 @@ const TRANSLATIONS: Record<MunimjiLang, {
     munimjiLabel: "मुनीमजी",
     chips: [
       { label: "📦 सर्व प्रॉडक्टची यादी", query: "आपल्या दुकानातील सर्व प्रॉडक्टची लिस्ट दाखव" },
+      { label: "🚚 ई-वे बिल / E-Invoice", query: "ई-वे बिल आणि E-Invoice जनरेटर उघडा" },
       { label: "💡 साखरेचा काय भाव आहे?", query: "साखरेचा काय भाव आहे आणि चिल्लर काय देऊ?" },
       { label: "🧾 नवीन विक्री बिल बनवा", query: "राजेशला २ नग साखरेचे बिल बनव रोख" },
       { label: "⚖️ स्वस्त सप्लायर कोण?", query: "फॉर्च्युन तेल कोणाकडून स्वस्त पडेल? सप्लायर तुलना कर" },
@@ -161,6 +162,7 @@ const TRANSLATIONS: Record<MunimjiLang, {
     munimjiLabel: "मुनीमजी",
     chips: [
       { label: "📦 सभी सामान की लिस्ट", query: "दुकान के सभी प्रोडक्ट्स की लिस्ट दिखाओ" },
+      { label: "🚚 ई-वे बिल / E-Invoice", query: "ई-वे बिल और E-Invoice जनरेटर खोलें" },
       { label: "💡 शक्कर का क्या भाव है?", query: "शक्कर का क्या भाव है और खुदरा क्या बेचूं?" },
       { label: "🧾 नया बिक्री बिल बनाएं", query: "राजेश को 2 बोरी शक्कर का नकद बिल बनाओ" },
       { label: "⚖️ सस्ता सप्लायर कौन है?", query: "फॉर्च्यून तेल किससे सस्ता मिलेगा? सप्लायर तुलना करें" },
@@ -205,6 +207,7 @@ const TRANSLATIONS: Record<MunimjiLang, {
     munimjiLabel: "Munimji",
     chips: [
       { label: "📦 Show Product List", query: "Show all products and stock list in the store" },
+      { label: "🚚 E-Way Bill / E-Invoice", query: "Open E-Way Bill & E-Invoice Generator" },
       { label: "💡 Sugar price check", query: "What is the price of sugar and retail rate?" },
       { label: "🧾 Create Sales Bill", query: "Create cash sales bill for Rajesh with 2 boxes copper cable" },
       { label: "⚖️ Cheapest supplier", query: "Which supplier gives the cheapest oil? Compare suppliers" },

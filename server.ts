@@ -3258,7 +3258,10 @@ function executeMunimjiUniversalCrud(
       let targetTab = String(payload?.targetTab || payload?.tab || payload?.page || "").toLowerCase();
       if (!targetTab) {
         const textToSearch = (userText || replyText || "").toLowerCase();
-        if (textToSearch.includes("रिपोर्ट") || textToSearch.includes("report") || textToSearch.includes("gstr") || textToSearch.includes("daybook")) targetTab = "reports";
+        if (textToSearch.includes("eway") || textToSearch.includes("e-way") || textToSearch.includes("ई-वे") || textToSearch.includes("einvoice") || textToSearch.includes("e-invoice")) {
+          targetTab = textToSearch.includes("चलन") || textToSearch.includes("challan") ? "challans" : "sales";
+        }
+        else if (textToSearch.includes("रिपोर्ट") || textToSearch.includes("report") || textToSearch.includes("gstr") || textToSearch.includes("daybook")) targetTab = "reports";
         else if (textToSearch.includes("आयटम") || textToSearch.includes("प्रॉडक्ट") || textToSearch.includes("स्टॉक") || textToSearch.includes("इन्व्हेंटरी") || textToSearch.includes("item") || textToSearch.includes("inventory") || textToSearch.includes("product")) targetTab = "items";
         else if (textToSearch.includes("ग्राहक") || textToSearch.includes("सप्लायर") || textToSearch.includes("पार्टी") || textToSearch.includes("खाते") || textToSearch.includes("party") || textToSearch.includes("customer") || textToSearch.includes("supplier")) targetTab = "parties";
         else if (textToSearch.includes("विक्री") || textToSearch.includes("सेल") || textToSearch.includes("बिलिंग") || textToSearch.includes("pos") || textToSearch.includes("sale")) targetTab = "sales";

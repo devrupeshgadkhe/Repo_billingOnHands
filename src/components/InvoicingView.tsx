@@ -44,6 +44,7 @@ import {
   Printer
 } from "lucide-react";
 import { InvoiceUploadModal, ParsedInvoiceData } from "./InvoiceUploadModal.js";
+import EWayBillModal from "./EWayBillModal.js";
 
 interface InvoicingViewProps {
   key?: React.Key;
@@ -203,6 +204,9 @@ export default function InvoicingView({
 
   // Notes accordion
   const [showNotes, setShowNotes] = useState(false);
+
+  // E-Way Bill & E-Invoice Modal state
+  const [ewayBillModalInvoice, setEwayBillModalInvoice] = useState<Invoice | null>(null);
 
   // Supplier Bill Scanner state (Only visible if Gemini AI credits are available)
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
@@ -2351,6 +2355,39 @@ export default function InvoicingView({
                   <span>Reset Cart</span>
                 </button>
               </div>
+
+              {/* E-Way Bill & E-Invoice Generator Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  const activeInv: Invoice = {
+                    id: invoiceToEdit?.id || "draft_ewb_" + Date.now(),
+                    invoiceNumber: invoiceNumber || "INV-DRAFT",
+                    date: invoiceDate,
+                    partyId: selectedPartyId,
+                    partyName: activeParty?.name || partySearchText || "Customer",
+                    partyGstin: activeParty?.gstin || "",
+                    type: txSubtype,
+                    items: computedInvoiceDetails.lines,
+                    subtotal: computedInvoiceDetails.subtotal,
+                    taxAmount: computedInvoiceDetails.taxAmount,
+                    cgstTotal: computedInvoiceDetails.cgstTotal,
+                    sgstTotal: computedInvoiceDetails.sgstTotal,
+                    igstTotal: computedInvoiceDetails.igstTotal,
+                    extraCharges,
+                    totalAmount: computedInvoiceDetails.grandTotal,
+                    paymentType,
+                    paidAmount: paidAmt,
+                    remainingAmount: Math.max(0, computedInvoiceDetails.grandTotal - paidAmt),
+                    notes
+                  };
+                  setEwayBillModalInvoice(activeInv);
+                }}
+                className="w-full py-2.5 px-3 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-2xs"
+              >
+                <Truck className="w-3.5 h-3.5 text-blue-600" />
+                <span>ई-वे बिल / E-Invoice JSON (E-Way Bill)</span>
+              </button>
             </div>
 
           </div>
@@ -2435,6 +2472,15 @@ export default function InvoicingView({
         onQuotaExceeded={() => setIsScanAvailable(false)}
         existingParties={parties}
         existingItems={items}
+      />
+
+      {/* Official Government NIC E-Way Bill & E-Invoice Generator Modal */}
+      <EWayBillModal
+        isOpen={Boolean(ewayBillModalInvoice)}
+        onClose={() => setEwayBillModalInvoice(null)}
+        invoice={ewayBillModalInvoice}
+        business={business}
+        parties={parties}
       />
 
     </div>

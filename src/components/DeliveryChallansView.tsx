@@ -30,6 +30,7 @@ import {
   Receipt
 } from "lucide-react";
 import ChallanPrintModal from "./ChallanPrintModal.js";
+import EWayBillModal from "./EWayBillModal.js";
 
 interface DeliveryChallansViewProps {
   challans: DeliveryChallan[];
@@ -61,6 +62,7 @@ export default function DeliveryChallansView({
   const [viewMode, setViewMode] = useState<'list' | 'create' | 'edit'>('list');
   const [challanToEdit, setChallanToEdit] = useState<DeliveryChallan | null>(null);
   const [printChallan, setPrintChallan] = useState<DeliveryChallan | null>(null);
+  const [ewayBillChallan, setEwayBillChallan] = useState<DeliveryChallan | null>(null);
 
   // Filter & Search states
   const [searchQuery, setSearchQuery] = useState("");
@@ -797,6 +799,16 @@ export default function DeliveryChallansView({
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             
+                            {/* E-Way Bill Generator */}
+                            <button
+                              type="button"
+                              onClick={() => setEwayBillChallan(challan)}
+                              title="Generate NIC E-Way Bill / Movement Pass"
+                              className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md transition-colors"
+                            >
+                              <Truck className="w-4 h-4" />
+                            </button>
+
                             {/* Print Challan */}
                             <button
                               type="button"
@@ -1476,6 +1488,15 @@ export default function DeliveryChallansView({
           onClose={() => setPrintChallan(null)}
         />
       )}
+
+      {/* Official Government NIC E-Way Bill Generator Modal */}
+      <EWayBillModal
+        isOpen={Boolean(ewayBillChallan)}
+        onClose={() => setEwayBillChallan(null)}
+        challan={ewayBillChallan}
+        business={business}
+        parties={parties}
+      />
 
     </div>
   );

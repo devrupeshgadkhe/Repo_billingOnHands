@@ -10,6 +10,8 @@ export interface BusinessProfile {
   state: string;
   phone: string;
   email: string;
+  city?: string;
+  pincode?: string;
   signatureText: string;
   businessType?: 'kirana' | 'krishi_seva' | 'garment' | 'medical' | 'wine_shop' | 'restaurant' | 'electronics' | 'mall' | 'general';
   operationMode?: 'retail' | 'wholesale' | 'both';
