@@ -65,11 +65,42 @@ let mainWindow = null;
 let updateDownloadedInfo = null;
 let isCheckingUpdate = false;
 let isDownloadingUpdate = false;
+let isExecutingInstall = false;
 
 function sendToWindow(channel, data) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, data);
   }
+}
+
+function installAndRelaunch() {
+  if (isExecutingInstall) {
+    console.log("[AutoUpdater] Installation already initiated, skipping duplicate trigger.");
+    return;
+  }
+  isExecutingInstall = true;
+  console.log("[AutoUpdater] Launching update installer via quitAndInstall...");
+
+  sendToWindow("updater:status", {
+    state: "installing",
+    message: "Installing update and restarting application..."
+  });
+
+  // Short delay allowing IPC event to flush before terminating application
+  setTimeout(() => {
+    try {
+      // isSilent: true (unattended 1-click update), isForceRunAfter: true (auto-restart new version)
+      autoUpdater.quitAndInstall(true, true);
+    } catch (err) {
+      console.error("[AutoUpdater] Silent quitAndInstall encountered issue, falling back to standard:", err);
+      try {
+        autoUpdater.quitAndInstall(false, true);
+      } catch (fatalErr) {
+        console.error("[AutoUpdater] Fatal error executing quitAndInstall:", fatalErr);
+        app.quit();
+      }
+    }
+  }, 400);
 }
 
 function setupAutoUpdater() {
@@ -134,7 +165,7 @@ function setupAutoUpdater() {
   autoUpdater.on("update-downloaded", (info) => {
     isCheckingUpdate = false;
     isDownloadingUpdate = false;
-    console.log(`[AutoUpdater] Update v${info.version} downloaded successfully! Installing automatically in 3s...`);
+    console.log(`[AutoUpdater] Update v${info.version} downloaded successfully! Scheduling install in 3.5s...`);
     updateDownloadedInfo = info;
     sendToWindow("updater:status", {
       state: "downloaded",
@@ -142,16 +173,10 @@ function setupAutoUpdater() {
       autoRestartIn: 3
     });
 
-    // Auto install and restart after 3 seconds:
+    // Auto install and restart after 3.5 seconds countdown
     setTimeout(() => {
-      console.log("[AutoUpdater] Triggering quit and install update...");
-      app.removeAllListeners("window-all-closed");
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.close();
-      }
-      // Pass isSilent: false so NSIS installer executes properly and installs the update
-      autoUpdater.quitAndInstall(false, true);
-    }, 3000);
+      installAndRelaunch();
+    }, 3500);
   });
 }
 
@@ -422,11 +447,7 @@ ipcMain.handle("app:check-for-updates", async () => {
 
 ipcMain.handle("app:restart-and-install", () => {
   console.log("[AutoUpdater] User triggered manual restart-and-install");
-  app.removeAllListeners("window-all-closed");
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.close();
-  }
-  autoUpdater.quitAndInstall(true, true);
+  installAndRelaunch();
 });
 
 ipcMain.handle("app:open-external", (_event, url) => {

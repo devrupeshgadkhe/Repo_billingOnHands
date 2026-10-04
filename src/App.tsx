@@ -40,7 +40,7 @@ export default function App() {
   const isInitialDbLoad = React.useRef(true);
   const autoBackupTimerRef = React.useRef<any>(null);
   const [updateBanner, setUpdateBanner] = useState<{
-    state: "available" | "downloading" | "downloaded" | "reloading";
+    state: "available" | "downloading" | "downloaded" | "reloading" | "installing";
     version?: string;
     percent?: number;
     countdown?: number;
@@ -56,7 +56,7 @@ export default function App() {
     if (electronAPI?.isElectron && electronAPI?.onUpdateStatus) {
       // 1. Electron Desktop Listener
       const cleanup = electronAPI.onUpdateStatus((status: any) => {
-        if (status.state === "available" || status.state === "downloading") {
+        if (status.state === "available" || status.state === "downloading" || status.state === "installing") {
           setUpdateBanner({
             state: status.state,
             version: status.version,
@@ -986,6 +986,9 @@ export default function App() {
                 )}
                 {updateBanner.state === "downloaded" && (
                   `New update (v${updateBanner.version || ''}) is ready. App restarting automatically in ${updateBanner.countdown ?? 3}s...`
+                )}
+                {updateBanner.state === "installing" && (
+                  `Installing update (v${updateBanner.version || ''})... Relaunching application.`
                 )}
                 {updateBanner.state === "reloading" && (
                   `New update (v${updateBanner.version || ''}) is available. Updating application in ${updateBanner.countdown ?? 2}s...`

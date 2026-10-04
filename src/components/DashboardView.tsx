@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Item, Party, Invoice } from "../types.js";
 import {
   TrendingUp,
@@ -123,6 +123,20 @@ export default function DashboardView({
   // Autonomous background update monitoring state
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [updateStatusText, setUpdateStatusText] = useState<string>("Auto-Update Active");
+  const [runtimeVersion, setRuntimeVersion] = useState<string>(APP_VERSION);
+
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.getVersion) {
+      electronAPI.getVersion().then((v: string) => {
+        if (v) setRuntimeVersion(v);
+      }).catch(() => {});
+    } else {
+      fetch("/api/version").then(r => r.json()).then(d => {
+        if (d?.version) setRuntimeVersion(d.version);
+      }).catch(() => {});
+    }
+  }, []);
 
   const handleCheckUpdateClick = async () => {
     const electronAPI = (window as any).electronAPI;
@@ -180,10 +194,10 @@ export default function DashboardView({
             <div 
               id="dashboard-version-badge"
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 select-none shadow-2xs shrink-0"
-              title={`Billing On Hand Version: v${APP_VERSION} (Build: ${APP_BUILD_DATE})`}
+              title={`Billing On Hand Version: v${runtimeVersion} (Build: ${APP_BUILD_DATE})`}
             >
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="font-mono font-bold">v{APP_VERSION}</span>
+              <span className="font-mono font-bold">v{runtimeVersion}</span>
               <span className="text-[10px] text-emerald-700/80 font-medium">| Active ERP</span>
             </div>
           </div>

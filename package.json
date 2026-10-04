@@ -1,7 +1,7 @@
 {
   "name": "billing-on-hand",
   "private": true,
-  "version": "1.0.100",
+  "version": "1.0.101",
   "description": "Billing On Hand - Offline Retail & GST ERP",
   "author": "Rupesh Gadkhe <rupeshgadkhe@gmail.com>",
   "repository": {
@@ -33,7 +33,7 @@
     "firebase": "^12.19.0",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
-    "nodemailer": "^10.0.13",
+    "nodemailer": "^10.0.14",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "recharts": "^3.8.1",
@@ -82,11 +82,11 @@
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
       "differentialPackage": false,
-      "allowElevation": true,
-      "allowToChangeInstallationDirectory": true,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "BillingOnHand",
@@ -94,7 +94,8 @@
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false,
-      "uninstallDisplayName": "BillingOnHand"
+      "uninstallDisplayName": "BillingOnHand",
+      "runAfterFinish": true
     },
     "files": [
       "dist/**/*",

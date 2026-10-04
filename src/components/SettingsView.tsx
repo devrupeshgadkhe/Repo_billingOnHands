@@ -70,6 +70,7 @@ export default function SettingsView({
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [runtimeVersion, setRuntimeVersion] = useState<string>(APP_VERSION);
 
   // Phase 8: Automated Scheduled Email Reports States
   const [isTestingEmail, setIsTestingEmail] = useState(false);
@@ -80,6 +81,16 @@ export default function SettingsView({
 
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.getVersion) {
+      electronAPI.getVersion().then((v: string) => {
+        if (v) setRuntimeVersion(v);
+      }).catch(() => {});
+    } else {
+      fetch("/api/version").then(r => r.json()).then(d => {
+        if (d?.version) setRuntimeVersion(d.version);
+      }).catch(() => {});
+    }
+
     if (electronAPI?.onUpdateStatus) {
       const cleanup = electronAPI.onUpdateStatus((status: any) => {
         if (status.state === "checking") {
@@ -96,18 +107,21 @@ export default function SettingsView({
         } else if (status.state === "downloaded") {
           setCheckingUpdate(false);
           setDownloadProgress(100);
-          setUpdaterMsg(`Update downloaded successfully! Restarting application...`);
+          setUpdaterMsg(`Update downloaded successfully! Restarting application in 3s...`);
+        } else if (status.state === "installing") {
+          setCheckingUpdate(false);
+          setUpdaterMsg(`Installing update... Restarting application now.`);
         } else if (status.state === "up-to-date") {
           setCheckingUpdate(false);
-          setUpdaterMsg(`Software is up to date (v${status.currentVersion || APP_VERSION} is the latest version).`);
+          setUpdaterMsg(`Software is up to date (v${status.currentVersion || runtimeVersion} is the latest version).`);
         } else if (status.state === "error") {
           setCheckingUpdate(false);
-          setUpdaterMsg(`Software is up to date (running v${APP_VERSION}).`);
+          setUpdaterMsg(`Software is up to date (running v${runtimeVersion}).`);
         }
       });
       return cleanup;
     }
-  }, []);
+  }, [runtimeVersion]);
 
   const handleManualCheckUpdate = async () => {
     const electronAPI = (window as any).electronAPI;
@@ -1412,7 +1426,7 @@ export default function SettingsView({
             <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 space-y-2 text-xs">
               <div className="flex justify-between items-center text-slate-600">
                 <span className="text-[11px]">Current Version:</span>
-                <span className="font-mono font-bold text-slate-900">v{APP_VERSION}</span>
+                <span className="font-mono font-bold text-slate-900">v{runtimeVersion}</span>
               </div>
               <div className="flex justify-between items-center text-slate-600">
                 <span className="text-[11px]">Auto-Update Checking:</span>

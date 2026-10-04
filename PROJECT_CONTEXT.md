@@ -103,7 +103,11 @@
 * **Anti-Tampering & DevTools Security Shield (`main.cjs`, `App.tsx`, `SettingsView.tsx`):**
   - **DevTools / F12 / Inspect Blocker:** Complete prevention of developer inspection (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U) and right-click context menu inspection across both desktop Windows application and web browser interface to protect application logic and database from unauthorized tampering or piracy.
   - **Privacy & Repository Security:** Completely removed all exposed GitHub releases URLs, repository names, and direct download links from the Settings view and client code to safeguard project source integrity.
-  - **Seamless NSIS Auto-Updater (`main.cjs`, `scripts/auto-version.cjs`):** Configured explicit feed URL and non-silent NSIS installer execution (`quitAndInstall(false, true)`) resolving version upgrade lockouts, ensuring desktop apps cleanly bump and install latest releases (v1.0.100+).
+  - **Seamless 1-Click NSIS Auto-Updater Resolution (`main.cjs`, `package.json`, `App.tsx`):**
+    * Configured NSIS for true 1-click silent background auto-updates (`oneClick: true`, `perMachine: false`, `allowElevation: false`, `runAfterFinish: true`), eliminating NSIS assisted installer dialog halts and UAC elevation prompts that caused updates to abort and version loops.
+    * Implemented single idempotent `installAndRelaunch()` in `main.cjs` to eliminate conflicting parallel calls to `quitAndInstall()` and prevented premature window destruction (`mainWindow.close()`) before installer spawn.
+    * Added live runtime version detection (`electronAPI.getVersion()`) across Sidebar, Dashboard, and Settings so installed desktop apps dynamically display running version accurately.
+    * Installed `nodemailer` package to guarantee error-free background email scheduler compilation (v1.0.101+).
 * **Digital Munimji Voice Integration (`MunimjiDrawer.tsx` & `server.ts`):** Voice query support for godowns and warehouse stock ("गोदाम दाखवा", "गोदामातील साठा किती आहे") with automatic drawer auto-minimize.
 
 ---

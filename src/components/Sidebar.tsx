@@ -53,7 +53,21 @@ export default function Sidebar({
   sessionRole,
   sessionPermissions
 }: SidebarProps) {
-  
+  const [runtimeVersion, setRuntimeVersion] = React.useState<string>(APP_VERSION);
+
+  React.useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    if (electronAPI?.getVersion) {
+      electronAPI.getVersion().then((v: string) => {
+        if (v) setRuntimeVersion(v);
+      }).catch(() => {});
+    } else {
+      fetch("/api/version").then(r => r.json()).then(d => {
+        if (d?.version) setRuntimeVersion(d.version);
+      }).catch(() => {});
+    }
+  }, []);
+
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, badge: 0 },
     { id: "parties", label: "Parties", icon: Users, badge: unpaidCount },
@@ -195,7 +209,7 @@ export default function Sidebar({
 
         {/* Brand version info */}
         <div id="v-sidebar-footer" className="p-4 border-t border-emerald-900 bg-emerald-950/40 text-center">
-          <span className="text-[9px] text-emerald-400 font-mono tracking-wide">Billing On Hand v{APP_VERSION}</span>
+          <span className="text-[9px] text-emerald-400 font-mono tracking-wide">Billing On Hand v{runtimeVersion}</span>
         </div>
 
       </div>
