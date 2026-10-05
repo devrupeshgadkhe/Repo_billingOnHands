@@ -219,7 +219,6 @@ export default function InvoicingView({
   useEffect(() => {
     let isMounted = true;
     const checkQuota = () => {
-      if (type !== "purchase") return;
       fetch("/api/ai/quota-status")
         .then(res => res.json())
         .then(data => {
@@ -1231,12 +1230,12 @@ export default function InvoicingView({
 
         {/* Right: Scan Bill (Purchase Mode - ONLY if Gemini AI credits are available), Parked Bills & Shortcuts Bar */}
         <div className="flex items-center space-x-2">
-          {type === "purchase" && isScanAvailable && (
+          {isScanAvailable && (
             <button
               type="button"
               onClick={() => setIsScanModalOpen(true)}
               className="flex items-center space-x-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border border-emerald-500/40"
-              title="सप्लायर बिल स्कॅन करा"
+              title={type === "purchase" ? "सप्लायर बिल स्कॅन करा" : "बिलाचा / पावतीचा फोटो स्कॅन करा"}
             >
               <ScanLine className="w-3.5 h-3.5" />
               <span>Scan Bill</span>

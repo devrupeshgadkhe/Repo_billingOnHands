@@ -20,9 +20,11 @@ import {
   Hash,
   RotateCcw,
   Check,
-  Plus
+  Plus,
+  Camera
 } from "lucide-react";
 import { Party, Item } from "../types.js";
+import CameraScannerModal from "./CameraScannerModal.js";
 
 export interface ParsedItem {
   name: string;
@@ -177,37 +179,21 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
     setIsDragOver(false);
   };
 
-  const handleExtract = async () => {
-    if (!selectedFile) {
-      setErrorMessage("कृपया आधी बिलाचा फोटो किंवा PDF निवडा.");
-      return;
-    }
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
 
+  const executeDirectParse = async (base64Data: string, mimeType: string, fileName: string) => {
     setIsProcessing(true);
     setErrorMessage(null);
-    setProcessingStep("फाईल तयार करत आहे...");
+    setProcessingStep("बिलाचे वाचन व तपशील पृथक्करण सुरू आहे...");
 
     try {
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          const base64 = result.includes(",") ? result.split(",")[1] : result;
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(selectedFile);
-      });
-
-      setProcessingStep("बिलाचे वाचन व तपशील पृथक्करण सुरू आहे...");
-
       const response = await fetch("/api/ai/parse-invoice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fileBase64: base64Data,
-          mimeType: selectedFile.type,
-          fileName: selectedFile.name
+          mimeType: mimeType || "image/jpeg",
+          fileName: fileName || "camera_scan.jpg"
         })
       });
 
@@ -244,6 +230,44 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
       setIsProcessing(false);
       setProcessingStep("");
     }
+  };
+
+  const handleExtract = async () => {
+    if (!selectedFile) {
+      setErrorMessage("कृपया आधी बिलाचा फोटो किंवा PDF निवडा.");
+      return;
+    }
+
+    setIsProcessing(true);
+    setErrorMessage(null);
+    setProcessingStep("फाईल तयार करत आहे...");
+
+    try {
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.includes(",") ? result.split(",")[1] : result;
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(selectedFile);
+      });
+
+      await executeDirectParse(base64Data, selectedFile.type, selectedFile.name);
+    } catch (err: any) {
+      setErrorMessage(err?.message || "सर्व्हरशी संपर्क होऊ शकला नाही. कृपया पुन्हा प्रयत्न करा.");
+      setIsProcessing(false);
+      setProcessingStep("");
+    }
+  };
+
+  const handleCameraCapture = (file: File, base64: string) => {
+    setSelectedFile(file);
+    setPreviewUrl(`data:image/jpeg;base64,${base64}`);
+    setErrorMessage(null);
+    setIsCameraModalOpen(false);
+    executeDirectParse(base64, "image/jpeg", file.name);
   };
 
   const handleReset = () => {
@@ -343,18 +367,52 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
             /* UPLOAD STEP */
             <>
               {!selectedFile ? (
-                /* Dropzone */
-                <div
-                  onDrop={handleDrop}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center space-y-3 ${
-                    isDragOver
-                      ? "border-emerald-500 bg-emerald-50/60 scale-[0.99]"
-                      : "border-slate-300 hover:border-emerald-400 hover:bg-slate-50/80 bg-white"
-                  }`}
-                >
+                /* Dual Options: Live Camera Scan or File/PDF Upload */
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* 1. Live Camera / Webcam Scanner Option */}
+                    <button
+                      type="button"
+                      onClick={() => setIsCameraModalOpen(true)}
+                      className="border-2 border-emerald-500/60 bg-emerald-50/50 hover:bg-emerald-100/70 rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-2.5 shadow-xs group hover:scale-[1.01]"
+                    >
+                      <div className="w-13 h-13 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                        <Camera className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-emerald-950">थेट वेबकॅम / कॅमेराने स्कॅन करा</p>
+                        <p className="text-[11px] text-emerald-800/80 mt-0.5">कॅमेरासमोर बिल धरा व 1-क्लिकमध्ये स्कॅन करा</p>
+                      </div>
+                      <span className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold rounded-full shadow-xs">
+                        📷 Live Camera Scan
+                      </span>
+                    </button>
+
+                    {/* 2. File / PDF Upload Option */}
+                    <div
+                      onDrop={handleDrop}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center space-y-2.5 ${
+                        isDragOver
+                          ? "border-emerald-500 bg-emerald-50/60 scale-[0.99]"
+                          : "border-slate-300 hover:border-slate-400 hover:bg-slate-50/80 bg-white"
+                      }`}
+                    >
+                      <div className="w-13 h-13 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center border border-slate-200 shadow-xs">
+                        <Upload className="w-6 h-6 text-slate-700" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">फाईल / PDF अपलोड करा</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">JPG, PNG, WEBP किंवा सप्लायर PDF बिल</p>
+                      </div>
+                      <span className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-full">
+                        📁 Browse / Drop File
+                      </span>
+                    </div>
+                  </div>
+
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -366,26 +424,6 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                       }
                     }}
                   />
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100 shadow-sm">
-                    <Upload className="w-7 h-7" />
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-sm font-bold text-slate-800">
-                      इथे फाईल ड्रॅग करा किंवा <span className="text-emerald-600 underline">ब्राउझ करा</span>
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      सपोर्टेड: JPG, PNG, WEBP, किंवा PDF (कमाल २५ MB)
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-400 font-medium">
-                    <span className="flex items-center gap-1">
-                      <ImageIcon className="w-3.5 h-3.5 text-slate-400" /> कॅमेरा फोटो
-                    </span>
-                    <span>•</span>
-                    <span className="flex items-center gap-1">
-                      <FileText className="w-3.5 h-3.5 text-slate-400" /> सप्लायर PDF बिल
-                    </span>
-                  </div>
                 </div>
               ) : (
                 /* Selected File Preview */
@@ -740,6 +778,15 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Live Camera Scanner Modal */}
+      <CameraScannerModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        onCapture={handleCameraCapture}
+        title="सप्लायर बिल थेट कॅमेऱ्याने स्कॅन करा"
+        description="सप्लायर बिलाचा स्पष्ट फोटो कॅमेरासमोर धरा आणि कॅप्चर करा."
+      />
     </div>
   );
 };

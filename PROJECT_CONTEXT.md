@@ -115,6 +115,11 @@
 * **Modern Tabbed Settings & 100% Database Persistence (`SettingsView.tsx`, `server.ts`):**
   - **Sub-Tab Navigation Bar:** Settings is now organized into dedicated responsive sub-tabs: 🏢 व्यवसाय व GST (Profile), ⭐ लॉयल्टी रिवॉर्ड्स (Loyalty), 📧 दैनिक अहवाल (EOD Reports), 🖨️ थर्मल प्रिंटर (Thermal Designer), 🔐 सुरक्षा व लॉगिन (Security), 💾 बॅकअप व रिसेट (Backup & Reset), and ⚡ ॲप व्हर्जन (Updates).
   - **Dedicated Save Buttons & Real-Time Sync:** Every tab now contains its own prominent "Save Changes" button, plus a top action bar save button. Settings syncs directly to `db.business` via deep-merge `POST /api/business`, eliminating data loss when toggling loyalty or email report configurations.
+* **Live Webcam & Camera Document Scanner with Desktop Defaults (`CameraScannerModal.tsx`, `main.cjs`, `MunimjiDrawer.tsx`, `InvoiceUploadModal.tsx`, `ItemsScanModal.tsx`):**
+  - **Unified Live Camera Scanner Modal (`CameraScannerModal.tsx`):** High-resolution camera stream (up to 1080p document clarity) with camera device switcher (front, back, external USB webcam, document scanner), document alignment guidelines, 1-click snapshot capture, shutter animation, and retake/confirm flow.
+  - **Desktop App Webcam Auto-Grant (`main.cjs`):** Configured Electron `setPermissionCheckHandler`, `setPermissionRequestHandler`, and `setDevicePermissionHandler` to unconditionally grant video/camera and audio permissions in the desktop application, allowing desktop webcams to start by default without permission denials.
+  - **Digital Munimji Camera Scan Option (`MunimjiDrawer.tsx`):** Added a dedicated Live Camera scan button next to the voice recording and upload buttons in the Munimji assistant drawer, enabling 1-click webcam scanning of handwritten bills or item lists with instant Marathi voice & draft card generation.
+  - **Dual Scan Options in Purchase Invoicing & Inventory (`InvoiceUploadModal.tsx`, `ItemsScanModal.tsx`, `InvoicingView.tsx`):** Provided clean dual options ("थेट वेबकॅमने स्कॅन करा (Live Camera Scan)" and "फाईल / PDF अपलोड करा") in all document and bill scanning flows.
 
 ---
 

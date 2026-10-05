@@ -516,15 +516,25 @@ app.whenReady().then(() => {
   process.env.ELECTRON_ENV = "true";
   process.env.ELECTRON_USER_DATA = app.getPath("userData");
 
-  // Digital Munimji: Explicitly grant microphone and audio hardware permissions in Electron
+  // Digital Munimji & Bill Scanner: Explicitly grant camera, webcam, and microphone hardware permissions in Electron
   if (session && session.defaultSession) {
-    const isMicrophoneMediaRequest = (permission, details) => {
-      if (permission === "media" || permission === "microphone" || permission === "audioCapture") {
+    const isCameraOrMicrophoneRequest = (permission, details) => {
+      if (
+        permission === "media" ||
+        permission === "microphone" ||
+        permission === "camera" ||
+        permission === "videoCapture" ||
+        permission === "audioCapture"
+      ) {
         if (!details) return true;
         const mediaTypes = Array.isArray(details.mediaTypes) ? details.mediaTypes : [];
         const mediaType = details.mediaType;
-        if (mediaType) return mediaType === "audio" || mediaType === "microphone";
-        if (mediaTypes.length) return mediaTypes.includes("audio") || mediaTypes.includes("microphone");
+        if (mediaType) {
+          return ["audio", "microphone", "video", "camera"].includes(mediaType);
+        }
+        if (mediaTypes.length) {
+          return mediaTypes.some((t) => ["audio", "microphone", "video", "camera"].includes(t));
+        }
         return true;
       }
       return false;
@@ -532,21 +542,21 @@ app.whenReady().then(() => {
 
     session.defaultSession.setPermissionCheckHandler(
       (_webContents, permission, requestingOrigin, details) => {
-        const allowed = isMicrophoneMediaRequest(permission, details);
+        const allowed = isCameraOrMicrophoneRequest(permission, details);
         return allowed;
       }
     );
 
     session.defaultSession.setPermissionRequestHandler(
       (_webContents, permission, callback, details) => {
-        const allowed = isMicrophoneMediaRequest(permission, details);
+        const allowed = isCameraOrMicrophoneRequest(permission, details);
         callback(allowed);
       }
     );
 
     if (session.defaultSession.setDevicePermissionHandler) {
       session.defaultSession.setDevicePermissionHandler((details) => {
-        // Unconditionally allow microphone hardware devices
+        // Unconditionally allow camera and microphone hardware devices
         return true;
       });
     }
@@ -554,6 +564,7 @@ app.whenReady().then(() => {
 
   if (process.platform === "darwin" && systemPreferences && systemPreferences.askForMediaAccess) {
     systemPreferences.askForMediaAccess("microphone").catch(() => {});
+    systemPreferences.askForMediaAccess("camera").catch(() => {});
   }
 
   setupAutoUpdater();

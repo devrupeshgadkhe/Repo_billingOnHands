@@ -21,6 +21,7 @@ import {
   RotateCcw
 } from "lucide-react";
 import { Item, UNITS, TAX_RATES } from "../types.js";
+import CameraScannerModal from "./CameraScannerModal.js";
 
 interface ItemsScanModalProps {
   isOpen: boolean;
@@ -66,6 +67,60 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
     }
   };
 
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
+
+  const executeDirectItemsParse = async (base64Data: string, mimeType: string) => {
+    setIsProcessing(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await fetch("/api/ai/parse-items-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileBase64: base64Data,
+          mimeType: mimeType || "image/jpeg"
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "आयटम लिस्ट स्कॅन करताना अडचण आली.");
+      }
+
+      if (!data.items || data.items.length === 0) {
+        throw new Error("फोटोमधून कोणतेही आयटम वाचता आले नाहीत. कृपया स्पष्ट फोटो निवडा.");
+      }
+
+      setParsedItems(
+        data.items.map((it: any, idx: number) => ({
+          id: `temp_${Date.now()}_${idx}`,
+          selected: true,
+          name: it.name || "",
+          hsn: it.hsn || "",
+          purchasePrice: Number(it.purchasePrice) || 0,
+          salePrice: Number(it.salePrice) || Number(it.purchasePrice) || 0,
+          mrp: Number(it.mrp) || Number(it.salePrice) || 0,
+          wholesalePrice: Number(it.wholesalePrice) || 0,
+          minWholesaleQty: Number(it.minWholesaleQty) || 5,
+          boxPackingRatio: Number(it.boxPackingRatio) || 0,
+          boxUnit: it.boxUnit || "BOX",
+          stockQuantity: Number(it.stockQuantity) || 0,
+          minStockAlert: Number(it.minStockAlert) || 5,
+          gstRate: Number(it.gstRate) || 0,
+          unit: it.unit ? it.unit.toUpperCase() : "PCS",
+          brand: it.brand || "",
+          category: it.category || ""
+        }))
+      );
+      setStep("review");
+    } catch (innerErr: any) {
+      setErrorMessage(innerErr.message || "स्कॅनिंग अयशस्वी झाले.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const processScan = async () => {
     if (!selectedFile) return;
     setIsProcessing(true);
@@ -74,60 +129,21 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
     try {
       const reader = new FileReader();
       reader.onload = async (e) => {
-        try {
-          const base64Data = (e.target?.result as string).split(",")[1];
-          const res = await fetch("/api/ai/parse-items-list", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              fileBase64: base64Data,
-              mimeType: selectedFile.type
-            })
-          });
-
-          const data = await res.json();
-          if (!res.ok) {
-            throw new Error(data.error || "आयटम लिस्ट स्कॅन करताना अडचण आली.");
-          }
-
-          if (!data.items || data.items.length === 0) {
-            throw new Error("फोटोमधून कोणतेही आयटम वाचता आले नाहीत. कृपया स्पष्ट फोटो निवडा.");
-          }
-
-          setParsedItems(
-            data.items.map((it: any, idx: number) => ({
-              id: `temp_${Date.now()}_${idx}`,
-              selected: true,
-              name: it.name || "",
-              hsn: it.hsn || "",
-              purchasePrice: Number(it.purchasePrice) || 0,
-              salePrice: Number(it.salePrice) || Number(it.purchasePrice) || 0,
-              mrp: Number(it.mrp) || Number(it.salePrice) || 0,
-              wholesalePrice: Number(it.wholesalePrice) || 0,
-              minWholesaleQty: Number(it.minWholesaleQty) || 5,
-              boxPackingRatio: Number(it.boxPackingRatio) || 0,
-              boxUnit: it.boxUnit || "BOX",
-              stockQuantity: Number(it.stockQuantity) || 0,
-              minStockAlert: Number(it.minStockAlert) || 5,
-              gstRate: Number(it.gstRate) || 0,
-              unit: it.unit ? it.unit.toUpperCase() : "PCS",
-              brand: it.brand || "",
-              category: it.category || ""
-            }))
-          );
-          setStep("review");
-        } catch (innerErr: any) {
-          setErrorMessage(innerErr.message || "स्कॅनिंग अयशस्वी झाले.");
-        } finally {
-          setIsProcessing(false);
-        }
+        const base64Data = (e.target?.result as string).split(",")[1];
+        await executeDirectItemsParse(base64Data, selectedFile.type);
       };
-
       reader.readAsDataURL(selectedFile);
     } catch (err: any) {
       setIsProcessing(false);
       setErrorMessage(err.message || "फाईल वाचताना अडचण आली.");
     }
+  };
+
+  const handleCameraCapture = (file: File, base64: string) => {
+    setSelectedFile(file);
+    setPreviewUrl(`data:image/jpeg;base64,${base64}`);
+    setIsCameraModalOpen(false);
+    executeDirectItemsParse(base64, "image/jpeg");
   };
 
   const handleRowChange = (index: number, field: string, value: any) => {
@@ -221,26 +237,8 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
 
           {step === "upload" ? (
             <div className="space-y-6">
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-                  selectedFile
-                    ? "border-emerald-500 bg-emerald-50/30"
-                    : "border-slate-300 hover:border-emerald-500 hover:bg-slate-50"
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleFileSelect(f);
-                  }}
-                  className="hidden"
-                />
-
-                {previewUrl ? (
+              {previewUrl ? (
+                <div className="border-2 border-emerald-500 bg-emerald-50/30 rounded-2xl p-6 text-center">
                   <div className="flex flex-col items-center space-y-3">
                     <img
                       src={previewUrl}
@@ -251,27 +249,66 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                       <span>{selectedFile?.name} ({Math.round((selectedFile?.size || 0) / 1024)} KB)</span>
                     </div>
-                    <span className="text-[11px] text-slate-500">दुसरा फोटो निवडण्यासाठी येथे क्लिक करा</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center space-y-3">
-                    <div className="w-14 h-14 rounded-2xl bg-emerald-100/70 text-emerald-600 flex items-center justify-center">
-                      <Camera className="w-7 h-7" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-slate-800 text-sm">हँडरिटन आयटम लिस्टचा फोटो अपलोड करा</p>
-                      <p className="text-xs text-slate-500 mt-1">कागदावरील वस्तूंची नावे, दर, नग, युनिट आपोआप वाचले जातील (JPG, PNG किंवा PDF)</p>
-                    </div>
                     <button
                       type="button"
-                      className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold py-2 px-4 rounded-xl shadow-sm transition flex items-center space-x-2 mt-2"
+                      onClick={() => {
+                        setSelectedFile(null);
+                        setPreviewUrl(null);
+                      }}
+                      className="text-xs text-rose-600 hover:text-rose-700 font-bold underline cursor-pointer"
                     >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>फाईल / फोटो निवडा</span>
+                      दुसरा फोटो किंवा कॅमेरा निवडा
                     </button>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* 1. Live Camera / Webcam Option */}
+                  <button
+                    type="button"
+                    onClick={() => setIsCameraModalOpen(true)}
+                    className="border-2 border-emerald-500/60 bg-emerald-50/50 hover:bg-emerald-100/70 rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-2.5 shadow-xs group hover:scale-[1.01]"
+                  >
+                    <div className="w-13 h-13 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md group-hover:scale-110 transition-transform">
+                      <Camera className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-900 text-sm">थेट वेबकॅमने फोटो काढा</p>
+                      <p className="text-[11px] text-emerald-800/80 mt-0.5">कॅमेरासमोर कागद किंवा यादी धरा व 1-क्लिकमध्ये स्कॅन करा</p>
+                    </div>
+                    <span className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold rounded-full shadow-xs">
+                      📷 Live Camera Scan
+                    </span>
+                  </button>
+
+                  {/* 2. File / Photo Upload Option */}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-slate-300 hover:border-slate-400 hover:bg-slate-50/80 bg-white rounded-2xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center space-y-2.5"
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,application/pdf"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleFileSelect(f);
+                      }}
+                      className="hidden"
+                    />
+                    <div className="w-13 h-13 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center border border-slate-200 shadow-xs">
+                      <Upload className="w-6 h-6 text-slate-700" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-slate-800 text-sm">गॅलरी / फाईलमधून फोटो निवडा</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">JPG, PNG किंवा PDF फॉरमॅटमधील यादी</p>
+                    </div>
+                    <span className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-full">
+                      📁 Browse File
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Instructions Pill */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-600">
@@ -479,6 +516,15 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
         </div>
 
       </div>
+
+      {/* Live Camera Scanner Modal for Item Lists */}
+      <CameraScannerModal
+        isOpen={isCameraModalOpen}
+        onClose={() => setIsCameraModalOpen(false)}
+        onCapture={handleCameraCapture}
+        title="थेट कॅमेऱ्याने मालाची / आयटम यादी स्कॅन करा"
+        description="हस्तलिखित किंवा छापिल आयटम यादीचा फोटो काढा. AI सर्व आयटम्स वाचून इन्व्हेंटरीमध्ये ॲड करेल."
+      />
     </div>
   );
 };
