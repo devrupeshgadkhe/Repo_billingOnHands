@@ -1621,12 +1621,63 @@ app.post("/api/db/hard-reset", (req, res) => {
   }
 });
 
-// Update Business details
+// Update Business details and Store Settings
 app.post("/api/business", (req, res) => {
+  try {
+    const db = readDb();
+    const existing: any = db.business || {};
+    const incoming: any = req.body || {};
+    db.business = {
+      ...existing,
+      ...incoming,
+      loyaltyConfig: incoming.loyaltyConfig
+        ? { ...(existing.loyaltyConfig || {}), ...incoming.loyaltyConfig }
+        : existing.loyaltyConfig,
+      scheduledEmailConfig: incoming.scheduledEmailConfig
+        ? { ...(existing.scheduledEmailConfig || {}), ...incoming.scheduledEmailConfig }
+        : existing.scheduledEmailConfig,
+      thermalConfig: incoming.thermalConfig
+        ? { ...(existing.thermalConfig || {}), ...incoming.thermalConfig }
+        : existing.thermalConfig
+    };
+    writeDb(db);
+    console.log("[Settings] Business profile & store preferences updated in database successfully.");
+    res.json({ success: true, message: "Business profile and settings updated successfully in database.", business: db.business });
+  } catch (err: any) {
+    console.error("[Settings] Failed to save settings:", err);
+    res.status(500).json({ error: "Failed to save settings: " + (err?.message || err) });
+  }
+});
+
+// Settings persistence alias endpoints
+app.post("/api/settings", (req, res) => {
+  try {
+    const db = readDb();
+    const existing: any = db.business || {};
+    const incoming: any = req.body || {};
+    db.business = {
+      ...existing,
+      ...incoming,
+      loyaltyConfig: incoming.loyaltyConfig
+        ? { ...(existing.loyaltyConfig || {}), ...incoming.loyaltyConfig }
+        : existing.loyaltyConfig,
+      scheduledEmailConfig: incoming.scheduledEmailConfig
+        ? { ...(existing.scheduledEmailConfig || {}), ...incoming.scheduledEmailConfig }
+        : existing.scheduledEmailConfig,
+      thermalConfig: incoming.thermalConfig
+        ? { ...(existing.thermalConfig || {}), ...incoming.thermalConfig }
+        : existing.thermalConfig
+    };
+    writeDb(db);
+    res.json({ success: true, message: "Settings saved successfully to database.", business: db.business });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to save settings: " + (err?.message || err) });
+  }
+});
+
+app.get("/api/settings", (req, res) => {
   const db = readDb();
-  db.business = req.body;
-  writeDb(db);
-  res.json({ message: "Business profile updated successfully.", business: db.business });
+  res.json(db.business || {});
 });
 
 // Add or Update Item in Inventory
@@ -3082,7 +3133,6 @@ function executeMunimjiUniversalCrud(
       } else if (Array.isArray(payload?.products) && payload.products.length > 0) {
         rawItemsToProcess = payload.products;
       } else {
-        // Check if payload.itemName or userText contains multiple comma/newline/and separated items
         const rawName = String(
           payload?.itemName ||
           payload?.name ||
@@ -3092,68 +3142,122 @@ function executeMunimjiUniversalCrud(
         ).trim();
 
         const fullText = (userText || "").trim();
-        const hasMultipleSeparators =
-          rawName.includes("\n") ||
-          (rawName.includes(",") && rawName.split(",").length > 1) ||
-          rawName.includes(" आणि ") ||
-          rawName.includes(" व ") ||
-          (fullText.includes(",") && fullText.split(",").length > 2);
+        const textToParse = rawName.length > 5 ? rawName : fullText;
 
-        if (hasMultipleSeparators) {
-          // Intelligently separate multi-item spoken/written string
-          const textToSplit = rawName.length > 10 ? rawName : fullText;
-          const segments = textToSplit
-            .split(/[\n,;]|(?:\s+आणि\s+)|\band\b|(?:\s+व\s+)/i)
+        // Normalize Devanagari numerals
+        const devMap: Record<string, string> = {
+          '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+          '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'
+        };
+        const normalized = textToParse.replace(/[०-९]/g, ch => devMap[ch] || ch);
+
+        const cleanPreamble = normalized
+          .replace(/^(?:कृपया\s*)?(?:मला\s*)?(?:नवीन\s*)?(?:प्रॉडक्ट|वस्तू|आयटम|सामान|इन्व्हेंटरी|इन्व्हेंटरीमध्ये|माल|स्टॉक)?\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो|टाका|नोंदव|तयार\s*कर|create|add|save)?[:\-\s]*/i, "")
+          .trim();
+
+        const hasNumberedMarkers = /(?:(?:\d+|[०-९]+)[\.\)\-\:]\s*)|(?:आयटम\s*(?:\d+|एक|दोन|तीन|चार|पाच|१|२|३|४|५|one|two|three)\s*[:\-\s]?)/i.test(cleanPreamble);
+        let segments: string[] = [];
+
+        if (hasNumberedMarkers) {
+          segments = cleanPreamble
+            .split(/(?:(?:\d+|[०-९]+)[\.\)\-\:]\s*)|(?:आयटम\s*(?:\d+|एक|दोन|तीन|चार|पाच|१|२|३|४|५|one|two|three)\s*[:\-\s]?)/i)
             .map(s => s.trim())
             .filter(s => s.length >= 2);
-
-          for (const seg of segments) {
-            // Check if segment is not a command prefix
-            const cleanSeg = seg.replace(/^(?:नवीन|नया|add\s*new|add|create|कृपया)?\s*(?:प्रॉडक्ट|वस्तू|आयटम|सामान)?\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो|जोड़ो)?[:\-\s]*/i, "").trim();
-            if (cleanSeg.length < 2) continue;
-
-            // Extract price and quantity if present
-            const priceMatch = cleanSeg.match(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|inr|दर|भाव|किंमत|price|rate)/i) || cleanSeg.match(/(?:दर|भाव|किंमत|rate|price|₹|rs)[:\s]*(\d+(?:\.\d+)?)/i);
-            const qtyMatch = cleanSeg.match(/(\d+)\s*(?:किलो|लीटर|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|kgs|ltr|bag)/i);
-            const unitMatch = cleanSeg.match(/(किलो|लीटर|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|kgs|ltr|bag)/i);
-
-            let sPrice = priceMatch ? Number(priceMatch[1]) : Number(payload?.salePrice || 0);
-            let sQty = qtyMatch ? Number(qtyMatch[1]) : Number(payload?.stockQuantity || 10);
-            let sUnit = "PCS";
-            if (unitMatch) {
-              const u = unitMatch[1].toLowerCase();
-              if (u.includes("किलो") || u.includes("kg")) sUnit = "KGS";
-              else if (u.includes("लीटर") || u.includes("लिटर") || u.includes("ltr")) sUnit = "LTR";
-              else if (u.includes("बॉक्स") || u.includes("box")) sUnit = "BOX";
-              else if (u.includes("बॅग") || u.includes("bag")) sUnit = "BAG";
-              else sUnit = "PCS";
+        } else if (cleanPreamble.includes("\n") || cleanPreamble.includes(",") || cleanPreamble.includes(";") || /[\s,]+(?:आणि|व|तसेच|and|&)\s+/i.test(cleanPreamble)) {
+          segments = cleanPreamble
+            .split(/[\n,;]|(?:[\s,]+(?:आणि|व|तसेच|and|&)\s+)/i)
+            .map(s => s.trim())
+            .filter(s => s.length >= 2);
+        } else {
+          const multiTokenPattern = /(?:(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|दर|भाव|किंमत|price|rate|किलो|लिटर|नग|बॉक्स|बॅग|kg|ltr|pcs))/gi;
+          const matches = cleanPreamble.match(multiTokenPattern);
+          if (matches && matches.length >= 2) {
+            const parts: string[] = [];
+            let lastIdx = 0;
+            let m: RegExpExecArray | null;
+            const re = /(?:(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|दर|भाव|किंमत|price|rate|किलो|लिटर|नग|बॉक्स|बॅग|kg|ltr|pcs)+)/gi;
+            while ((m = re.exec(cleanPreamble)) !== null) {
+              const seg = cleanPreamble.slice(lastIdx, m.index + m[0].length).trim();
+              if (seg) parts.push(seg);
+              lastIdx = m.index + m[0].length;
             }
-
-            const pName = cleanSeg
-              .replace(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|inr|दर|भाव|किंमत|price|rate)/gi, "")
-              .replace(/(?:दर|भाव|किंमत|rate|price|₹|rs)[:\s]*(\d+(?:\.\d+)?)/gi, "")
-              .replace(/(\d+)\s*(?:किलो|लीटर|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|kgs|ltr|bag)/gi, "")
-              .replace(/^(?:आणि|व|and|also|\+)\s*/i, "")
-              .replace(/[:\-\s]+$/g, "")
-              .trim();
-
-            if (pName.length >= 2) {
-              rawItemsToProcess.push({
-                itemName: pName,
-                salePrice: sPrice,
-                mrp: sPrice > 0 ? sPrice : (payload?.mrp || sPrice),
-                purchasePrice: sPrice > 0 ? Math.round(sPrice * 0.85) : 0,
-                unit: sUnit,
-                stockQuantity: sQty,
-                gstRate: payload?.gstRate || 0,
-                category: payload?.category || ""
-              });
+            if (lastIdx < cleanPreamble.length) {
+              const rem = cleanPreamble.slice(lastIdx).trim();
+              if (rem && parts.length > 0) parts[parts.length - 1] += " " + rem;
             }
+            segments = parts;
+          } else {
+            segments = [cleanPreamble];
           }
         }
 
-        if (rawItemsToProcess.length === 0) {
-          rawItemsToProcess.push(payload || {});
+        for (const seg of segments) {
+          if (!seg || seg.trim().length < 2) continue;
+
+          // Strip numbering labels like "आयटम 1", "Item 1", "पहिला", "1.", etc.
+          let cleanSeg = seg
+            .replace(/^(?:(?:आयटम|item|वस्तू|प्रॉडक्ट)\s*(?:\d+|एक|दोन|तीन|चार|पाच|१|२|३|४|५|one|two|three)?[.:\-\s]*)/i, "")
+            .replace(/^(?:(?:\d+|[०-९]+)[\.\)\-\:\s]+)/i, "")
+            .replace(/^(?:पहिला|दुसरा|तिसरा|चौथा|पाचवा|first|second|third)[.:\-\s]*/i, "")
+            .replace(/^(?:आणि|व|तसेच|and|&|\+)\s*/i, "")
+            .trim();
+
+          if (cleanSeg.length < 2) continue;
+
+          const priceMatch = cleanSeg.match(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|inr|दर|भाव|किंमत|price|rate)/i) ||
+            cleanSeg.match(/(?:दर|भाव|किंमत|rate|price|₹|rs)[:\s]*(\d+(?:\.\d+)?)/i) ||
+            cleanSeg.match(/(?:^|\s)(\d+(?:\.\d+)?)(?:\s*$|\s+(?:किलो|लिटर|नग|box|pcs|kg|ltr))/i);
+          const qtyMatch = cleanSeg.match(/(\d+(?:\.\d+)?)\s*(?:किलो|लीटर|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|kgs|ltr|bag)/i) ||
+            cleanSeg.match(/(?:स्टॉक|साठा|संख्या|qty|stock|quantity)[:\s]*(\d+(?:\.\d+)?)/i);
+          const unitMatch = cleanSeg.match(/(किलो|लीटर|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|kgs|ltr|bag|meter|मीटर)/i);
+
+          let sPrice = priceMatch ? Number(priceMatch[1]) : Number(payload?.salePrice || 0);
+          let sQty = qtyMatch ? Number(qtyMatch[1]) : Number(payload?.stockQuantity || 10);
+          let sUnit = "PCS";
+          if (unitMatch) {
+            const u = unitMatch[1].toLowerCase();
+            if (u.includes("किलो") || u.includes("kg")) sUnit = "KGS";
+            else if (u.includes("लीटर") || u.includes("लिटर") || u.includes("ltr")) sUnit = "LTR";
+            else if (u.includes("बॉक्स") || u.includes("box")) sUnit = "BOX";
+            else if (u.includes("बॅग") || u.includes("bag")) sUnit = "BAG";
+            else if (u.includes("मीटर") || u.includes("meter")) sUnit = "MTR";
+            else sUnit = "PCS";
+          }
+
+          let pName = cleanSeg
+            .replace(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|inr|दर|भाव|किंमत|price|rate)/gi, "")
+            .replace(/(?:दर|भाव|किंमत|rate|price|₹|rs)[:\s]*(\d+(?:\.\d+)?)/gi, "")
+            .replace(/(\d+(?:\.\d+)?)\s*(?:किलो|लीटर|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|kgs|ltr|bag|meter|मीटर)/gi, "")
+            .replace(/(?:स्टॉक|साठा|संख्या|qty|stock|quantity)[:\s]*(\d+(?:\.\d+)?)/gi, "")
+            .replace(/(?:विक्री|खरेदी|भाव|दर|किंमत|रेट|स्टॉक|साठा|price|rate|stock|cost|sale)[:\-\s]*/gi, "")
+            .replace(/^(?:नवीन|नया|add|create|वस्तू|प्रॉडक्ट|आयटम|सामान)?[:\-\s]*/gi, "")
+            .replace(/^[:\-\s,]+|[:\-\s,]+$/g, "")
+            .trim();
+
+          if (!pName || pName.length < 2 || /^(?:item\s*\d*|आयटम\s*\d*|product\s*\d*)$/i.test(pName)) {
+            const words = cleanSeg.split(/[0-9₹:]/)[0].trim().replace(/^[:\-\s,]+|[:\-\s,]+$/g, "");
+            if (words.length >= 2 && !/^(?:item|आयटम|नवीन|add)$/i.test(words)) {
+              pName = words;
+            }
+          }
+
+          if (pName.length >= 2) {
+            rawItemsToProcess.push({
+              itemName: pName,
+              name: pName,
+              salePrice: sPrice,
+              mrp: sPrice > 0 ? sPrice : (payload?.mrp || sPrice),
+              purchasePrice: sPrice > 0 ? Math.round(sPrice * 0.85) : 0,
+              unit: sUnit,
+              stockQuantity: sQty,
+              gstRate: payload?.gstRate || 0,
+              category: payload?.category || ""
+            });
+          }
+        }
+
+        if (rawItemsToProcess.length === 0 && payload && typeof payload === "object") {
+          rawItemsToProcess.push(payload);
         }
       }
 
@@ -3169,13 +3273,22 @@ function executeMunimjiUniversalCrud(
           itemData?.title ||
           itemData?.item;
 
+        // Clean any numbering prefix artifact
+        if (itemName && typeof itemName === "string") {
+          itemName = itemName
+            .replace(/^(?:(?:आयटम|item|वस्तू|प्रॉडक्ट)\s*(?:\d+|एक|दोन|तीन|चार|पाच|१|२|३|४|५|one|two|three)?[.:\-\s]*)/i, "")
+            .replace(/^(?:(?:\d+|[०-९]+)[\.\)\-\:\s]+)/i, "")
+            .replace(/^[:\-\s,]+|[:\-\s,]+$/g, "")
+            .trim();
+        }
+
         // Fallback extraction from text if needed
-        if (!itemName || typeof itemName !== "string" || itemName.trim().length < 2) {
+        if (!itemName || typeof itemName !== "string" || itemName.trim().length < 2 || /^(?:item\s*\d*|आयटम\s*\d*)$/i.test(itemName)) {
           const textToSearch = userText || replyText || "";
           const m = textToSearch.match(/(?:(?:नवीन|नया|add\s*new|add|create)?\s*(?:प्रॉडक्ट|वस्तू|आयटम|सामान|इन्व्हेंटरी|इन्व्हेंटरीमध्ये|स्टॉक|स्टॉकमध्ये|product|item)?\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो|जोड़ो)?[:\-\s]*)([^,\n:0-9₹]+)/i);
           if (m && m[1]) {
             const rawName = m[1].replace(/^(?:कृपया\s*)?(?:मला\s*)?(?:एक\s*)?(?:नवीन\s*)?(?:प्रॉडक्ट|वस्तू|आयटम|सामान|इन्व्हेंटरी|इन्व्हेंटरीमध्ये|स्टॉक)?\s*(?:ॲड\s*कर|जोडा|करा)?[:\-\s]*/i, "").split(/(?:विक्री|खरेदी|भाव|दर|किंमत|रेट|स्टॉक|साठा|price|rate|stock|cost|sale)/i)[0].trim();
-            if (rawName.length >= 2) itemName = rawName;
+            if (rawName.length >= 2 && !/^(?:item|आयटम)$/i.test(rawName)) itemName = rawName;
           }
           if (!itemName) {
             const qMatch = textToSearch.match(/['"`‘“]([^'"`’“”]+)['"`’“”]/);
@@ -3190,7 +3303,7 @@ function executeMunimjiUniversalCrud(
         let purchasePrice = Number(itemData?.purchasePrice ?? itemData?.costPrice ?? itemData?.cost ?? itemData?.buyPrice ?? itemData?.product?.purchasePrice ?? 0);
         if (purchasePrice === 0 && salePrice > 0) purchasePrice = Math.round(salePrice * 0.85);
 
-        const stockQty = Number(itemData?.stockQuantity ?? itemData?.stock ?? itemData?.quantity ?? itemData?.qty ?? itemData?.initialStock ?? itemData?.product?.stock ?? 0);
+        const stockQty = Number(itemData?.stockQuantity ?? itemData?.stock ?? itemData?.quantity ?? itemData?.qty ?? itemData?.initialStock ?? itemData?.product?.stock ?? 10);
 
         // Normalize unit
         let unit = String(itemData?.unit || itemData?.product?.unit || "PCS").toUpperCase();
@@ -3543,6 +3656,11 @@ function executeMunimjiUniversalCrud(
     }
 
     // 10. SALES INVOICE / BILL
+    else if (act.includes("OPEN_NEW_BILL")) {
+      message = "नवीन बिलिंग काउंटर उघडत आहे.";
+      resultData = { action: "OPEN_NEW_BILL", targetTab: "sales" };
+      return { success: true, message, data: resultData };
+    }
     else if (
       act.includes("SALES_BILL") || act.includes("CREATE_SALES_INVOICE") || act.includes("CREATE_INVOICE") ||
       act.includes("NEW_BILL") || act.includes("SALE_CREATE") || (intent === "SALES_BILL" && !act.includes("PURCHASE"))
@@ -3566,10 +3684,14 @@ function executeMunimjiUniversalCrud(
       invoice.isNonGst = isNonGstBill;
       invoice.billingMode = isNonGstBill ? "non_gst" : "gst";
 
-      // Deduct stock and dynamically auto-add any missing items to inventory catalog
+      // Deduct stock and dynamically auto-add any missing items to inventory catalog with exact name
       if (invoice.items && db.items) {
         for (const line of invoice.items) {
           line.quantity = parseIndianQuantity(line.quantity);
+          const lineName = (line.itemName || line.name || line.title || line.productName || "").trim();
+          line.itemName = lineName;
+          line.name = lineName;
+
           if (isNonGstBill) {
             line.gstRate = 0;
             line.taxAmount = 0;
@@ -3579,21 +3701,30 @@ function executeMunimjiUniversalCrud(
             line.amountBeforeTax = Number(line.price || 0) * Number(line.quantity || 1);
             line.totalAmount = line.amountBeforeTax;
           }
-          const prod = db.items.find((it: any) => it.id === line.itemId || it.name.toLowerCase() === (line.itemName || "").toLowerCase());
+
+          const prod = db.items.find((it: any) => 
+            (line.itemId && it.id === line.itemId) || 
+            (lineName && it.name.toLowerCase() === lineName.toLowerCase()) ||
+            (lineName.length > 3 && it.name.toLowerCase().includes(lineName.toLowerCase()))
+          );
+
           if (prod) {
             prod.stockQuantity = Math.max(0, (prod.stockQuantity || 0) - line.quantity);
             line.itemId = prod.id;
-          } else {
-            // Dynamic Out-of-Catalog Item Auto-Addition
+            line.itemName = prod.name;
+            line.name = prod.name;
+          } else if (lineName) {
+            // Dynamic Out-of-Catalog Item Auto-Addition with exact name
             const newId = "item_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-            const unitType = line.unit || (line.itemName && (line.itemName.includes("तेल") || line.itemName.includes("oil") || line.itemName.includes("दूध")) ? "LTR" : "KGS");
+            const unitType = line.unit || (lineName.includes("तेल") || lineName.includes("oil") || lineName.includes("दूध") ? "LTR" : "PCS");
+            const salePrice = Number(line.price || 100);
             const newProd = {
               id: newId,
-              name: line.itemName || "नवीन वस्तू",
+              name: lineName,
               hsn: isNonGstBill ? "" : (line.hsn || "9999"),
-              purchasePrice: line.price ? Math.round(line.price * 0.85) : 50,
-              salePrice: line.price || 100,
-              mrp: line.price || 100,
+              purchasePrice: Math.round(salePrice * 0.85),
+              salePrice,
+              mrp: salePrice,
               stockQuantity: Math.max(0, 100 - line.quantity),
               minStockAlert: 5,
               gstRate: isNonGstBill ? 0 : (line.gstRate || 0),

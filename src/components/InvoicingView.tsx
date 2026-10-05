@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { Item, Party, Invoice, InvoiceItem, BusinessProfile, TAX_RATES } from "../types.js";
+import { Item, Party, Invoice, InvoiceItem, BusinessProfile } from "../types.js";
 import {
   Plus,
   Minus,
@@ -42,10 +42,7 @@ import {
   ChevronDown,
   ChevronUp,
   Printer,
-  Sliders,
-  Star,
-  Sparkles,
-  Gift
+  Sliders
 } from "lucide-react";
 import { InvoiceUploadModal, ParsedInvoiceData } from "./InvoiceUploadModal.js";
 import EWayBillModal from "./EWayBillModal.js";
@@ -181,31 +178,11 @@ export default function InvoicingView({
   const [paidAmt, setPaidAmt] = useState<number>(0);
   const [customPaidAmount, setCustomPaidAmount] = useState<boolean>(false);
   const [notes, setNotes] = useState("");
-  const [redeemPoints, setRedeemPoints] = useState<number>(0);
   const [errorText, setErrorText] = useState("");
   const [sourceChallanId, setSourceChallanId] = useState<string | undefined>(undefined);
   const [sourceChallanNumber, setSourceChallanNumber] = useState<string | undefined>(undefined);
   const [sourceQuotationId, setSourceQuotationId] = useState<string | undefined>(undefined);
   const [sourceQuotationNumber, setSourceQuotationNumber] = useState<string | undefined>(undefined);
-
-  // GST vs Non-GST billing mode (Persisted across bills and stored in localStorage / business profile)
-  const [billingMode, setBillingMode] = useState<'gst' | 'non_gst'>(() => {
-    if (invoiceToEdit) {
-      return invoiceToEdit.isNonGst || invoiceToEdit.billingMode === 'non_gst' ? 'non_gst' : 'gst';
-    }
-    try {
-      const saved = localStorage.getItem("billingonhand_billing_mode");
-      if (saved === "non_gst" || saved === "gst") return saved;
-    } catch {}
-    return business.defaultBillingMode || "gst";
-  });
-
-  const handleToggleBillingMode = (mode: 'gst' | 'non_gst') => {
-    setBillingMode(mode);
-    try {
-      localStorage.setItem("billingonhand_billing_mode", mode);
-    } catch {}
-  };
 
   // Quick-Pick Catalog UI state
   const [showCatalog, setShowCatalog] = useState(true);
@@ -597,7 +574,6 @@ export default function InvoicingView({
     let sgstTotal = 0;
     let igstTotal = 0;
     let totalDiscountGiven = 0;
-    const isNonGst = billingMode === "non_gst";
 
     const formattedLines: InvoiceItem[] = invoiceLines.map(line => {
       const originalItem = items.find(i => i.id === line.itemId || (line.itemName && i.name.toLowerCase() === line.itemName.toLowerCase()));
@@ -635,9 +611,9 @@ export default function InvoicingView({
         lineDisc = (grossAmt * Math.min(100, rawDisc)) / 100;
       }
 
-      const lineGstRate = isNonGst ? 0 : (line.gstRate !== undefined ? line.gstRate : (originalItem?.gstRate || 0));
+      const lineGstRate = line.gstRate !== undefined ? line.gstRate : (originalItem?.gstRate || 0);
       const amtBeforeTax = Math.max(0, grossAmt - lineDisc);
-      const rowTax = isNonGst ? 0 : (amtBeforeTax * (lineGstRate / 100));
+      const rowTax = amtBeforeTax * (lineGstRate / 100);
       const rowTotal = amtBeforeTax + rowTax;
 
       // GST determination based on inter-state shipping rules
@@ -645,14 +621,13 @@ export default function InvoicingView({
       let itemSgst = 0;
       let itemIgst = 0;
 
-      if (!isNonGst) {
-        const isInterstate = activeParty && activeParty.state && business.state && activeParty.state !== business.state;
-        if (!isInterstate) {
-          itemCgst = rowTax / 2;
-          itemSgst = rowTax / 2;
-        } else {
-          itemIgst = rowTax;
-        }
+      const isInterstate = activeParty && activeParty.state && business.state && activeParty.state !== business.state;
+
+      if (!isInterstate) {
+        itemCgst = rowTax / 2;
+        itemSgst = rowTax / 2;
+      } else {
+        itemIgst = rowTax;
       }
 
       subtotal += amtBeforeTax;
@@ -681,36 +656,7 @@ export default function InvoicingView({
 
     // Sum up dynamic extra charges
     const extraChargesSum = extraCharges.reduce((sum, curr) => sum + (curr.amount || 0), 0);
-    const rawGrandTotal = subtotal + taxAmount + extraChargesSum;
-
-    // Customer Loyalty Points Scheme (Phase 7)
-    const loyaltyCfg = business.loyaltyConfig || {
-      enabled: true,
-      pointsPer100Rupees: 1,
-      redemptionRate: 1.0,
-      minPointsToRedeem: 10,
-      maxRedemptionPercentage: 50,
-      expiryDays: 365
-    };
-
-    const isCustomer = txSubtype === "sale" && activeParty?.type === "customer" && activeParty?.id !== "walkin_customer";
-    const availablePoints = isCustomer ? (activeParty.loyaltyPoints || 0) : 0;
-
-    // Calculate maximum points customer is allowed to redeem on this bill
-    const maxRedeemableRupees = (rawGrandTotal * (loyaltyCfg.maxRedemptionPercentage || 50)) / 100;
-    const maxPointsEligible = (loyaltyCfg.enabled !== false && isCustomer && availablePoints >= (loyaltyCfg.minPointsToRedeem || 0))
-      ? Math.min(availablePoints, Math.floor(maxRedeemableRupees / (loyaltyCfg.redemptionRate || 1.0)))
-      : 0;
-
-    const effectivePointsRedeemed = Math.min(Math.max(0, redeemPoints), maxPointsEligible);
-    const pointsDiscount = effectivePointsRedeemed * (loyaltyCfg.redemptionRate || 1.0);
-    const grandTotal = Math.max(0, rawGrandTotal - pointsDiscount);
-
-    // Points that will be earned on this purchase (based on final payable grand total)
-    const pointsToEarn = (loyaltyCfg.enabled !== false && isCustomer)
-      ? Math.floor((grandTotal / 100) * (loyaltyCfg.pointsPer100Rupees || 1))
-      : 0;
-
+    const grandTotal = subtotal + taxAmount + extraChargesSum;
     const totalUnits = formattedLines.reduce((acc, curr) => acc + curr.quantity, 0);
 
     return {
@@ -721,19 +667,12 @@ export default function InvoicingView({
       igstTotal,
       extraChargesSum,
       totalDiscountGiven,
-      rawGrandTotal,
       grandTotal,
-      pointsDiscount,
-      effectivePointsRedeemed,
-      pointsToEarn,
-      availablePoints,
-      maxPointsEligible,
-      loyaltyCfg,
       itemCount: formattedLines.length,
       totalUnits,
       lines: formattedLines
     };
-  }, [invoiceLines, items, activeParty, business, extraCharges, redeemPoints, txSubtype]);
+  }, [invoiceLines, items, activeParty, business, extraCharges]);
 
   // Monitor total changes to auto-update payment inputs
   useEffect(() => {
@@ -1141,7 +1080,7 @@ export default function InvoicingView({
       date: invoiceDate,
       partyId: resolvedPartyId,
       partyName: resolvedPartyName,
-      partyGstin: billingMode === "non_gst" ? "" : resolvedPartyGstin,
+      partyGstin: resolvedPartyGstin,
       type: txSubtype,
       items: validLines,
       subtotal: computedInvoiceDetails.subtotal,
@@ -1154,17 +1093,12 @@ export default function InvoicingView({
       paymentType,
       paidAmount: finalPaidAmount,
       remainingAmount: finalRemainingAmount > 0.01 ? finalRemainingAmount : 0,
-      pointsRedeemed: computedInvoiceDetails.effectivePointsRedeemed || 0,
-      pointsDiscount: computedInvoiceDetails.pointsDiscount || 0,
-      pointsEarned: computedInvoiceDetails.pointsToEarn || 0,
       notes,
       originalInvoiceNumber: originalInvoiceNumber.trim() || undefined,
       sourceChallanId,
       sourceChallanNumber,
       sourceQuotationId,
-      sourceQuotationNumber,
-      isNonGst: billingMode === "non_gst",
-      billingMode: billingMode
+      sourceQuotationNumber
     };
 
     try {
@@ -1193,7 +1127,6 @@ export default function InvoicingView({
           setInvoiceLines([]);
           setExtraCharges([]);
           setNotes("");
-          setRedeemPoints(0);
           setCustomPaidAmount(false);
           setSourceChallanId(undefined);
           setSourceChallanNumber(undefined);
@@ -1286,36 +1219,6 @@ export default function InvoicingView({
             >
               <RotateCcw className="w-3 h-3" />
               <span>{type === "sale" ? "Credit Note" : "Debit Note"}</span>
-            </button>
-          </div>
-
-          {/* GST vs Non-GST Billing Mode Switcher (Persisted) */}
-          <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => handleToggleBillingMode("gst")}
-              className={`px-3 py-1 rounded-lg transition flex items-center space-x-1.5 cursor-pointer select-none ${
-                billingMode === "gst"
-                  ? "bg-emerald-600 text-white shadow-xs font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-              title="करयुक्त बिल (Tax Invoice with GST breakdown)"
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>GST Bill</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleToggleBillingMode("non_gst")}
-              className={`px-3 py-1 rounded-lg transition flex items-center space-x-1.5 cursor-pointer select-none ${
-                billingMode === "non_gst"
-                  ? "bg-amber-600 text-white shadow-xs font-bold"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-              title="करमुक्त / साधी पावती (Non-GST / Bill of Supply / Estimate)"
-            >
-              <Receipt className="w-3.5 h-3.5" />
-              <span>Non-GST (साधी पावती)</span>
             </button>
           </div>
 
@@ -1541,34 +1444,15 @@ export default function InvoicingView({
                             {p.phone || "No phone"} • GSTIN: {p.gstin || "Unregistered"}
                           </p>
                         </div>
-                        <div className="text-right flex flex-col items-end gap-1">
+                        <div className="text-right">
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
                             p.currentBalance > 0 ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"
                           }`}>
                             Balance: ₹{p.currentBalance.toFixed(2)}
                           </span>
-                          {p.type === "customer" && (p.loyaltyPoints || 0) > 0 && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-0.5">
-                              <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
-                              <span>{p.loyaltyPoints} Pts</span>
-                            </span>
-                          )}
                         </div>
                       </div>
                     ))}
-                  </div>
-                )}
-
-                {/* Selected Registered Customer Loyalty Details Badge */}
-                {txSubtype.includes("sale") && activeParty && activeParty.id !== "walkin_customer" && activeParty.type === "customer" && (
-                  <div className="mt-1 flex items-center justify-between text-[11px] px-1 text-slate-600">
-                    <span className="truncate max-w-[60%]">
-                      {activeParty.phone ? `📞 ${activeParty.phone}` : ""} {activeParty.address ? `• 📍 ${activeParty.address}` : ""}
-                    </span>
-                    <span className="inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 shrink-0">
-                      <Star className="w-3 h-3 text-amber-500 fill-amber-400" />
-                      <span>{activeParty.loyaltyPoints || 0} Pts (₹{((activeParty.loyaltyPoints || 0) * (computedInvoiceDetails.loyaltyCfg?.redemptionRate || 1)).toFixed(2)})</span>
-                    </span>
                   </div>
                 )}
               </div>
@@ -2062,36 +1946,19 @@ export default function InvoicingView({
                             </div>
                           </td>
 
-                          {/* GST Rate (Dynamic or Non-GST) */}
+                          {/* GST Rate */}
                           <td className="py-2.5 px-2 text-center">
-                            {billingMode === "non_gst" ? (
-                              <span className="text-[10.5px] font-bold font-mono text-amber-900 bg-amber-50 border border-amber-200/80 px-2 py-1 rounded-md inline-block">
-                                0% (Non-GST)
-                              </span>
-                            ) : (
-                              <select
-                                value={TAX_RATES.includes(line.gstRate) ? line.gstRate : "custom"}
-                                onChange={(e) => {
-                                  if (e.target.value === "custom") {
-                                    const customVal = prompt("Enter custom GST rate (%):", String(line.gstRate || 0));
-                                    if (customVal !== null) {
-                                      handleLineValueChange(idx, 'gstRate', parseFloat(customVal) || 0);
-                                    }
-                                  } else {
-                                    handleLineValueChange(idx, 'gstRate', parseFloat(e.target.value) || 0);
-                                  }
-                                }}
-                                className="px-1.5 py-1 border border-slate-200 rounded-md text-[11px] font-mono outline-none bg-white font-semibold cursor-pointer"
-                              >
-                                {TAX_RATES.map(rate => (
-                                  <option key={rate} value={rate}>{rate}%</option>
-                                ))}
-                                {!TAX_RATES.includes(line.gstRate) && (
-                                  <option value="custom">{line.gstRate}%</option>
-                                )}
-                                <option value="custom">+ Custom %</option>
-                              </select>
-                            )}
+                            <select
+                              value={line.gstRate}
+                              onChange={(e) => handleLineValueChange(idx, 'gstRate', parseInt(e.target.value) || 0)}
+                              className="px-1.5 py-1 border border-slate-200 rounded-md text-[11px] font-mono outline-none bg-white"
+                            >
+                              <option value="0">0%</option>
+                              <option value="5">5%</option>
+                              <option value="12">12%</option>
+                              <option value="18">18%</option>
+                              <option value="28">28%</option>
+                            </select>
                           </td>
 
                           {/* Line Total */}
@@ -2180,37 +2047,29 @@ export default function InvoicingView({
                 </div>
               )}
 
-              {/* GST Breakdown (CGST + SGST vs IGST) or Non-GST Tag */}
-              {billingMode === "non_gst" ? (
-                <div className="bg-amber-50 border border-amber-200/80 rounded-lg p-2 text-center text-[11px] font-bold text-amber-900">
-                  <span>📄 Non-GST Bill (करमुक्त / विना-GST पावती) • Tax: ₹0.00</span>
-                </div>
-              ) : (
+              {/* GST Breakdown (CGST + SGST vs IGST) */}
+              {activeParty && activeParty.state === business.state ? (
                 <>
-                  {activeParty && activeParty.state === business.state ? (
-                    <>
-                      <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
-                        <span>CGST (Central):</span>
-                        <span>{formatINR(computedInvoiceDetails.cgstTotal)}</span>
-                      </div>
-                      <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
-                        <span>SGST (State):</span>
-                        <span>{formatINR(computedInvoiceDetails.sgstTotal)}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
-                      <span>IGST (Integrated):</span>
-                      <span>{formatINR(computedInvoiceDetails.igstTotal)}</span>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between items-center text-slate-600 border-b border-slate-100 pb-2">
-                    <span className="font-sans">Total GST Tax:</span>
-                    <span className="font-bold text-slate-800">{formatINR(computedInvoiceDetails.taxAmount)}</span>
+                  <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
+                    <span>CGST (Central):</span>
+                    <span>{formatINR(computedInvoiceDetails.cgstTotal)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
+                    <span>SGST (State):</span>
+                    <span>{formatINR(computedInvoiceDetails.sgstTotal)}</span>
                   </div>
                 </>
+              ) : (
+                <div className="flex justify-between items-center text-[11px] text-slate-500 pl-2 border-l-2 border-slate-200">
+                  <span>IGST (Integrated):</span>
+                  <span>{formatINR(computedInvoiceDetails.igstTotal)}</span>
+                </div>
               )}
+
+              <div className="flex justify-between items-center text-slate-600 border-b border-slate-100 pb-2">
+                <span className="font-sans">Total GST Tax:</span>
+                <span className="font-bold text-slate-800">{formatINR(computedInvoiceDetails.taxAmount)}</span>
+              </div>
 
               {/* Extra Charges Section (Delivery, Shipping, Hamali) */}
               <div className="space-y-1.5 pt-0.5">
@@ -2278,113 +2137,7 @@ export default function InvoicingView({
                 )}
               </div>
 
-              {/* Loyalty Points Discount Line Item */}
-              {computedInvoiceDetails.pointsDiscount > 0 && (
-                <div className="flex justify-between items-center text-emerald-800 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200">
-                  <span className="font-semibold text-xs flex items-center gap-1.5">
-                    <Star className="w-3.5 h-3.5 fill-emerald-500 text-emerald-600" />
-                    <span>Loyalty Points Discount ({computedInvoiceDetails.effectivePointsRedeemed} Pts):</span>
-                  </span>
-                  <span className="font-bold text-xs font-mono">- {formatINR(computedInvoiceDetails.pointsDiscount)}</span>
-                </div>
-              )}
-
             </div>
-
-            {/* Customer Loyalty Points Redemption & Rewards Box (Phase 7) */}
-            {txSubtype === "sale" && activeParty && activeParty.id !== "walkin_customer" && activeParty.type === "customer" && computedInvoiceDetails.loyaltyCfg?.enabled !== false && (
-              <div className="bg-gradient-to-r from-amber-50/90 to-orange-50/90 border border-amber-200 rounded-xl p-3 space-y-2.5 shadow-2xs">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-xs">
-                      <Star className="w-4 h-4 fill-white" />
-                    </div>
-                    <div>
-                      <span className="text-xs font-bold text-amber-950 block">Customer Loyalty Points</span>
-                      <span className="text-[10px] text-amber-800 font-medium">
-                        Balance: <strong>{computedInvoiceDetails.availablePoints} Pts</strong> (₹{((computedInvoiceDetails.availablePoints) * (computedInvoiceDetails.loyaltyCfg?.redemptionRate || 1)).toFixed(2)})
-                      </span>
-                    </div>
-                  </div>
-                  {computedInvoiceDetails.maxPointsEligible > 0 && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                      Eligible: {computedInvoiceDetails.maxPointsEligible} Pts
-                    </span>
-                  )}
-                </div>
-
-                {computedInvoiceDetails.availablePoints < (computedInvoiceDetails.loyaltyCfg?.minPointsToRedeem || 10) ? (
-                  <div className="text-[11px] text-amber-800 bg-amber-100/60 px-2 py-1 rounded-lg">
-                    ℹ️ Minimum {computedInvoiceDetails.loyaltyCfg?.minPointsToRedeem || 10} points required to redeem (Customer has {computedInvoiceDetails.availablePoints} pts).
-                  </div>
-                ) : computedInvoiceDetails.maxPointsEligible <= 0 ? (
-                  <div className="text-[11px] text-amber-800 bg-amber-100/60 px-2 py-1 rounded-lg">
-                    Add bill items to redeem loyalty points.
-                  </div>
-                ) : (
-                  <div className="space-y-2 pt-0.5">
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type="number"
-                          min="0"
-                          max={computedInvoiceDetails.maxPointsEligible}
-                          value={redeemPoints || ""}
-                          onChange={(e) => {
-                            const val = Math.max(0, Math.min(computedInvoiceDetails.maxPointsEligible, parseInt(e.target.value) || 0));
-                            setRedeemPoints(val);
-                            setCustomPaidAmount(false);
-                          }}
-                          placeholder={`0 to ${computedInvoiceDetails.maxPointsEligible}`}
-                          className="w-full px-2.5 py-1.5 bg-white border border-amber-300 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
-                        />
-                        <span className="absolute right-2 top-1.5 text-[10px] text-amber-700 font-bold">PTS</span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRedeemPoints(computedInvoiceDetails.maxPointsEligible);
-                          setCustomPaidAmount(false);
-                        }}
-                        className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition shrink-0 cursor-pointer shadow-2xs"
-                        title="Redeem maximum allowed points on this bill"
-                      >
-                        Redeem Max ({computedInvoiceDetails.maxPointsEligible})
-                      </button>
-
-                      {redeemPoints > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRedeemPoints(0);
-                            setCustomPaidAmount(false);
-                          }}
-                          className="px-2 py-1.5 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition shrink-0 cursor-pointer"
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </div>
-
-                    {computedInvoiceDetails.effectivePointsRedeemed > 0 && (
-                      <div className="flex items-center justify-between text-xs font-bold text-emerald-800 bg-white/90 px-2.5 py-1 rounded-lg border border-emerald-200">
-                        <span>🎉 Discount on this bill:</span>
-                        <span>- {formatINR(computedInvoiceDetails.pointsDiscount)}</span>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Points to be earned on this bill banner */}
-                {computedInvoiceDetails.pointsToEarn > 0 && (
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-950 bg-white/80 px-2.5 py-1.5 rounded-lg border border-amber-200/60">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                    <span>Customer will earn +{computedInvoiceDetails.pointsToEarn} loyalty points on this bill!</span>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* GRAND TOTAL HERO DISPLAY */}
             <div className="bg-slate-900 text-white rounded-xl p-4 shadow-md text-center space-y-1">

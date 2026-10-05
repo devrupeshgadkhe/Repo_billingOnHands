@@ -25,13 +25,6 @@ export default function InvoicePrintModal({
 }: InvoicePrintModalProps) {
   const [printSize, setPrintSize] = useState<PrintSize>("A4");
 
-  // Determine if this is a Non-GST / Bill of Supply
-  const isNonGst = Boolean(
-    invoice.isNonGst ||
-    invoice.billingMode === "non_gst" ||
-    (invoice.taxAmount === 0 && invoice.cgstTotal === 0 && invoice.sgstTotal === 0 && invoice.igstTotal === 0 && (invoice.items || []).every(it => !it.gstRate))
-  );
-
   // Format currency in Indian Rupees format (e.g., ₹1,50,000.00)
   const formatRupees = (num: number) => {
     const dec = (num || 0).toFixed(2);
@@ -275,7 +268,7 @@ export default function InvoicePrintModal({
                   <div className="text-center text-[10px] space-y-0.5 text-slate-700">
                     {th.showAddress && <p className="whitespace-pre-wrap leading-tight">{business.address}</p>}
                     {th.showPhone && business.phone && <p>Ph: {business.phone}</p>}
-                    {th.showGstin && !isNonGst && business.gstin && <p className="font-bold">GSTIN: {business.gstin}</p>}
+                    {th.showGstin && business.gstin && <p className="font-bold">GSTIN: {business.gstin}</p>}
                     {th.showDrugLicense && business.drugLicenseNo && <p>D.L. No: {business.drugLicenseNo}</p>}
                     {th.showFssai && business.fssaiNo && <p>FSSAI: {business.fssaiNo}</p>}
                   </div>
@@ -285,7 +278,7 @@ export default function InvoicePrintModal({
                   {/* Invoice Meta */}
                   <div className="space-y-0.5 text-[10px]">
                     <div className="flex justify-between">
-                      <span>{invoice.type.includes("return") ? (invoice.type === "sale_return" ? "Credit Note:" : "Debit Note:") : isMarathi ? (isNonGst ? "पावती क्र:" : "बिल क्र:") : (isNonGst ? "Memo No:" : "Bill No:")} <strong>#{invoice.invoiceNumber}</strong></span>
+                      <span>{invoice.type.includes("return") ? (invoice.type === "sale_return" ? "Credit Note:" : "Debit Note:") : isMarathi ? "बिल क्र:" : "Bill No:"} <strong>#{invoice.invoiceNumber}</strong></span>
                       <span>{invoice.date}</span>
                     </div>
                     {invoice.originalInvoiceNumber && (
@@ -308,7 +301,7 @@ export default function InvoicePrintModal({
                       <div className="space-y-0.5 text-[10px]">
                         <p className="text-[9px] uppercase font-bold text-slate-500">{isMarathi ? "ग्राहक तपशील:" : "Customer Details:"}</p>
                         <p className="font-bold text-slate-900">{cleanPartyName}</p>
-                        {th.showCustomerGstin && !isNonGst && invoice.partyGstin && <p className="text-[9.5px]">GSTIN: {invoice.partyGstin}</p>}
+                        {th.showCustomerGstin && invoice.partyGstin && <p className="text-[9.5px]">GSTIN: {invoice.partyGstin}</p>}
                         {th.showCustomerPhone && party?.phone && <p className="text-[9.5px]">Mob: {party.phone}</p>}
                       </div>
                     </>
@@ -331,15 +324,15 @@ export default function InvoicePrintModal({
                         <div className="flex justify-between text-slate-700 text-[10px]">
                           <span>
                             {item.quantity} x ₹{item.price.toFixed(2)}
-                            {!isNonGst && th.showGstPercent && item.gstRate ? ` [${item.gstRate}%]` : ""}
+                            {th.showGstPercent && item.gstRate ? ` [${item.gstRate}%]` : ""}
                           </span>
                           <span className="font-bold font-mono">
                             ₹{item.totalAmount.toFixed(2)}
                           </span>
                         </div>
-                        {(th.showBatch && item.batchNumber || th.showExpiry && item.expiryDate || (!isNonGst && th.showHsn && item.hsn) || (th.showDiscount && item.discount && item.discount > 0)) && (
+                        {(th.showBatch && item.batchNumber || th.showExpiry && item.expiryDate || th.showHsn && item.hsn || (th.showDiscount && item.discount && item.discount > 0)) && (
                           <div className="text-[9px] text-slate-500 pl-2 flex flex-wrap gap-1 mt-0.5 font-mono">
-                            {!isNonGst && th.showHsn && item.hsn && <span>HSN:{item.hsn}</span>}
+                            {th.showHsn && item.hsn && <span>HSN:{item.hsn}</span>}
                             {th.showBatch && item.batchNumber && <span>B:{item.batchNumber}</span>}
                             {th.showExpiry && item.expiryDate && <span>Exp:{item.expiryDate}</span>}
                             {th.showDiscount && item.discount && item.discount > 0 ? <span className="text-emerald-700 font-semibold">Disc:-₹{item.discount.toFixed(2)}</span> : null}
@@ -354,11 +347,11 @@ export default function InvoicePrintModal({
                   {/* Totals & Calculations */}
                   <div className="space-y-0.5 font-mono text-[10.5px]">
                     <div className="flex justify-between">
-                      <span>{isNonGst ? "Subtotal:" : "Subtotal (Taxable):"}</span>
+                      <span>Subtotal (Taxable):</span>
                       <span>₹{invoice.subtotal.toFixed(2)}</span>
                     </div>
 
-                    {!isNonGst && th.showTaxBreakdown && (
+                    {th.showTaxBreakdown && (
                       !isInterstate ? (
                         <>
                           <div className="flex justify-between text-[10px] text-slate-600">
@@ -387,14 +380,6 @@ export default function InvoicePrintModal({
                       ))
                     )}
 
-                    {/* Loyalty Points Discount Line */}
-                    {invoice.pointsDiscount && invoice.pointsDiscount > 0 ? (
-                      <div className="flex justify-between text-emerald-800 font-bold text-[10px]">
-                        <span>{isMarathi ? "लॉयल्टी सवलत:" : "Loyalty Disc:"}</span>
-                        <span>-₹{invoice.pointsDiscount.toFixed(2)} ({invoice.pointsRedeemed} pts)</span>
-                      </div>
-                    ) : null}
-
                     <div className="border-t border-dashed border-slate-400 my-1"></div>
                     <div className="flex justify-between font-black text-xs bg-slate-100 p-1 rounded">
                       <span>{isMarathi ? "एकूण रक्कम (TOTAL):" : "TOTAL AMOUNT:"}</span>
@@ -411,13 +396,6 @@ export default function InvoicePrintModal({
                         <span>₹{invoice.remainingAmount.toFixed(2)}</span>
                       </div>
                     )}
-
-                    {/* Loyalty Points Earned Banner */}
-                    {invoice.pointsEarned && invoice.pointsEarned > 0 ? (
-                      <div className="my-1.5 p-1 border border-dashed border-amber-500 rounded bg-amber-50 text-center font-bold text-[9.5px] text-amber-950">
-                        ★ {isMarathi ? `या बिलावर मिळालेले पॉईंट्स: +${invoice.pointsEarned} Pts` : `Points Earned Today: +${invoice.pointsEarned} Pts`} ★
-                      </div>
-                    ) : null}
                   </div>
 
                   {/* Savings Banner */}
@@ -482,13 +460,11 @@ export default function InvoicePrintModal({
                 <h1 className="text-xl font-bold tracking-wider text-slate-900 uppercase">
                   {invoice.type === "sale_return" ? "CREDIT NOTE" :
                    invoice.type === "purchase_return" ? "DEBIT NOTE" :
-                   invoice.type === "purchase" ? "PURCHASE BILL" :
-                   isNonGst ? "BILL OF SUPPLY / CASH MEMO" : "TAX INVOICE"}
+                   invoice.type === "purchase" ? "PURCHASE BILL" : "TAX INVOICE"}
                 </h1>
                 <p className="text-[11px] text-slate-500 uppercase tracking-wider font-medium">
                   {invoice.type === "sale_return" ? "Sales Return Voucher" :
-                   invoice.type === "purchase_return" ? "Purchase Return Voucher" :
-                   isNonGst ? "Original for Recipient (Composition / Non-GST Supply)" : "Original for Recipient"}
+                   invoice.type === "purchase_return" ? "Purchase Return Voucher" : "Original for Recipient"}
                 </p>
               </div>
 
@@ -513,7 +489,7 @@ export default function InvoicePrintModal({
                     </div>
                   </div>
                   <div className="pt-1.5 space-y-0.5 text-slate-700">
-                    {!isNonGst && <p><span className="font-semibold text-slate-900">GSTIN:</span> {business.gstin || "Unregistered"}</p>}
+                    <p><span className="font-semibold text-slate-900">GSTIN:</span> {business.gstin || "Unregistered"}</p>
                     <p><span className="font-semibold text-slate-900">State:</span> {business.state}</p>
                     {business.phone && <p><span className="font-semibold text-slate-900">Phone:</span> {business.phone}</p>}
                     {business.email && <p><span className="font-semibold text-slate-900">Email:</span> {business.email}</p>}
@@ -525,7 +501,7 @@ export default function InvoicePrintModal({
                   <div className="space-y-1 bg-slate-50 p-2.5 rounded-lg border border-slate-200/80">
                     <div className="flex justify-between items-center">
                       <span className="font-semibold text-slate-600">
-                        {invoice.type.includes("return") ? (invoice.type === "sale_return" ? "Credit Note No:" : "Debit Note No:") : isNonGst ? "Bill / Memo No:" : "Invoice No:"}
+                        {invoice.type.includes("return") ? (invoice.type === "sale_return" ? "Credit Note No:" : "Debit Note No:") : "Invoice No:"}
                       </span>
                       <span className="font-bold text-emerald-800 text-sm">#{invoice.invoiceNumber}</span>
                     </div>
@@ -558,7 +534,7 @@ export default function InvoicePrintModal({
                       <p className="text-slate-600 whitespace-pre-wrap leading-relaxed">{party.address}</p>
                     )}
                     <div className="space-y-0.5 pt-0.5 text-slate-700">
-                      {!isNonGst && <p><span className="font-semibold text-slate-900">GSTIN:</span> {invoice.partyGstin || "Unregistered (URP)"}</p>}
+                      <p><span className="font-semibold text-slate-900">GSTIN:</span> {invoice.partyGstin || "Unregistered (URP)"}</p>
                       {party?.state && <p><span className="font-semibold text-slate-900">Place of Supply:</span> {party.state}</p>}
                       {party?.phone && <p><span className="font-semibold text-slate-900">Phone:</span> {party.phone}</p>}
                     </div>
@@ -574,20 +550,18 @@ export default function InvoicePrintModal({
                     <tr className="bg-slate-100 border-y border-slate-300 text-slate-800 font-bold uppercase text-[10px]">
                       <th className="py-2 px-2 text-center w-8">#</th>
                       <th className="py-2 px-2">Item Description</th>
-                      {!isNonGst && <th className="py-2 px-2 text-center w-16">HSN</th>}
+                      <th className="py-2 px-2 text-center w-16">HSN</th>
                       <th className="py-2 px-2 text-right w-14">Qty</th>
                       <th className="py-2 px-2 text-right w-20">Rate</th>
-                      {!isNonGst && <th className="py-2 px-2 text-right w-24">Taxable Amt</th>}
-                      {!isNonGst && <th className="py-2 px-2 text-center w-14">GST %</th>}
-                      {!isNonGst && (
-                        !isInterstate ? (
-                          <>
-                            <th className="py-2 px-2 text-right w-18">CGST</th>
-                            <th className="py-2 px-2 text-right w-18">SGST</th>
-                          </>
-                        ) : (
-                          <th className="py-2 px-2 text-right w-20">IGST</th>
-                        )
+                      <th className="py-2 px-2 text-right w-24">Taxable Amt</th>
+                      <th className="py-2 px-2 text-center w-14">GST %</th>
+                      {!isInterstate ? (
+                        <>
+                          <th className="py-2 px-2 text-right w-18">CGST</th>
+                          <th className="py-2 px-2 text-right w-18">SGST</th>
+                        </>
+                      ) : (
+                        <th className="py-2 px-2 text-right w-20">IGST</th>
                       )}
                       <th className="py-2 px-2 text-right w-24">Total</th>
                     </tr>
@@ -616,26 +590,24 @@ export default function InvoicePrintModal({
                             ) : null}
                           </div>
                         </td>
-                        {!isNonGst && <td className="py-2 px-2 text-center text-slate-600 font-mono">{item.hsn || "-"}</td>}
+                        <td className="py-2 px-2 text-center text-slate-600 font-mono">{item.hsn || "-"}</td>
                         <td className="py-2 px-2 text-right font-semibold text-slate-900 font-mono">{item.quantity}</td>
                         <td className="py-2 px-2 text-right font-mono">₹{item.price.toFixed(2)}</td>
-                        {!isNonGst && <td className="py-2 px-2 text-right font-mono">₹{item.amountBeforeTax.toFixed(2)}</td>}
-                        {!isNonGst && <td className="py-2 px-2 text-center font-mono text-slate-700">{item.gstRate}%</td>}
-                        {!isNonGst && (
-                          !isInterstate ? (
-                            <>
-                              <td className="py-2 px-2 text-right font-mono text-slate-600">
-                                ₹{(item.cgst || 0).toFixed(2)}
-                              </td>
-                              <td className="py-2 px-2 text-right font-mono text-slate-600">
-                                ₹{(item.sgst || 0).toFixed(2)}
-                              </td>
-                            </>
-                          ) : (
+                        <td className="py-2 px-2 text-right font-mono">₹{item.amountBeforeTax.toFixed(2)}</td>
+                        <td className="py-2 px-2 text-center font-mono text-slate-700">{item.gstRate}%</td>
+                        {!isInterstate ? (
+                          <>
                             <td className="py-2 px-2 text-right font-mono text-slate-600">
-                              ₹{(item.igst || 0).toFixed(2)}
+                              ₹{(item.cgst || 0).toFixed(2)}
                             </td>
-                          )
+                            <td className="py-2 px-2 text-right font-mono text-slate-600">
+                              ₹{(item.sgst || 0).toFixed(2)}
+                            </td>
+                          </>
+                        ) : (
+                          <td className="py-2 px-2 text-right font-mono text-slate-600">
+                            ₹{(item.igst || 0).toFixed(2)}
+                          </td>
                         )}
                         <td className="py-2 px-2 text-right font-bold font-mono text-slate-900">
                           ₹{item.totalAmount.toFixed(2)}
@@ -675,39 +647,32 @@ export default function InvoicePrintModal({
                         <p className="italic">"{invoice.notes}"</p>
                       </div>
                     )}
-                    {invoice.pointsEarned && invoice.pointsEarned > 0 ? (
-                      <div className="pt-2 border-t border-slate-200 text-[11px] font-bold text-amber-900 bg-amber-50/80 p-2 rounded border border-amber-200 flex items-center gap-1.5">
-                        <span>⭐ Loyalty Points Awarded: +{invoice.pointsEarned} Pts</span>
-                      </div>
-                    ) : null}
                   </div>
                 </div>
 
                 {/* Right Box: Bill Amount Calculations */}
                 <div className="text-xs space-y-1.5">
                   <div className="flex justify-between text-slate-700">
-                    <span>{isNonGst ? "Subtotal:" : "Taxable Amount (Subtotal):"}</span>
+                    <span>Taxable Amount (Subtotal):</span>
                     <span className="font-semibold font-mono">{formatRupees(invoice.subtotal)}</span>
                   </div>
 
-                  {!isNonGst && (
-                    !isInterstate ? (
-                      <>
-                        <div className="flex justify-between text-slate-700">
-                          <span>CGST Total:</span>
-                          <span className="font-mono">{formatRupees(invoice.cgstTotal || 0)}</span>
-                        </div>
-                        <div className="flex justify-between text-slate-700">
-                          <span>SGST Total:</span>
-                          <span className="font-mono">{formatRupees(invoice.sgstTotal || 0)}</span>
-                        </div>
-                      </>
-                    ) : (
+                  {!isInterstate ? (
+                    <>
                       <div className="flex justify-between text-slate-700">
-                        <span>IGST Total:</span>
-                        <span className="font-mono">{formatRupees(invoice.igstTotal || 0)}</span>
+                        <span>CGST Total:</span>
+                        <span className="font-mono">{formatRupees(invoice.cgstTotal || 0)}</span>
                       </div>
-                    )
+                      <div className="flex justify-between text-slate-700">
+                        <span>SGST Total:</span>
+                        <span className="font-mono">{formatRupees(invoice.sgstTotal || 0)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-slate-700">
+                      <span>IGST Total:</span>
+                      <span className="font-mono">{formatRupees(invoice.igstTotal || 0)}</span>
+                    </div>
                   )}
 
                   {invoice.extraCharges && invoice.extraCharges.length > 0 && (
@@ -721,14 +686,6 @@ export default function InvoicePrintModal({
                     </div>
                   )}
 
-                  {/* Loyalty Points Discount Line */}
-                  {invoice.pointsDiscount && invoice.pointsDiscount > 0 ? (
-                    <div className="flex justify-between items-center text-emerald-800 bg-emerald-50 px-2 py-1 rounded text-xs font-semibold border border-emerald-200">
-                      <span>Loyalty Points Disc ({invoice.pointsRedeemed} pts):</span>
-                      <span className="font-mono font-bold">- {formatRupees(invoice.pointsDiscount)}</span>
-                    </div>
-                  ) : null}
-
                   <div className="flex justify-between items-center text-sm font-bold bg-slate-900 text-white rounded-lg px-3 py-2 mt-2">
                     <span>Grand Total:</span>
                     <span className="font-mono text-base">{formatRupees(invoice.totalAmount)}</span>
@@ -737,8 +694,8 @@ export default function InvoicePrintModal({
 
               </div>
 
-              {/* HSN Wise Tax Summary - Only for GST Invoices */}
-              {!isNonGst && hsnSummary.length > 0 && (
+              {/* HSN Wise Tax Summary */}
+              {hsnSummary.length > 0 && (
                 <div className="border border-slate-200 rounded-lg overflow-hidden text-[10.5px]">
                   <div className="bg-slate-100 py-1.5 px-3 border-b border-slate-200">
                     <span className="font-bold text-slate-700 uppercase tracking-wider text-[10px]">
@@ -776,7 +733,7 @@ export default function InvoicePrintModal({
                           ) : (
                             <td className="py-1.5 px-2 text-right">₹{sum.igst.toFixed(2)}</td>
                           )}
-                          <td className="py-1.5 px-3 text-right font-bold">₹{sum.taxAmount.toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right font-bold text-slate-900">₹{sum.taxAmount.toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>

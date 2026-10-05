@@ -1093,6 +1093,18 @@ export default function MunimjiDrawer({
         playMunimjiVoice(response.audioBase64, response.audioMimeType, response.replyText);
       }
 
+      // If sales invoice was generated, automatically apply or open it for the merchant
+      const billAction = response.actionPayload?.action;
+      if (billAction === "CREATE_SALES_INVOICE" && onApplyBillToEditor && response.actionPayload) {
+        try {
+          onApplyBillToEditor(response.actionPayload);
+        } catch (applyErr) {
+          console.warn("Auto-apply bill notice:", applyErr);
+        }
+      } else if (billAction === "OPEN_NEW_BILL" && onNavigateTab) {
+        onNavigateTab("sales");
+      }
+
       // Check and execute page navigation / redirection across Web & Electron
       const navTarget =
         response.actionPayload?.targetTab ||
@@ -1100,11 +1112,10 @@ export default function MunimjiDrawer({
         response.actionPayload?.page ||
         (response as any).actionResult?.data?.targetTab;
 
-      if (navTarget && onNavigateTab) {
+      if (navTarget && onNavigateTab && billAction !== "CREATE_SALES_INVOICE") {
         try {
           const target = String(navTarget).toLowerCase();
           onNavigateTab(target);
-          // Auto-minimize Munimji drawer smoothly upon navigation
           setTimeout(() => {
             onClose();
           }, 850);

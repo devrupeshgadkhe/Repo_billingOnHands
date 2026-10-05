@@ -701,9 +701,11 @@ export default function App() {
 
     // 2. Map items
     const invoiceItems = (billData.items || []).map((it: any) => {
+      const itName = String(it.itemName || it.name || it.title || "वस्तू").trim();
       const matched = dbState?.items?.find(item => 
-        item.name.toLowerCase().includes(it.name.toLowerCase()) ||
-        it.name.toLowerCase().includes(item.name.toLowerCase())
+        item.name.toLowerCase() === itName.toLowerCase() ||
+        item.name.toLowerCase().includes(itName.toLowerCase()) ||
+        itName.toLowerCase().includes(item.name.toLowerCase())
       );
       const unitPrice = it.price || matched?.salePrice || 0;
       const qty = it.quantity || 1;
@@ -712,10 +714,11 @@ export default function App() {
       const taxAmount = (amountBeforeTax * gstRate) / 100;
       const halfTax = taxAmount / 2;
       return {
-        itemId: matched?.id || "custom_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
-        itemName: it.name || matched?.name || "Item",
+        itemId: matched?.id || it.itemId || "custom_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
+        itemName: matched?.name || itName,
         hsn: matched?.hsn || "9999",
         quantity: qty,
+        unit: matched?.unit || it.unit || "PCS",
         price: unitPrice,
         discount: 0,
         gstRate,
@@ -1216,8 +1219,18 @@ export default function App() {
         onApplyBillToEditor={handleApplyMunimjiBill}
         onOpenInvoice={(inv) => setSelectedInvoice(inv)}
         onNavigateTab={(tab) => {
-          if (tab === "inventory" || tab === "stock") setActiveTab("items");
-          else setActiveTab(tab);
+          const t = String(tab || "").toLowerCase().trim();
+          if (["sales", "sale", "billing", "bill", "pos", "invoice", "invoicing"].includes(t)) setActiveTab("sales");
+          else if (["items", "item", "inventory", "stock", "product", "products"].includes(t)) setActiveTab("items");
+          else if (["parties", "party", "customers", "customer", "suppliers", "supplier", "ledger"].includes(t)) setActiveTab("parties");
+          else if (["purchases", "purchase", "buying", "kharedi"].includes(t)) setActiveTab("purchases");
+          else if (["quotations", "quotation", "quote", "estimates", "estimate"].includes(t)) setActiveTab("quotations");
+          else if (["challans", "challan", "delivery_challans", "dc"].includes(t)) setActiveTab("challans");
+          else if (["transactions", "transaction", "expenses", "expense", "income"].includes(t)) setActiveTab("transactions");
+          else if (["reports", "report", "analytics", "daybook", "gstr"].includes(t)) setActiveTab("reports");
+          else if (["settings", "setting", "profile", "backup"].includes(t)) setActiveTab("settings");
+          else if (["access_control", "users", "user", "permissions"].includes(t)) setActiveTab("access_control");
+          else setActiveTab("dashboard");
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
       />

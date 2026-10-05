@@ -165,6 +165,18 @@ export default function SettingsView({
     }
   }, [session]);
 
+  const [activeSettingsTab, setActiveSettingsTab] = useState<
+    "all" | "profile" | "loyalty" | "email" | "thermal" | "security" | "backup" | "updater"
+  >("all");
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (business) {
+      setFormData(business);
+    }
+  }, [business]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
@@ -173,15 +185,52 @@ export default function SettingsView({
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim()) return;
+  const handleSaveSettings = async (specificProfile?: BusinessProfile) => {
+    setIsSaving(true);
+    setSaveSuccessMsg(null);
+    try {
+      const payload = specificProfile || formData;
+      if (!payload.name?.trim()) {
+        await showAlert({
+          title: "व्यवसायाचे नाव आवश्यक",
+          message: "कृपया व्यवसायाचे नाव प्रविष्ट करा.",
+          variant: "warning"
+        });
+        setIsSaving(false);
+        return;
+      }
 
-    await onSaveBusiness(formData);
-    setShowSuccessAlert(true);
-    setTimeout(() => {
-      setShowSuccessAlert(false);
-    }, 4000);
+      await onSaveBusiness(payload);
+
+      const res = await fetch("/api/business", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "सर्व्हरवर सेटिंग सेव्ह करण्यात अडचण आली");
+      }
+      setShowSuccessAlert(true);
+      setSaveSuccessMsg("✅ सर्व सेटिंग्ज डेटाबेसमध्ये यशस्वीरीत्या सेव्ह झाल्या आहेत!");
+      setTimeout(() => {
+        setShowSuccessAlert(false);
+        setSaveSuccessMsg(null);
+      }, 4000);
+    } catch (err: any) {
+      await showAlert({
+        title: "त्रुटी",
+        message: "सेटिंग्ज सेव्ह करताना अडचण आली: " + (err?.message || "नेटवर्क त्रुटी"),
+        variant: "danger"
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    await handleSaveSettings();
   };
 
   const handleUpdateCredentials = async (e: React.FormEvent) => {
@@ -380,20 +429,88 @@ export default function SettingsView({
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        
-        {/* Core Settings Form */}
-        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm lg:col-span-2">
-          
-          <div className="flex items-center space-x-2 mb-6 pb-3 border-b border-slate-100">
-            <Building2 className="w-5 h-5 text-emerald-600" />
-            <h3 className="font-bold text-slate-900 text-sm">Corporate Identification</h3>
-          </div>
+      {/* Sub-Tabs Navigation & Quick Save Header */}
+      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none max-w-full">
+          {[
+            { id: "all", label: "सर्व पर्याय (All)", icon: Sliders },
+            { id: "profile", label: "🏢 व्यवसाय व GST", icon: Building2 },
+            { id: "loyalty", label: "⭐ लॉयल्टी रिवॉर्ड्स", icon: Star },
+            { id: "email", label: "📧 दैनिक अहवाल", icon: Mail },
+            { id: "thermal", label: "🖨️ थर्मल प्रिंटर", icon: Printer },
+            { id: "security", label: "🔐 सुरक्षा व लॉगिन", icon: PenTool },
+            { id: "backup", label: "💾 बॅकअप व रिसेट", icon: Database },
+            { id: "updater", label: "⚡ ॲप व्हर्जन", icon: Laptop },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeSettingsTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveSettingsTab(tab.id as any)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer select-none ${
+                  isActive
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-900 border border-slate-200"
+                }`}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <button
+          type="button"
+          onClick={() => handleSaveSettings()}
+          disabled={isSaving}
+          className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-bold py-1.5 px-4 rounded-lg text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer select-none shrink-0"
+        >
+          {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+          <span>{isSaving ? "सेव्ह होत आहे..." : "सर्व बदल सेव्ह करा"}</span>
+        </button>
+      </div>
+
+      {saveSuccessMsg && (
+        <div className="p-3.5 bg-emerald-50 text-emerald-800 border-2 border-emerald-200 rounded-xl text-xs font-bold flex items-center space-x-2 animate-fade-in shadow-xs">
+          <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{saveSuccessMsg}</span>
+        </div>
+      )}
+
+      <div className={activeSettingsTab === "all" ? "grid grid-cols-1 lg:grid-cols-3 gap-6 items-start" : "space-y-6"}>
+        
+        {/* Core Settings Form (Business Profile, Loyalty, EOD Email) */}
+        {(activeSettingsTab === "all" || ["profile", "loyalty", "email"].includes(activeSettingsTab)) && (
+          <div className={`bg-white border border-slate-200 rounded-xl p-6 shadow-sm ${activeSettingsTab === "all" ? "lg:col-span-2" : "max-w-4xl mx-auto w-full"}`}>
             
-            {/* Logo Upload Section */}
-            <div className="border-b border-slate-100 pb-5 mb-5">
+            <form onSubmit={handleSubmit} className="space-y-6">
+            
+            {(activeSettingsTab === "all" || activeSettingsTab === "profile") && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                  <div className="flex items-center space-x-2">
+                    <Building2 className="w-5 h-5 text-emerald-600" />
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-sm">Corporate Identification & Business Profile</h3>
+                      <p className="text-[11px] text-slate-500">Official business name, contact, GSTIN, bank details, and invoice terms</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleSaveSettings()}
+                    disabled={isSaving}
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-bold py-1.5 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer select-none"
+                  >
+                    {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    <span>{isSaving ? "सेव्ह होत आहे..." : "माहिती सेव्ह करा"}</span>
+                  </button>
+                </div>
+
+                {/* Logo Upload Section */}
+                <div className="border-b border-slate-100 pb-5 mb-5">
               <label className="block text-xs font-bold text-slate-750 uppercase tracking-wide mb-2">Corporate Logo / Business Avatar</label>
               <div className="flex items-center space-x-4">
                 {formData.logoUrl ? (
@@ -634,18 +751,46 @@ export default function SettingsView({
               </div>
             </div>
 
-            {/* Phase 7: Customer Loyalty Points Scheme Configuration */}
-            <div className="pt-5 border-t border-slate-200 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
-                    <Star className="w-4 h-4 fill-amber-500 text-amber-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-800">ग्राहक लॉयल्टी रिवॉर्ड्स (Customer Loyalty Scheme)</h3>
-                    <p className="text-[11px] text-slate-500">Configure customer points earning and redemption rules for POS billing</p>
-                  </div>
+                {/* Business Profile Direct Save */}
+                <div className="pt-4 border-t border-slate-100 flex justify-end">
+                  <button
+                    id="save-profile-btn"
+                    type="button"
+                    onClick={() => handleSaveSettings()}
+                    disabled={isSaving}
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-semibold py-2 px-6 rounded-lg text-xs tracking-wider uppercase shadow hover:shadow-md transition flex items-center space-x-2 cursor-pointer select-none"
+                  >
+                    {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    <span>{isSaving ? "Saving..." : "Update Business Profile"}</span>
+                  </button>
                 </div>
+              </div>
+            )}
+
+            {/* Phase 7: Customer Loyalty Points Scheme Configuration */}
+            {(activeSettingsTab === "all" || activeSettingsTab === "loyalty") && (
+              <div className="pt-5 border-t border-slate-200 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
+                      <Star className="w-4 h-4 fill-amber-500 text-amber-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">ग्राहक लॉयल्टी रिवॉर्ड्स (Customer Loyalty Scheme)</h3>
+                      <p className="text-[11px] text-slate-500">Configure customer points earning and redemption rules for POS billing</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveSettings()}
+                      disabled={isSaving}
+                      className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-bold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer select-none"
+                    >
+                      {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      <span>{isSaving ? "..." : "लॉयल्टी सेव्ह करा"}</span>
+                    </button>
 
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -672,6 +817,7 @@ export default function SettingsView({
                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
                 </label>
               </div>
+            </div>
 
               {formData.loyaltyConfig?.enabled !== false && (
                 <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 space-y-3.5">
@@ -815,20 +961,47 @@ export default function SettingsView({
                   </div>
                 </div>
               )}
-            </div>
+
+                {/* Loyalty Direct Save */}
+                <div className="pt-3 border-t border-amber-200/60 flex justify-end">
+                  <button
+                    id="save-loyalty-btn"
+                    type="button"
+                    onClick={() => handleSaveSettings()}
+                    disabled={isSaving}
+                    className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-semibold py-2 px-6 rounded-lg text-xs tracking-wider uppercase shadow hover:shadow-md transition flex items-center space-x-2 cursor-pointer select-none"
+                  >
+                    {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    <span>{isSaving ? "Saving..." : "लॉयल्टी सेटिंग्ज सेव्ह करा (Save Loyalty Rules)"}</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Phase 8: Automated Scheduled EOD Email Reports Configuration */}
-            <div className="pt-5 border-t border-slate-200 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-blue-100 text-blue-800 rounded-lg">
-                    <Mail className="w-4 h-4 text-blue-600" />
+            {(activeSettingsTab === "all" || activeSettingsTab === "email") && (
+              <div className="pt-5 border-t border-slate-200 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-blue-100 text-blue-800 rounded-lg">
+                      <Mail className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">स्वयंचलित दैनिक ईमेल अहवाल (Automated EOD Email Reports)</h3>
+                      <p className="text-[11px] text-slate-500">रोज संध्याकाळी दुकान बंद होताना मालकाच्या ईमेलवर डे-एंड सारांश स्वयंचलित पाठवा</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-800">स्वयंचलित दैनिक ईमेल अहवाल (Automated EOD Email Reports)</h3>
-                    <p className="text-[11px] text-slate-500">रोज संध्याकाळी दुकान बंद होताना मालकाच्या ईमेलवर डे-एंड सारांश स्वयंचलित पाठवा</p>
-                  </div>
-                </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSaveSettings()}
+                      disabled={isSaving}
+                      className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-bold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer select-none"
+                    >
+                      {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      <span>{isSaving ? "..." : "ईमेल सेव्ह करा"}</span>
+                    </button>
 
                 <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -865,6 +1038,7 @@ export default function SettingsView({
                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
                 </label>
               </div>
+            </div>
 
               {formData.scheduledEmailConfig?.enabled === true && (
                 <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-4 space-y-4">
@@ -1220,55 +1394,77 @@ export default function SettingsView({
                   )}
                 </div>
               )}
-            </div>
 
-            {/* Save Button */}
-            <div className="pt-4 border-t border-slate-100 flex justify-end">
-              <button
-                id="save-settings-btn"
-                type="submit"
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-6 rounded-lg text-xs tracking-wider uppercase shadow hover:shadow-md transition flex items-center space-x-2 cursor-pointer select-none"
-              >
-                <Save className="w-4 h-4" />
-                <span>Update Business Profile</span>
-              </button>
-            </div>
+                {/* EOD Email Direct Save */}
+                <div className="pt-3 border-t border-blue-200/60 flex justify-end">
+                  <button
+                    id="save-email-btn"
+                    type="button"
+                    onClick={() => handleSaveSettings()}
+                    disabled={isSaving}
+                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-2 px-6 rounded-lg text-xs tracking-wider uppercase shadow hover:shadow-md transition flex items-center space-x-2 cursor-pointer select-none"
+                  >
+                    {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    <span>{isSaving ? "Saving..." : "ईमेल अहवाल सेटिंग्ज सेव्ह करा (Save Email Settings)"}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Save Button for All view */}
+            {activeSettingsTab === "all" && (
+              <div className="pt-4 border-t border-slate-100 flex justify-end">
+                <button
+                  id="save-settings-btn"
+                  type="submit"
+                  disabled={isSaving}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-semibold py-2.5 px-6 rounded-lg text-xs tracking-wider uppercase shadow hover:shadow-md transition flex items-center space-x-2 cursor-pointer select-none"
+                >
+                  {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  <span>{isSaving ? "Saving..." : "Update Business Profile & Settings"}</span>
+                </button>
+              </div>
+            )}
 
           </form>
 
         </div>
+      )}
 
-        {/* Database administration block - Right Panel */}
-        <div className="space-y-6">
+      {/* Right Panel: Thermal, Security, Backup, Updates */}
+      {(activeSettingsTab === "all" || ["thermal", "security", "backup", "updater"].includes(activeSettingsTab)) && (
+        <div className={activeSettingsTab === "all" ? "space-y-6" : "space-y-6 max-w-4xl mx-auto w-full"}>
 
           {/* Phase 6: Custom Thermal Bill Designer Card */}
-          <div className="bg-linear-to-br from-indigo-900 via-slate-900 to-blue-950 text-white border border-indigo-700/50 rounded-xl p-5 shadow-md space-y-3.5">
-            <div className="flex items-center justify-between pb-2 border-b border-indigo-800/60">
-              <div className="flex items-center space-x-2">
-                <Printer className="w-5 h-5 text-indigo-300" />
-                <h3 className="font-bold text-sm text-white">Custom Thermal Bill Designer</h3>
+          {(activeSettingsTab === "all" || activeSettingsTab === "thermal") && (
+            <div className="bg-linear-to-br from-indigo-900 via-slate-900 to-blue-950 text-white border border-indigo-700/50 rounded-xl p-5 shadow-md space-y-3.5">
+              <div className="flex items-center justify-between pb-2 border-b border-indigo-800/60">
+                <div className="flex items-center space-x-2">
+                  <Printer className="w-5 h-5 text-indigo-300" />
+                  <h3 className="font-bold text-sm text-white">Custom Thermal Bill Designer</h3>
+                </div>
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-mono px-2 py-0.5 rounded-full font-bold">
+                  58mm & 80mm
+                </span>
               </div>
-              <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 text-[10px] font-mono px-2 py-0.5 rounded-full font-bold">
-                58mm & 80mm
-              </span>
+
+              <p className="text-[11px] text-indigo-200/90 leading-relaxed">
+                सानुकूल थर्मल प्रिंटर लेआउट (58mm व 80mm), दुकान लोगो, डायनॅमिक UPI QR कोड, मराठी/इंग्रजी भाषा, आणि फॉन्ट आकार एडिट करा.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setIsThermalDesignerOpen(true)}
+                className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs tracking-wide transition flex items-center justify-center space-x-2 shadow-sm cursor-pointer"
+              >
+                <Sliders className="w-4 h-4" />
+                <span>Open Thermal Bill Designer</span>
+              </button>
             </div>
-
-            <p className="text-[11px] text-indigo-200/90 leading-relaxed">
-              सानुकूल थर्मल प्रिंटर लेआउट (58mm व 80mm), दुकान लोगो, डायनॅमिक UPI QR कोड, मराठी/इंग्रजी भाषा, आणि फॉन्ट आकार एडिट करा.
-            </p>
-
-            <button
-              type="button"
-              onClick={() => setIsThermalDesignerOpen(true)}
-              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs tracking-wide transition flex items-center justify-center space-x-2 shadow-sm cursor-pointer"
-            >
-              <Sliders className="w-4 h-4" />
-              <span>Open Thermal Bill Designer</span>
-            </button>
-          </div>
+          )}
 
           {/* User security access update form */}
-          {session && (
+          {session && (activeSettingsTab === "all" || activeSettingsTab === "security") && (
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
               <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
                 <Database className="w-5 h-5 text-emerald-600" />
@@ -1341,198 +1537,206 @@ export default function SettingsView({
           )}
 
           {/* Backup & Restore Panel */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-            <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
-              <RefreshCw className="w-5 h-5 text-indigo-600" />
-              <h3 className="font-bold text-slate-900 text-sm">Database Backup & Restore</h3>
-            </div>
-
-            <p className="text-[11px] text-slate-500 leading-normal">
-              Back up your entire store ledger database (including inventory, invoices, parties, and transaction records) as a downloadable JSON file, or restore from an earlier backup.
-            </p>
-
-            {backupError && (
-              <div className="p-3 bg-rose-50 border border-rose-100 text-rose-800 rounded-lg text-xs font-semibold leading-relaxed">
-                {backupError}
+          {(activeSettingsTab === "all" || activeSettingsTab === "backup") && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
+                <RefreshCw className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-bold text-slate-900 text-sm">Database Backup & Restore</h3>
               </div>
-            )}
 
-            {backupSuccess && (
-              <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold leading-relaxed">
-                {backupSuccess}
-              </div>
-            )}
+              <p className="text-[11px] text-slate-500 leading-normal">
+                Back up your entire store ledger database (including inventory, invoices, parties, and transaction records) as a downloadable JSON file, or restore from an earlier backup.
+              </p>
 
-            <div className="space-y-3 pt-1">
-              {/* Backup Trigger */}
-              <button
-                type="button"
-                onClick={handleDownloadBackup}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Download JSON Backup</span>
-              </button>
+              {backupError && (
+                <div className="p-3 bg-rose-50 border border-rose-100 text-rose-800 rounded-lg text-xs font-semibold leading-relaxed">
+                  {backupError}
+                </div>
+              )}
 
-              {/* Restore Trigger */}
-              <div className="relative">
-                <input
-                  id="settings-upload-backup-input"
-                  type="file"
-                  accept=".json"
-                  onChange={handleRestoreBackup}
-                  disabled={isRestoring}
-                  className="hidden"
-                />
+              {backupSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold leading-relaxed">
+                  {backupSuccess}
+                </div>
+              )}
+
+              <div className="space-y-3 pt-1">
+                {/* Backup Trigger */}
                 <button
                   type="button"
-                  disabled={isRestoring}
-                  onClick={() => document.getElementById("settings-upload-backup-input")?.click()}
-                  className="w-full bg-slate-150 hover:bg-slate-200 border border-slate-250 text-slate-700 font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-100"
+                  onClick={handleDownloadBackup}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2"
                 >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{isRestoring ? "Restoring Workspace..." : "Upload & Restore"}</span>
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download JSON Backup</span>
+                </button>
+
+                {/* Restore Trigger */}
+                <div className="relative">
+                  <input
+                    id="settings-upload-backup-input"
+                    type="file"
+                    accept=".json"
+                    onChange={handleRestoreBackup}
+                    disabled={isRestoring}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={isRestoring}
+                    onClick={() => document.getElementById("settings-upload-backup-input")?.click()}
+                    className="w-full bg-slate-150 hover:bg-slate-200 border border-slate-250 text-slate-700 font-bold py-2 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-100"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isRestoring ? "Restoring Workspace..." : "Upload & Restore"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Desktop Application & Auto-Update Card */}
+          {(activeSettingsTab === "all" || activeSettingsTab === "updater") && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center space-x-2">
+                  <Laptop className="w-5 h-5 text-indigo-600" />
+                  <h3 className="font-bold text-slate-900 text-sm">Desktop App & Auto-Update</h3>
+                </div>
+                <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-full font-mono text-[10px] font-bold inline-flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  v{APP_VERSION}
+                </span>
+              </div>
+
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-lg text-xs space-y-1">
+                <div className="flex items-center space-x-2 text-emerald-900 font-bold">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+                  </span>
+                  <span>Auto-Update Active 24/7</span>
+                </div>
+                <p className="text-[11px] text-emerald-800 leading-normal">
+                  The system continuously monitors for updates in the background. When a new version is released, it is downloaded automatically without requiring manual intervention.
+                </p>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 space-y-2 text-xs">
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-[11px]">Current Version:</span>
+                  <span className="font-mono font-bold text-slate-900">v{runtimeVersion}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-[11px]">Auto-Update Checking:</span>
+                  <span className="font-semibold text-emerald-700">Autonomous (Every 15s)</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-[11px]">Build Date:</span>
+                  <span className="font-mono text-slate-700">{APP_BUILD_DATE}</span>
+                </div>
+                <div className="flex justify-between items-center text-slate-600">
+                  <span className="text-[11px]">Update Channel:</span>
+                  <span className="font-semibold text-indigo-700">Official Production (Encrypted)</span>
+                </div>
+              </div>
+
+              {updaterMsg && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-semibold text-indigo-900 leading-relaxed flex items-start space-x-2">
+                  <ArrowUpCircle className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0 animate-pulse" />
+                  <span className="flex-1">{updaterMsg}</span>
+                </div>
+              )}
+
+              {downloadProgress !== null && downloadProgress < 100 && (
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[11px] font-semibold text-slate-700">
+                    <span>Downloading update automatically...</span>
+                    <span>{downloadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-emerald-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${downloadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {downloadProgress === 100 && (
+                <button
+                  type="button"
+                  onClick={() => (window as any).electronAPI?.restartAndInstall()}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 shadow-sm"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Restart & Apply Now</span>
+                </button>
+              )}
+
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleManualCheckUpdate}
+                  disabled={checkingUpdate}
+                  className="w-full bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-200"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? "animate-spin text-indigo-600" : ""}`} />
+                  <span>{checkingUpdate ? "Checking updates..." : "Force Check Updates Now"}</span>
                 </button>
               </div>
             </div>
-          </div>
+          )}
           
-          {/* Desktop Application & Auto-Update Card */}
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center space-x-2">
-                <Laptop className="w-5 h-5 text-indigo-600" />
-                <h3 className="font-bold text-slate-900 text-sm">Desktop App & Auto-Update</h3>
-              </div>
-              <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-full font-mono text-[10px] font-bold inline-flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                v{APP_VERSION}
-              </span>
-            </div>
-
-            <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-lg text-xs space-y-1">
-              <div className="flex items-center space-x-2 text-emerald-900 font-bold">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
-                </span>
-                <span>Auto-Update Active 24/7</span>
-              </div>
-              <p className="text-[11px] text-emerald-800 leading-normal">
-                The system continuously monitors for updates in the background. When a new version is released, it is downloaded automatically without requiring manual intervention.
-              </p>
-            </div>
-
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80 space-y-2 text-xs">
-              <div className="flex justify-between items-center text-slate-600">
-                <span className="text-[11px]">Current Version:</span>
-                <span className="font-mono font-bold text-slate-900">v{runtimeVersion}</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600">
-                <span className="text-[11px]">Auto-Update Checking:</span>
-                <span className="font-semibold text-emerald-700">Autonomous (Every 15s)</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600">
-                <span className="text-[11px]">Build Date:</span>
-                <span className="font-mono text-slate-700">{APP_BUILD_DATE}</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600">
-                <span className="text-[11px]">Update Channel:</span>
-                <span className="font-semibold text-indigo-700">Official Production (Encrypted)</span>
-              </div>
-            </div>
-
-            {updaterMsg && (
-              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg text-xs font-semibold text-indigo-900 leading-relaxed flex items-start space-x-2">
-                <ArrowUpCircle className="w-4 h-4 text-indigo-600 mt-0.5 shrink-0 animate-pulse" />
-                <span className="flex-1">{updaterMsg}</span>
-              </div>
-            )}
-
-            {downloadProgress !== null && downloadProgress < 100 && (
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-[11px] font-semibold text-slate-700">
-                  <span>Downloading update automatically...</span>
-                  <span>{downloadProgress}%</span>
+          {(activeSettingsTab === "all" || activeSettingsTab === "backup") && (
+            <>
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 mb-4">
+                  <Database className="w-5 h-5 text-indigo-600" />
+                  <h3 className="font-bold text-slate-900 text-sm">Workspace Status</h3>
                 </div>
-                <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
-                  <div
-                    className="bg-emerald-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${downloadProgress}%` }}
-                  />
+                
+                <div className="space-y-3.5 text-xs">
+                  <div className="p-3 rounded-lg bg-indigo-50/50 border border-indigo-100 flex items-start space-x-2.5 text-[11px] text-slate-600">
+                    <Info className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
+                    <span>All invoices, payments, inventories, and business data are safely recorded and synced to your secure profile storage.</span>
+                  </div>
                 </div>
               </div>
-            )}
 
-            {downloadProgress === 100 && (
-              <button
-                type="button"
-                onClick={() => (window as any).electronAPI?.restartAndInstall()}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 shadow-sm"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                <span>Restart & Apply Now</span>
-              </button>
-            )}
+              {/* Hard Reset Danger Zone */}
+              <div className="bg-rose-50/70 border-2 border-rose-200 rounded-xl p-5 shadow-sm space-y-3.5">
+                <div className="flex items-center space-x-2 pb-3 border-b border-rose-200">
+                  <AlertOctagon className="w-5 h-5 text-rose-600" />
+                  <div>
+                    <h3 className="font-bold text-rose-950 text-sm">डेटाबेस हार्ड रिसेट (Hard Factory Reset)</h3>
+                    <span className="text-[10px] font-semibold text-rose-700 uppercase tracking-wider">Clean Slate - 100% Ready To Use</span>
+                  </div>
+                </div>
+                
+                <p className="text-[11px] text-rose-900 leading-relaxed">
+                  हे बटन दाबल्यास सॉफ्टवेअरमधील सर्व जुना डेटा (विक्री बिल, खरेदी, आयटम लिस्ट, ग्राहक/सप्लायर उधारी, कोटेशन, चलान आणि सर्व जमा-खर्च) संपूर्णपणे पुसला जाईल आणि सॉफ्टवेअर अगदी नवीन (Fresh Clean Slate) रेडी-टू-युज स्थितीत येईल.
+                </p>
 
-            <div className="space-y-2 pt-1">
-              <button
-                type="button"
-                onClick={handleManualCheckUpdate}
-                disabled={checkingUpdate}
-                className="w-full bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 disabled:bg-slate-200"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${checkingUpdate ? "animate-spin text-indigo-600" : ""}`} />
-                <span>{checkingUpdate ? "Checking updates..." : "Force Check Updates Now"}</span>
-              </button>
-            </div>
-          </div>
-          
-          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-            <div className="flex items-center space-x-2 pb-3 border-b border-slate-100 mb-4">
-              <Database className="w-5 h-5 text-indigo-600" />
-              <h3 className="font-bold text-slate-900 text-sm">Workspace Status</h3>
-            </div>
-            
-            <div className="space-y-3.5 text-xs">
-              <div className="p-3 rounded-lg bg-indigo-50/50 border border-indigo-100 flex items-start space-x-2.5 text-[11px] text-slate-600">
-                <Info className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
-                <span>All invoices, payments, inventories, and business data are safely recorded and synced to your secure profile storage.</span>
+                <div className="pt-1">
+                  <button
+                    id="settings-hard-reset-btn"
+                    type="button"
+                    disabled={isHardResetting}
+                    onClick={handleHardReset}
+                    className="w-full bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:bg-rose-300 text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 shadow hover:shadow-md"
+                  >
+                    <Trash2 className={`w-4 h-4 ${isHardResetting ? "animate-spin" : ""}`} />
+                    <span>{isHardResetting ? "डेटा पुसत आहे..." : "सर्व डेटा पुसा - हार्ड रिसेट (Wipe All & Fresh Start)"}</span>
+                  </button>
+                </div>
+
               </div>
-            </div>
-          </div>
-
-          {/* Hard Reset Danger Zone */}
-          <div className="bg-rose-50/70 border-2 border-rose-200 rounded-xl p-5 shadow-sm space-y-3.5">
-            <div className="flex items-center space-x-2 pb-3 border-b border-rose-200">
-              <AlertOctagon className="w-5 h-5 text-rose-600" />
-              <div>
-                <h3 className="font-bold text-rose-950 text-sm">डेटाबेस हार्ड रिसेट (Hard Factory Reset)</h3>
-                <span className="text-[10px] font-semibold text-rose-700 uppercase tracking-wider">Clean Slate - 100% Ready To Use</span>
-              </div>
-            </div>
-            
-            <p className="text-[11px] text-rose-900 leading-relaxed">
-              हे बटन दाबल्यास सॉफ्टवेअरमधील सर्व जुना डेटा (विक्री बिल, खरेदी, आयटम लिस्ट, ग्राहक/सप्लायर उधारी, कोटेशन, चलान आणि सर्व जमा-खर्च) संपूर्णपणे पुसला जाईल आणि सॉफ्टवेअर अगदी नवीन (Fresh Clean Slate) रेडी-टू-युज स्थितीत येईल.
-            </p>
-
-            <div className="pt-1">
-              <button
-                id="settings-hard-reset-btn"
-                type="button"
-                disabled={isHardResetting}
-                onClick={handleHardReset}
-                className="w-full bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:bg-rose-300 text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 shadow hover:shadow-md"
-              >
-                <Trash2 className={`w-4 h-4 ${isHardResetting ? "animate-spin" : ""}`} />
-                <span>{isHardResetting ? "डेटा पुसत आहे..." : "सर्व डेटा पुसा - हार्ड रिसेट (Wipe All & Fresh Start)"}</span>
-              </button>
-            </div>
-
-          </div>
+            </>
+          )}
 
         </div>
-
+      )}
       </div>
 
       {/* Phase 6: Custom Thermal Bill Designer Modal */}
@@ -1540,14 +1744,14 @@ export default function SettingsView({
         <ThermalDesignerModal
           isOpen={isThermalDesignerOpen}
           onClose={() => setIsThermalDesignerOpen(false)}
-          business={business}
+          business={formData}
           onSaveConfig={async (updatedConfig) => {
             const updatedProfile: BusinessProfile = {
-              ...business,
+              ...formData,
               thermalConfig: updatedConfig
             };
-            await onSaveBusiness(updatedProfile);
             setFormData(updatedProfile);
+            await handleSaveSettings(updatedProfile);
           }}
         />
       )}

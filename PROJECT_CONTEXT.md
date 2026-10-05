@@ -108,7 +108,13 @@
     * Implemented single idempotent `installAndRelaunch()` in `main.cjs` to eliminate conflicting parallel calls to `quitAndInstall()` and prevented premature window destruction (`mainWindow.close()`) before installer spawn.
     * Added live runtime version detection (`electronAPI.getVersion()`) across Sidebar, Dashboard, and Settings so installed desktop apps dynamically display running version accurately.
     * Installed `nodemailer` package to guarantee error-free background email scheduler compilation (v1.0.101+).
-* **Digital Munimji Voice Integration (`MunimjiDrawer.tsx` & `server.ts`):** Voice query support for godowns and warehouse stock ("गोदाम दाखवा", "गोदामातील साठा किती आहे") with automatic drawer auto-minimize.
+* **Digital Munimji Billing & Item Automation Overhaul (`munimjiPool.ts`, `server.ts`, `MunimjiDrawer.tsx`):**
+  - **Direct Sales Invoice Auto-Apply:** When users ask Munimji to create a bill ("बिल कर", "नवीन बिल", "५ साखर, २ तेल बिल कर"), Munimji immediately populates the bill editor with exact items, prices, quantities, and units via `onApplyBillToEditor()`, navigating directly to sales with live auditory feedback instead of redirecting or dropping bill items.
+  - **Dynamic Item Auto-Addition without Default Placeholders:** When a spoken invoice includes new or uncatalogued items, Munimji dynamically creates and registers them into the inventory database (`db.items`) using their exact spoken/written names (preventing generic names like "Item 1" or "नवीन वस्तू").
+  - **Intelligent Bulk/Multi-Item Voice Parsing:** Added enhanced multi-item extraction across commas, newlines, "आणि", "व", "+", and numbered lists ("१. साखर २ किलो, २. तेल १ लिटर"), cleanly segmenting each spoken product into its own distinct catalog and invoice line without merging everything into a single corrupted string.
+* **Modern Tabbed Settings & 100% Database Persistence (`SettingsView.tsx`, `server.ts`):**
+  - **Sub-Tab Navigation Bar:** Settings is now organized into dedicated responsive sub-tabs: 🏢 व्यवसाय व GST (Profile), ⭐ लॉयल्टी रिवॉर्ड्स (Loyalty), 📧 दैनिक अहवाल (EOD Reports), 🖨️ थर्मल प्रिंटर (Thermal Designer), 🔐 सुरक्षा व लॉगिन (Security), 💾 बॅकअप व रिसेट (Backup & Reset), and ⚡ ॲप व्हर्जन (Updates).
+  - **Dedicated Save Buttons & Real-Time Sync:** Every tab now contains its own prominent "Save Changes" button, plus a top action bar save button. Settings syncs directly to `db.business` via deep-merge `POST /api/business`, eliminating data loss when toggling loyalty or email report configurations.
 
 ---
 

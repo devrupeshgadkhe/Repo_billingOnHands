@@ -399,33 +399,15 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                           </select>
                         </td>
                         <td className="p-2">
-                          <div className="flex items-center gap-1">
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="100"
-                              value={row.gstRate}
-                              onChange={(e) => handleRowChange(idx, "gstRate", parseFloat(e.target.value) || 0)}
-                              className="w-14 px-1 py-1 border border-slate-200 focus:border-emerald-500 rounded text-xs outline-none font-mono text-center font-bold"
-                            />
-                            <select
-                              value={TAX_RATES.includes(row.gstRate) ? row.gstRate : "custom"}
-                              onChange={(e) => {
-                                if (e.target.value !== "custom") {
-                                  handleRowChange(idx, "gstRate", parseFloat(e.target.value) || 0);
-                                }
-                              }}
-                              className="px-1 py-1 border border-slate-200 rounded text-[11px] outline-none bg-slate-50 font-mono"
-                            >
-                              {TAX_RATES.map((t) => (
-                                <option key={t} value={t}>{t}%</option>
-                              ))}
-                              {!TAX_RATES.includes(row.gstRate) && (
-                                <option value="custom">{row.gstRate}%</option>
-                              )}
-                            </select>
-                          </div>
+                          <select
+                            value={row.gstRate}
+                            onChange={(e) => handleRowChange(idx, "gstRate", Number(e.target.value))}
+                            className="w-full px-1 py-1 border border-slate-200 focus:border-emerald-500 rounded text-xs outline-none font-mono text-center"
+                          >
+                            {TAX_RATES.map((t) => (
+                              <option key={t} value={t}>{t}%</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="p-2 text-center">
                           <button

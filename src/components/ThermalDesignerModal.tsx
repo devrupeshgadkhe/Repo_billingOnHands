@@ -81,7 +81,6 @@ export const DEFAULT_THERMAL_CONFIG: ThermalPrintConfig = {
   // Totals & Taxes
   showTaxBreakdown: true,
   showSavingsBanner: true,
-  showLoyaltyPoints: true,
   showPaymentMode: true,
   showCashTendered: true,
   showChangeReturned: true,
@@ -833,16 +832,6 @@ export default function ThermalDesignerModal({
                       <label className="flex items-center space-x-2 cursor-pointer">
                         <input
                           type="checkbox"
-                          checked={config.showLoyaltyPoints !== false}
-                          onChange={(e) => updateConfig('showLoyaltyPoints', e.target.checked)}
-                          className="w-4 h-4 rounded text-indigo-600"
-                        />
-                        <span className="text-slate-700 font-semibold">Print Loyalty Points Summary</span>
-                      </label>
-
-                      <label className="flex items-center space-x-2 cursor-pointer">
-                        <input
-                          type="checkbox"
                           checked={config.showPaymentMode}
                           onChange={(e) => updateConfig('showPaymentMode', e.target.checked)}
                           className="w-4 h-4 rounded text-indigo-600"
@@ -1124,13 +1113,6 @@ export default function ThermalDesignerModal({
               {config.showSavingsBanner && (
                 <div className="my-2 p-1 border border-black text-center font-bold text-[10px]">
                   ★ You Saved ₹30.00 Today! ★
-                </div>
-              )}
-
-              {/* Loyalty Points Banner */}
-              {config.showLoyaltyPoints !== false && (
-                <div className="my-1.5 p-1 border border-dashed border-amber-600 rounded bg-amber-50 text-center font-bold text-[9px] text-amber-950">
-                  ★ Points Earned Today: +12 Pts (Closing: 132 Pts) ★
                 </div>
               )}
 

@@ -1016,12 +1016,16 @@ You understand spoken Marathi, Hindi, and English (including colloquial phrases 
 
 Your responsibilities across all store modules:
 1. 'ITEM_ADD' / 'ADD_ITEMS': When the user asks to add one or MULTIPLE new products/items to inventory (via voice, text, or handwritten lists/bills/notes, e.g., "नवीन प्रॉडक्ट ॲड कर: बासमती तांदूळ ६० रुपये भाव १०० किलो स्टॉक", "हे ४ आयटम ॲड कर: साखर ४० रु, तेल १२० रु, पोहे ५० रु, चहा २५० रु", "Add 5 items: Sugar 40, Oil 120, Tea 250").
-   CRITICAL FOR MULTIPLE ITEMS: NEVER merge 4-5 items into a single combined item name! If multiple items are provided, extract each one separately into the 'items' array:
+   CRITICAL ANTI-DEFAULT-NAME & MULTI-ITEM RULES:
+   - NEVER name items 'Item 1', 'Item 2', 'आयटम 1', 'आयटम २', or 'नवीन वस्तू'! Use the EXACT actual product name spoken by the user (e.g. 'साखर', 'तेल', 'पोहे', 'तांदूळ', 'चहा', 'गहू').
+   - If the user says e.g. "आयटम एक साखर ४० रुपये, आयटम दोन तेल १२० रुपये", the extracted product names are 'साखर' and 'तेल', NOT 'आयटम एक' or 'आयटम दोन'!
+   - NEVER merge 2, 3, 4 or more items into a single combined item name! If multiple items are provided (even in a continuous sentence without commas, e.g. "साखर 40 तेल 120 पोहे 50 चहा 250"), you MUST extract each one separately into the 'items' array with its own itemName, price, quantity, and unit:
    If multiple items:
    Extract: actionPayload: {
      "action": "ADD_ITEMS",
      "items": Array<{
        "itemName": string,
+       "name": string,
        "salePrice": number,
        "mrp": number,
        "purchasePrice": number,
@@ -1032,7 +1036,7 @@ Your responsibilities across all store modules:
      }>
    }
    If single item:
-   Extract: actionPayload: { "action": "ADD_ITEM", "itemName": string, "salePrice": number, "mrp": number, "purchasePrice": number, "stockQuantity": number, "unit": string, "gstRate": number, "hsn": string }
+   Extract: actionPayload: { "action": "ADD_ITEM", "itemName": string, "name": string, "salePrice": number, "mrp": number, "purchasePrice": number, "stockQuantity": number, "unit": string, "gstRate": number, "hsn": string }
    Include a 'stock_alert' displayCard with the added product details.
 2. 'STOCK_UPDATE': When user wants to adjust stock of an existing or new item (e.g., "१० किलो साखर वाढव", "२ नग खराब झाले वजा कर", "साखरेचा स्टॉक ५० कर").
    Extract: actionPayload: { "action": "STOCK_UPDATE", "itemName": string, "quantityChange": number, "operation": "ADD"|"SUBTRACT"|"SET" }
@@ -1052,14 +1056,20 @@ Your responsibilities across all store modules:
 8. 'EXPENSE_ADD': When user records daily shop expenses or income (e.g., "खर्च नोंदव: चहा नाश्ता ५० रुपये रोख", "लाईट बिल १२०० रुपये बँक", "दुकान भाडे ८००० रुपये").
    Extract: actionPayload: { "action": "ADD_EXPENSE", "category": string, "amount": number, "paymentType": "cash"|"bank", "notes": string }
 9. 'QUOTATION_CREATE': When user asks to prepare estimate/quotation (e.g., "सुरेशसाठी १० नग फॅनचे कोटेशन बनव").
-   Extract: actionPayload: { "action": "CREATE_QUOTATION", "customerName": string, "items": Array<{ name: string, quantity: number, price: number }> }
+   Extract: actionPayload: { "action": "CREATE_QUOTATION", "customerName": string, "items": Array<{ itemName: string, name: string, quantity: number, price: number }> }
 10. 'CHALLAN_CREATE': When user asks to create delivery challan (e.g., "डिलिव्हरी चलन तयार कर: गणेश ट्रेडर्स, गाडी MH 12 AB 1234, २० बॉक्स").
-   Extract: actionPayload: { "action": "CREATE_CHALLAN", "partyName": string, "items": Array<{ name: string, quantity: number }>, "vehicleNumber": string }
-11. 'SALES_BILL': When user asks to bill/sell goods (e.g., "महेशला ५ किलो बासमती तांदूळ आणि २ लिटर तेल कॅशवर बिल कर", "सचिनला नॉन जीएसटी बिल दे", "विना जीएसटी साधे बिल बनवा").
-   - If user explicitly requests 'नॉन जीएसटी', 'विना जीएसटी', 'साधे बिल', 'कच्चे बिल', 'Non-GST', 'Bill of Supply':
-     Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ name: string, quantity: number, price: number }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": true, "billingMode": "non_gst" }
-   - Otherwise (standard GST invoice):
-     Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ name: string, quantity: number, price: number }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": false, "billingMode": "gst" }
+   Extract: actionPayload: { "action": "CREATE_CHALLAN", "partyName": string, "items": Array<{ itemName: string, name: string, quantity: number }>, "vehicleNumber": string }
+11. 'SALES_BILL': When user asks to bill/sell goods (e.g., "महेशला ५ किलो बासमती तांदूळ आणि २ लिटर तेल कॅशवर बिल कर", "सचिनला नॉन जीएसटी बिल दे", "विना जीएसटी साधे बिल बनवा", "बिल कर", "नवीन बिल बनवा").
+   CRITICAL BILLING RULES:
+   - UNDER NO CIRCUMSTANCES classify a billing command ("बिल कर", "बिलिंग कर", "बिल बनवा", "विक्री करा", "पावती बनवा", "सेल कर") as 'NAVIGATE'! Billing commands are ALWAYS intent: 'SALES_BILL'.
+   - If customer and items are specified:
+     If user explicitly requests 'नॉन जीएसटी', 'विना जीएसटी', 'साधे बिल', 'कच्चे बिल', 'Non-GST', 'Bill of Supply':
+       Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ itemName: string, name: string, quantity: number, price: number, unit?: string }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": true, "billingMode": "non_gst" }
+     Otherwise (standard GST invoice):
+       Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ itemName: string, name: string, quantity: number, price: number, unit?: string }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": false, "billingMode": "gst" }
+   - If user asks to create a bill but DOES NOT specify customer or items (e.g., "बिल कर", "नवीन बिल बनवायचे आहे", "बिलिंग सुरू कर"):
+     Extract: actionPayload: { "action": "OPEN_NEW_BILL", "targetTab": "sales" }
+     ReplyText: "होय मालक, मी नवीन बिलिंग काउंटर उघडत आहे. कोणाच्या नावाने आणि कोणत्या वस्तूंचे बिल बनवायचे आहे सांगा?"
 12. 'PURCHASE_BILL': When user enters incoming purchases from suppliers.
 13. 'PRICE_QUERY': When shopkeeper asks for product price or stock (e.g., "साखरेचा काय भाव आहे?", "चिल्लर काय भाव देऊ?", "बासमती तांदळाचा साठा किती आहे?", "साठा किती शिल्लक आहे?"). Look at 'All Store Products' in STORE CONTEXT and quote exact item name, available stock, unit, and price.
 14. 'SUPPLIER_COMPARISON': When user asks which supplier is cheaper (e.g., "फॉर्च्युन तेल कोणाकडून स्वस्त पडेल?").
@@ -1073,7 +1083,7 @@ Your responsibilities across all store modules:
    Extract: actionPayload: { "action": "OFFER_CREATE", "title": string, "type": "buy_x_get_y"|"percentage_discount"|"flat_discount"|"bill_slab_discount", "targetType": "all"|"brand"|"category"|"item", "targetValue": string, "discountPercent": number, "discountAmount": number, "buyQuantity": number, "freeQuantity": number }
 22. 'OFFER_DELETE': When merchant asks to remove an offer (e.g., "ही ऑफर डिलीट कर: महाधन स्कीम").
    Extract: actionPayload: { "action": "OFFER_DELETE", "title": string }
-23. 'NAVIGATE': When user commands to open, show, or navigate to any page, screen, or tab (e.g., "रिपोर्ट्स पेज उघड", "बिलिंग वर जा", "आयटम्स दाखव", "पार्टीज उघड", "सेटिंग्ज दाखव", "डॅशबोर्ड उघड", "खर्च पेज वर ने", "open reports", "take me to sales pos").
+23. 'NAVIGATE': ONLY when user explicitly asks to view, open, or switch screens/pages without asking to make a bill or perform a transaction (e.g., "रिपोर्ट्स पेज उघड", "इन्व्हेंटरी दाखव", "पार्टीज उघड", "सेटिंग्ज उघड", "डॅशबोर्ड दाखव", "खर्च पेज दाखव", "open reports screen", "take me to access control").
    Extract: actionPayload: { "action": "NAVIGATE", "targetTab": "dashboard"|"items"|"parties"|"quotations"|"sales"|"challans"|"purchases"|"transactions"|"reports"|"settings"|"access_control" }
    Set intent: "NAVIGATE". In replyText, enthusiastically and respectfully confirm the navigation in natural Marathi (e.g., "होय मालक, मी रिपोर्ट्स आणि GST विश्लेषक पेज उघडत आहे.").
 24. 'GENERAL_CHAT': Polite, helpful conversation as a loyal Munimji.
@@ -1659,151 +1669,160 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
      (query.includes("भाव") || query.includes("दर") || query.includes("किंमत") || query.includes("रेट") || query.includes("रुपये") || query.includes("price") || query.includes("rate") || query.includes("stock") || query.includes("साठा")));
 
   if (isItemAdd) {
-    // Check if multiple items are mentioned (separated by commas, newlines, or 'आणि')
-    const hasMultipleItems =
-      rawQuery.includes("\n") ||
-      (rawQuery.includes(",") && rawQuery.split(",").length > 1) ||
-      (rawQuery.includes(" आणि ") && rawQuery.split(" आणि ").length > 1) ||
-      (rawQuery.includes(" व ") && rawQuery.split(" व ").length > 1);
+    const parsedItems: any[] = [];
+    const textToProcess = rawQuery
+      .replace(/^(?:कृपया\s*)?(?:मला\s*)?(?:एक\s*)?(?:नवीन\s*)?(?:प्रॉडक्ट|वस्तू|आयटम|सामान|इन्व्हेंटरी|इन्व्हेंटरीमध्ये|माल|स्टॉक)?\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो|टाका|नोंदव|तयार\s*कर|create|add|save)?[:\-\s]*/i, "")
+      .trim();
 
-    if (hasMultipleItems) {
-      const textToSplit = rawQuery
-        .replace(/^(?:कृपया\s*)?(?:मला\s*)?(?:नवीन\s*)?(?:प्रॉडक्ट|वस्तू|आयटम|सामान)?\s*(?:ॲड\s*कर|जोडा|करा|ऐड\s*करो)?[:\-\s]*/i, "");
-      const segments = textToSplit
-        .split(/[\n,;]|(?:\s+आणि\s+)|\band\b|(?:\s+व\s+)/i)
+    // Check for explicit numbering or delimiter indicators
+    const hasNumberedMarkers = /(?:(?:\d+|[०-९]+)[\.\)\-\:]\s*)|(?:आयटम\s*(?:\d+|एक|दोन|तीन|चार|पाच|१|२|३|४|५|one|two|three)\s*[:\-\s]?)/i.test(textToProcess);
+    let segments: string[] = [];
+
+    if (hasNumberedMarkers) {
+      segments = textToProcess
+        .split(/(?:(?:\d+|[०-९]+)[\.\)\-\:]\s*)|(?:आयटम\s*(?:\d+|एक|दोन|तीन|चार|पाच|१|२|३|४|५|one|two|three)\s*[:\-\s]?)/i)
         .map(s => s.trim())
         .filter(s => s.length >= 2);
-
-      const parsedItems: any[] = [];
-      for (const seg of segments) {
-        const normSeg = normalizeDigits(seg.toLowerCase());
-        const pMatch = normSeg.match(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|दर|भाव|किंमत|price)/i) || normSeg.match(/(?:दर|भाव|किंमत|price|₹|rs)[:\s]*(\d+(?:\.\d+)?)/i);
-        const qMatch = normSeg.match(/(\d+)\s*(?:किलो|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|ltr|bag)/i);
-        const uMatch = seg.match(/(किलो|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|ltr|bag)/i);
-
-        const sPrice = pMatch ? parseFloat(pMatch[1]) : 0;
-        const sQty = qMatch ? parseFloat(qMatch[1]) : 0;
-        let sUnit = "PCS";
-        if (uMatch) {
-          const u = uMatch[1].toLowerCase();
-          if (u.includes("किलो") || u.includes("kg")) sUnit = "KGS";
-          else if (u.includes("लिटर") || u.includes("ltr")) sUnit = "LTR";
-          else if (u.includes("बॉक्स") || u.includes("box")) sUnit = "BOX";
-          else if (u.includes("बॅग") || u.includes("bag")) sUnit = "BAG";
+    } else if (textToProcess.includes("\n") || textToProcess.includes(",") || textToProcess.includes(";") || /[\s,]+(?:आणि|व|तसेच|and|&)\s+/i.test(textToProcess)) {
+      segments = textToProcess
+        .split(/[\n,;]|(?:[\s,]+(?:आणि|व|तसेच|and|&)\s+)/i)
+        .map(s => s.trim())
+        .filter(s => s.length >= 2);
+    } else {
+      // Check multiple prices/quantities pattern in continuous sentence: e.g. "साखर 40 तेल 120 पोहे 50"
+      const multiTokenPattern = /(?:(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|दर|भाव|किंमत|price|rate|किलो|लिटर|नग|बॉक्स|बॅग|kg|ltr|pcs))/gi;
+      const matches = textToProcess.match(multiTokenPattern);
+      if (matches && matches.length >= 2) {
+        const parts: string[] = [];
+        let lastIdx = 0;
+        let m: RegExpExecArray | null;
+        const re = /(?:(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|दर|भाव|किंमत|price|rate|किलो|लिटर|नग|बॉक्स|बॅग|kg|ltr|pcs)+)/gi;
+        while ((m = re.exec(textToProcess)) !== null) {
+          const seg = textToProcess.slice(lastIdx, m.index + m[0].length).trim();
+          if (seg) parts.push(seg);
+          lastIdx = m.index + m[0].length;
         }
-
-        const pName = seg
-          .replace(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|दर|भाव|किंमत|price)/gi, "")
-          .replace(/(?:दर|भाव|किंमत|price|₹|rs)[:\s]*(\d+(?:\.\d+)?)/gi, "")
-          .replace(/(\d+)\s*(?:किलो|लिटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|ltr|bag)/gi, "")
-          .replace(/^(?:आणि|व|and|\+)\s*/i, "")
-          .replace(/^[:\-\s,]+|[:\-\s,]+$/g, "")
-          .trim();
-
-        if (pName.length >= 2) {
-          parsedItems.push({
-            itemName: pName,
-            salePrice: sPrice,
-            mrp: sPrice,
-            purchasePrice: sPrice > 0 ? Math.round(sPrice * 0.85) : 0,
-            stockQuantity: sQty,
-            unit: sUnit,
-            gstRate: 0,
-            hsn: "9999"
-          });
+        if (lastIdx < textToProcess.length) {
+          const rem = textToProcess.slice(lastIdx).trim();
+          if (rem && parts.length > 0) parts[parts.length - 1] += " " + rem;
         }
-      }
-
-      if (parsedItems.length > 1) {
-        const itemNamesStr = parsedItems.map(i => `${i.itemName} (₹${i.salePrice})`).join(", ");
-        return {
-          intent: "ITEM_ADD",
-          replyText: `मालक, मी एकूण ${parsedItems.length} वस्तू इन्व्हेंटरीमध्ये स्वतंत्रपणे जोडल्या आहेत: ${itemNamesStr}.`,
-          displayCards: [{
-            type: "stock_alert",
-            title: `नवीन वस्तू जोडल्या (${parsedItems.length})`,
-            data: { items: parsedItems }
-          }],
-          actionPayload: {
-            action: "ADD_ITEMS",
-            items: parsedItems
-          }
-        };
+        segments = parts;
+      } else {
+        segments = [textToProcess];
       }
     }
 
-    let cleanName = rawQuery
-      .replace(/^(?:कृपया\s*)?(?:मला\s*)?(?:एक\s*)?/i, "")
-      .replace(/(?:नवीन\s*(?:प्रॉडक्ट|वस्तू|आयटम|सामान|प्रोडक्ट|माल|स्टॉक|इन्व्हेंटरी|इन्व्हेंटरीमध्ये|स्टॉकमध्ये)?\s*(?:ॲड\s*कर|जोडा|करा|टाका|नोंदव|ऐड\s*करो|जोड़ो)?)[:\-\s]*/i, "")
-      .replace(/(?:इन्व्हेंटरीमध्ये\s*(?:नवीन\s*)?(?:प्रॉडक्ट|वस्तू|आयटम)?\s*(?:ॲड\s*कर|जोडा|करा)?)/i, "")
-      .replace(/(?:add\s*(?:new\s*)?(?:product|item)|new\s*(?:product|item)|create\s*(?:product|item))[:\-\s]*/i, "")
-      .replace(/(?:नया\s*(?:सामान|प्रोडक्ट|आइटम)\s*(?:जोड़ो|ऐड\s*करो)?)[:\-\s]*/i, "");
+    for (const seg of segments) {
+      if (!seg || seg.trim().length < 2) continue;
+      const normSeg = normalizeDigits(seg.toLowerCase());
 
-    const namePart = cleanName.split(/(?:विक्री|खरेदी|भाव|दर|किंमत|रेट|स्टॉक|साठा|price|rate|stock|cost|sale|qty|quantity|₹)/i)[0].trim();
-    let itemName = namePart.replace(/^[:\-\s,]+|[:\-\s,]+$/g, "");
-    if (!itemName || itemName.length < 2) {
-      const qMatch = rawQuery.match(/["'‘“]([^"'’”]+)["'’”]/);
-      if (qMatch) itemName = qMatch[1].trim();
-      else itemName = "नवीन वस्तू";
+      // Strip numbering labels like "आयटम 1", "Item 1", "पहिला", "1.", etc.
+      let cleanSeg = seg
+        .replace(/^(?:(?:आयटम|item|वस्तू|प्रॉडक्ट)\s*(?:\d+|एक|दोन|तीन|चार|पाच|१|२|३|४|५|one|two|three)?[.:\-\s]*)/i, "")
+        .replace(/^(?:(?:\d+|[०-९]+)[\.\)\-\:\s]+)/i, "")
+        .replace(/^(?:पहिला|दुसरा|तिसरा|चौथा|पाचवा|first|second|third)[.:\-\s]*/i, "")
+        .replace(/^(?:आणि|व|तसेच|and|&|\+)\s*/i, "")
+        .trim();
+
+      if (cleanSeg.length < 2) continue;
+
+      // Extract price
+      let sPrice = 0;
+      const pMatch = normSeg.match(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|inr|दर|भाव|किंमत|price|rate)/i) ||
+        normSeg.match(/(?:दर|भाव|किंमत|price|rate|₹|rs)[:\s]*(\d+(?:\.\d+)?)/i) ||
+        normSeg.match(/(?:^|\s)(\d+(?:\.\d+)?)(?:\s*$|\s+(?:किलो|लिटर|नग|box|pcs|kg|ltr))/i);
+      if (pMatch) sPrice = parseFloat(pMatch[1]);
+
+      // Extract quantity
+      let sQty = 0;
+      const qMatch = normSeg.match(/(\d+(?:\.\d+)?)\s*(?:किलो|लिटर|लीटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|kgs|ltr|bag)/i) ||
+        normSeg.match(/(?:स्टॉक|साठा|संख्या|qty|stock|quantity)[:\s]*(\d+(?:\.\d+)?)/i);
+      if (qMatch) sQty = parseFloat(qMatch[1]);
+
+      // Extract unit
+      let sUnit = "PCS";
+      const uMatch = cleanSeg.match(/(किलो|लिटर|लीटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|kgs|ltr|bag|meter|मीटर)/i);
+      if (uMatch) {
+        const u = uMatch[1].toLowerCase();
+        if (u.includes("किलो") || u.includes("kg")) sUnit = "KGS";
+        else if (u.includes("लिटर") || u.includes("लीटर") || u.includes("ltr")) sUnit = "LTR";
+        else if (u.includes("बॉक्स") || u.includes("box")) sUnit = "BOX";
+        else if (u.includes("बॅग") || u.includes("bag")) sUnit = "BAG";
+        else if (u.includes("मीटर") || u.includes("meter")) sUnit = "MTR";
+        else sUnit = "PCS";
+      }
+
+      // Extract clean real product name (never 'Item 1' or 'नवीन वस्तू')
+      let pName = cleanSeg
+        .replace(/(\d+(?:\.\d+)?)\s*(?:रुपये|रु|₹|rs|inr|दर|भाव|किंमत|price|rate)/gi, "")
+        .replace(/(?:दर|भाव|किंमत|price|rate|₹|rs)[:\s]*(\d+(?:\.\d+)?)/gi, "")
+        .replace(/(\d+(?:\.\d+)?)\s*(?:किलो|लिटर|लीटर|नग|बॉक्स|बॅग|units?|box|pcs|kg|kgs|ltr|bag|meter|मीटर)/gi, "")
+        .replace(/(?:स्टॉक|साठा|संख्या|qty|stock|quantity)[:\s]*(\d+(?:\.\d+)?)/gi, "")
+        .replace(/(?:विक्री|खरेदी|भाव|दर|किंमत|रेट|स्टॉक|साठा|price|rate|stock|cost|sale)[:\-\s]*/gi, "")
+        .replace(/^(?:नवीन|नया|add|create|वस्तू|प्रॉडक्ट|आयटम|सामान)?[:\-\s]*/gi, "")
+        .replace(/^[:\-\s,]+|[:\-\s,]+$/g, "")
+        .trim();
+
+      // Guard against blank or generic token
+      if (!pName || pName.length < 2 || /^(?:item\s*\d*|आयटम\s*\d*|product\s*\d*)$/i.test(pName)) {
+        const words = cleanSeg.split(/[0-9₹:]/)[0].trim().replace(/^[:\-\s,]+|[:\-\s,]+$/g, "");
+        if (words.length >= 2 && !/^(?:item|आयटम|नवीन|add)$/i.test(words)) {
+          pName = words;
+        }
+      }
+
+      if (pName && pName.length >= 2) {
+        parsedItems.push({
+          itemName: pName,
+          name: pName,
+          salePrice: sPrice,
+          mrp: sPrice > 0 ? sPrice : 0,
+          purchasePrice: sPrice > 0 ? Math.round(sPrice * 0.85) : 0,
+          stockQuantity: sQty,
+          unit: sUnit,
+          gstRate: 0,
+          hsn: "9999"
+        });
+      }
     }
 
-    let salePrice = 0;
-    const saleMatch = normQuery.match(/(?:विक्री\s*(?:भाव|दर|किंमत)?|भाव|दर|किंमत|रेट|sale\s*price|mrp|price|rate)\s*[:=]?\s*₹?\s*(\d+(?:\.\d+)?)/i);
-    if (saleMatch) salePrice = parseFloat(saleMatch[1]);
-
-    let purchasePrice = 0;
-    const purchaseMatch = normQuery.match(/(?:खरेदी\s*(?:भाव|दर|किंमत)?|cost|purchase\s*price|buy\s*price)\s*[:=]?\s*₹?\s*(\d+(?:\.\d+)?)/i);
-    if (purchaseMatch) purchasePrice = parseFloat(purchaseMatch[1]);
-    else if (salePrice > 0) purchasePrice = Math.round(salePrice * 0.85);
-
-    let stockQuantity = 0;
-    const stockMatch = normQuery.match(/(?:स्टॉक|साठा|संख्या|qty|stock|quantity)\s*[:=]?\s*(\d+(?:\.\d+)?)/i) ||
-      normQuery.match(/(\d+)\s*(?:किलो|लिटर|नग|बॉक्स|units?|box|pcs|kg|kgs|ltr|litre|liter)/i);
-    if (stockMatch) stockQuantity = parseFloat(stockMatch[1]);
-
-    let unit = "PCS";
-    if (query.includes("किलो") || query.includes("kg") || query.includes("kilogram")) unit = "KGS";
-    else if (query.includes("लिटर") || query.includes("liter") || query.includes("litre") || query.includes("ltr")) unit = "LTR";
-    else if (query.includes("बॉक्स") || query.includes("box")) unit = "BOX";
-    else if (query.includes("मीटर") || query.includes("meter") || query.includes("mtr")) unit = "MTR";
-    else if (query.includes("नग") || query.includes("pcs") || query.includes("unit")) unit = "PCS";
-
-    let replyText = `मालक, '${itemName}' ही नवीन वस्तू इन्व्हेंटरी डेटाबेसमध्ये ॲड केली आहे. विक्री भाव ₹${salePrice}, खरेदी भाव ₹${purchasePrice} आणि सुरुवातीचा साठा ${stockQuantity} ${unit} नोंदवला आहे.`;
-    if (lang === "hi") {
-      replyText = `सेठजी, '${itemName}' को इन्वेंटरी डेटाबेस में जोड़ दिया गया है। बिक्री दर ₹${salePrice}, खरीद दर ₹${purchasePrice} और स्टॉक ${stockQuantity} ${unit} दर्ज किया गया है।`;
-    } else if (lang === "en") {
-      replyText = `Sir, added '${itemName}' to your store inventory database. Sale price ₹${salePrice}, cost price ₹${purchasePrice}, and initial stock ${stockQuantity} ${unit} recorded.`;
-    }
-
-    return {
-      intent: "ITEM_ADD",
-      replyText,
-      displayCards: [
-        {
+    if (parsedItems.length > 1) {
+      const itemNamesStr = parsedItems.map(i => `${i.itemName} (₹${i.salePrice})`).join(", ");
+      return {
+        intent: "ITEM_ADD",
+        replyText: `मालक, मी एकूण ${parsedItems.length} वस्तू इन्व्हेंटरीमध्ये स्वतंत्रपणे जोडल्या आहेत: ${itemNamesStr}.`,
+        displayCards: [{
           type: "stock_alert",
-          title: `नवीन वस्तू ॲड केली: ${itemName}`,
-          data: {
-            itemName,
-            salePrice,
-            purchasePrice,
-            stockQuantity,
-            unit,
-            status: "added"
-          }
+          title: `नवीन वस्तू जोडल्या (${parsedItems.length})`,
+          data: { items: parsedItems }
+        }],
+        actionPayload: {
+          action: "ADD_ITEMS",
+          items: parsedItems
         }
-      ],
-      actionPayload: {
-        action: "ADD_ITEM",
-        itemName,
-        salePrice,
-        purchasePrice,
-        stockQuantity,
-        unit,
-        gstRate: 0,
-        minStockAlert: 5,
-        hsn: "9999"
+      };
+    } else if (parsedItems.length === 1) {
+      const item = parsedItems[0];
+      let replyText = `मालक, '${item.itemName}' ही नवीन वस्तू इन्व्हेंटरी डेटाबेसमध्ये ॲड केली आहे. विक्री भाव ₹${item.salePrice}, खरेदी भाव ₹${item.purchasePrice} आणि सुरुवातीचा साठा ${item.stockQuantity} ${item.unit} नोंदवला आहे.`;
+      if (lang === "hi") {
+        replyText = `सेठजी, '${item.itemName}' को इन्वेंटरी डेटाबेस में जोड़ दिया गया है। बिक्री दर ₹${item.salePrice}, खरीद दर ₹${item.purchasePrice} और स्टॉक ${item.stockQuantity} ${item.unit} दर्ज किया गया है।`;
+      } else if (lang === "en") {
+        replyText = `Sir, added '${item.itemName}' to your store inventory database. Sale price ₹${item.salePrice}, cost price ₹${item.purchasePrice}, and initial stock ${item.stockQuantity} ${item.unit} recorded.`;
       }
-    };
+      return {
+        intent: "ITEM_ADD",
+        replyText,
+        displayCards: [{
+          type: "stock_alert",
+          title: `नवीन वस्तू ॲड केली: ${item.itemName}`,
+          data: { ...item, status: "added" }
+        }],
+        actionPayload: {
+          action: "ADD_ITEM",
+          ...item
+        }
+      };
+    }
   }
 
   // =========================================================================
@@ -1989,7 +2008,11 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
   // =========================================================================
   // 11. SALES BILL CREATION (बिल कर / विक्री नोंदव / bill / sale)
   // =========================================================================
-  if (query.includes("बिल") || query.includes("invoice") || query.includes("पावती") || query.includes("विक्री") || query.includes("sale")) {
+  const isBillingRequest =
+    (query.includes("बिल") || query.includes("invoice") || query.includes("पावती") || query.includes("विक्री") || query.includes("sale") || query.includes("सेल")) &&
+    (query.includes("कर") || query.includes("करा") || query.includes("बनव") || query.includes("बनवा") || query.includes("द्या") || query.includes("दे") || query.includes("नवीन") || query.includes("तयार") || query.includes("start") || query.includes("create") || query.includes("make") || query.includes("new"));
+
+  if (isBillingRequest) {
     const isCredit = query.includes("उधारी") || query.includes("credit") || query.includes("unpaid");
     let customerName = lang === "en" ? "Cash Customer" : "रोख ग्राहक (Cash Sale)";
     for (const p of db.parties || []) {
@@ -1999,40 +2022,66 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
       }
     }
 
-    let qty = 1;
-    const qtyMatch = normQuery.match(/(\d+)\s*(?:बॉक्स|किलो|नग|units?|box|pcs|kg|ltr)?/);
-    if (qtyMatch) qty = parseInt(qtyMatch[1], 10);
-
-    let billItem = (db.items || []).find(it =>
+    // Check if items are specified in this billing sentence
+    const candidateItems = (db.items || []).filter(it =>
       query.includes(it.name.toLowerCase()) ||
       it.name.toLowerCase().split(' ').some(w => w.length > 2 && query.includes(w))
     );
 
-    const itemName = billItem ? billItem.name : "सामान / वस्तू";
-    const unitPrice = billItem ? billItem.salePrice : 100;
-    const totalAmount = qty * unitPrice;
+    if (candidateItems.length > 0) {
+      // Build bill with matched items
+      const billLines = candidateItems.map(it => {
+        let q = 1;
+        const qRe = new RegExp(`(\\d+)\\s*(?:किलो|लिटर|नग|units?|box|pcs|kg|ltr)?\\s*${it.name.toLowerCase()}|${it.name.toLowerCase()}\\s*(\\d+)`, 'i');
+        const qm = normQuery.match(qRe);
+        if (qm) q = parseInt(qm[1] || qm[2], 10) || 1;
+        const tot = q * it.salePrice;
+        return {
+          itemId: it.id,
+          itemName: it.name,
+          name: it.name,
+          quantity: q,
+          unit: it.unit || "PCS",
+          price: it.salePrice,
+          total: tot
+        };
+      });
 
-    return {
-      intent: "SALES_BILL",
-      replyText: `मालक, ${customerName} साठी ${qty} नग '${itemName}' चे ₹${totalAmount} चे ${isCredit ? "उधारी" : "रोख"} बिल तयार केले आहे.`,
-      displayCards: [{
-        type: "mini_bill",
-        title: `विक्री बिल: ${customerName}`,
-        data: {
+      const totalAmount = billLines.reduce((s, i) => s + i.total, 0);
+      const itemsText = billLines.map(i => `${i.quantity} ${i.unit} ${i.name}`).join(", ");
+
+      return {
+        intent: "SALES_BILL",
+        replyText: `मालक, ${customerName} साठी ${itemsText} चे ₹${totalAmount} चे ${isCredit ? "उधारी" : "रोख"} बिल तयार केले आहे.`,
+        displayCards: [{
+          type: "mini_bill",
+          title: `विक्री बिल: ${customerName}`,
+          data: {
+            customerName,
+            paymentMode: isCredit ? "unpaid" : "cash",
+            items: billLines,
+            totalAmount
+          }
+        }],
+        actionPayload: {
+          action: "CREATE_SALES_INVOICE",
           customerName,
           paymentMode: isCredit ? "unpaid" : "cash",
-          items: [{ itemId: billItem?.id || "item_custom", name: itemName, quantity: qty, unit: billItem?.unit || "PCS", price: unitPrice, total: totalAmount }],
+          items: billLines,
           totalAmount
         }
-      }],
-      actionPayload: {
-        action: "CREATE_SALES_INVOICE",
-        customerName,
-        paymentMode: isCredit ? "unpaid" : "cash",
-        items: [{ itemId: billItem?.id || "item_custom", name: itemName, quantity: qty, price: unitPrice, total: totalAmount }],
-        totalAmount
-      }
-    };
+      };
+    } else {
+      // User commanded to open/create a new bill without specific items (e.g. "बिल कर", "नवीन बिल बनवा")
+      return {
+        intent: "SALES_BILL",
+        replyText: `होय मालक, मी नवीन बिलिंग काउंटर उघडत आहे. कोणाच्या नावाने आणि कोणती वस्तू बिल करायची आहे सांगा?`,
+        actionPayload: {
+          action: "OPEN_NEW_BILL",
+          targetTab: "sales"
+        }
+      };
+    }
   }
 
   // =========================================================================
@@ -2063,15 +2112,19 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
   }
 
   // =========================================================================
-  // 13. PAGE NAVIGATION / REDIRECTION (पेज उघड / रिडायरेक्ट / जा / open page)
+  // 13. PAGE NAVIGATION / REDIRECTION (पेज उघड / स्क्रीन उघड / टॅब उघड / open page)
   // =========================================================================
+  // Only trigger on explicit screen/page navigation phrases; never bare 'जा' or 'ने'
   const isNavQuery =
-    (query.includes("उघड") || query.includes("दाखव") || query.includes("जा") || query.includes("ने") ||
-     query.includes("open") || query.includes("show") || query.includes("go to") || query.includes("navigate") || query.includes("redirect")) &&
-    (query.includes("पेज") || query.includes("page") || query.includes("स्क्रीन") || query.includes("screen") || query.includes("टॅब") || query.includes("tab") ||
-     query.includes("रिपोर्ट") || query.includes("report") || query.includes("बिल") || query.includes("सेल") || query.includes("खरेदी") ||
-     query.includes("आयटम") || query.includes("स्टॉक") || query.includes("इन्व्हेंटरी") || query.includes("पार्टी") || query.includes("ग्राहक") ||
-     query.includes("सप्लायर") || query.includes("कोटेशन") || query.includes("चलन") || query.includes("खर्च") || query.includes("सेटिंग") || query.includes("डॅशबोर्ड"));
+    !isBillingRequest &&
+    (query.includes("पेज उघड") || query.includes("स्क्रीन उघड") || query.includes("टॅब उघड") ||
+     query.includes("पेज दाखव") || query.includes("स्क्रीन दाखव") || query.includes("टॅब दाखव") ||
+     query.includes("पेजवर जा") || query.includes("स्क्रीनवर जा") || query.includes("टॅबवर जा") ||
+     query.includes("open page") || query.includes("open screen") || query.includes("go to page") || query.includes("navigate to") ||
+     query.includes("switch tab") || query.includes("open tab") || query.includes("open reports") ||
+     query.includes("open settings") || query.includes("open items") || query.includes("open inventory") ||
+     (query.includes("दाखव") && (query.includes("पेज") || query.includes("स्क्रीन") || query.includes("टॅब"))) ||
+     (query.includes("उघड") && (query.includes("पेज") || query.includes("स्क्रीन") || query.includes("टॅब"))));
 
   if (isNavQuery) {
     let targetTab = "dashboard";
