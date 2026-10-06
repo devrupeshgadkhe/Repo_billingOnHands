@@ -50,10 +50,9 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
   const [parsedItems, setParsedItems] = useState<any[]>([]);
   const [step, setStep] = useState<"upload" | "review">("upload");
   const [isSaving, setIsSaving] = useState(false);
+  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  if (!isOpen) return null;
 
   const handleFileSelect = (file: File) => {
     if (!file) return;
@@ -73,8 +72,6 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
       setPreviewUrl(null);
     }
   };
-
-  const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
 
   const executeDirectItemsParse = async (base64Data: string, mimeType: string) => {
     setIsProcessing(true);
@@ -221,6 +218,8 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
       setIsSaving(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">

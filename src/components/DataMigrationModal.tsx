@@ -53,8 +53,6 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (!isOpen) return null;
-
   const parseCsvText = (csvText: string) => {
     const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
     if (lines.length < 2) {
@@ -264,6 +262,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
       setIsProcessing(false);
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">

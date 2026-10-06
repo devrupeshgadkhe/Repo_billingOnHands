@@ -188,8 +188,6 @@ export default function ThermalDesignerModal({
   onSaveConfig,
   sampleInvoice
 }: ThermalDesignerModalProps) {
-  if (!isOpen) return null;
-
   const [config, setConfig] = useState<ThermalPrintConfig>(() => ({
     ...DEFAULT_THERMAL_CONFIG,
     ...(business.thermalConfig || {}),
@@ -309,6 +307,8 @@ export default function ThermalDesignerModal({
   const upiName = encodeURIComponent(config.upiMerchantName || business.name || "Store");
   const upiQrPayload = `upi://pay?pa=${upiVpa}&pn=${upiName}&am=${dummyInvoice.totalAmount}&cu=INR&tn=Bill-${dummyInvoice.invoiceNumber}`;
   const upiQrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(upiQrPayload)}`;
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
