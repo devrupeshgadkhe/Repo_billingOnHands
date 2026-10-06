@@ -2,7 +2,7 @@
  * Application Version & Auto-Update Configuration
  * Synchronized with package.json and GitHub Releases
  */
-export const APP_VERSION = "1.1.0";
+export const APP_VERSION = "1.1.1";
 export const APP_NAME = "BillingOnHand";
 export const APP_DISPLAY_NAME = "Billing On Hand - Offline Retail & GST ERP";
 export const APP_BUILD_DATE = "2026-10-06";
