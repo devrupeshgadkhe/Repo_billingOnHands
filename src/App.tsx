@@ -1,0 +1,1243 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import Sidebar from "./components/Sidebar";
+import DashboardView from "./components/DashboardView";
+import ItemsView from "./components/ItemsView";
+import PartiesView from "./components/PartiesView";
+import InvoicingView from "./components/InvoicingView";
+import ReportsView from "./components/ReportsView";
+import SettingsView from "./components/SettingsView";
+import InvoicePrintModal from "./components/InvoicePrintModal";
+import LoginView from "./components/LoginView";
+import TransactionsView from "./components/TransactionsView";
+import AccessControlView from "./components/AccessControlView";
+import DeliveryChallansView from "./components/DeliveryChallansView";
+import QuotationsView from "./components/QuotationsView";
+import GodownsView from "./components/GodownsView";
+import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher } from "./types";
+import { RefreshCw, LayoutGrid, CheckCircle, LogOut, Menu } from "lucide-react";
+import { APP_VERSION } from "./version";
+import MunimjiDrawer from "./components/MunimjiDrawer";
+import {
+  initDriveAuth,
+  uploadBackupToGoogleDrive,
+  getBackupStatus
+} from "./services/googleDriveBackup";
+
+export default function App() {
+  const [activeTab, setActiveTab] = useState<string>("dashboard");
+  const [dbState, setDbState] = useState<DatabaseState | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [invoiceToEdit, setInvoiceToEdit] = useState<Invoice | null>(null);
+  const [isReturnMode, setIsReturnMode] = useState<boolean>(false);
+  const [session, setSession] = useState<{ username: string; name: string; role: string; token: string; permissions?: any } | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState<boolean>(false);
+  const isInitialDbLoad = React.useRef(true);
+  const autoBackupTimerRef = React.useRef<any>(null);
+  const [updateBanner, setUpdateBanner] = useState<{
+    state: "available" | "downloading" | "downloaded" | "reloading" | "installing";
+    version?: string;
+    percent?: number;
+    countdown?: number;
+  } | null>(null);
+  const [isMunimjiOpen, setIsMunimjiOpen] = useState<boolean>(false);
+
+  // Autonomous Continuous Auto-Updater Engine (Desktop Electron & Web)
+  useEffect(() => {
+    const electronAPI = (window as any).electronAPI;
+    let autoRestartTimer: any = null;
+    let countdownInterval: any = null;
+
+    if (electronAPI?.isElectron && electronAPI?.onUpdateStatus) {
+      // 1. Electron Desktop Listener
+      const cleanup = electronAPI.onUpdateStatus((status: any) => {
+        if (status.state === "available" || status.state === "downloading" || status.state === "installing") {
+          setUpdateBanner({
+            state: status.state,
+            version: status.version,
+            percent: status.percent
+          });
+        } else if (status.state === "downloaded") {
+          let secs = 3;
+          setUpdateBanner({
+            state: "downloaded",
+            version: status.version,
+            countdown: secs
+          });
+          // Countdown and automatically install/restart without requiring manual clicks
+          countdownInterval = setInterval(() => {
+            secs -= 1;
+            if (secs > 0) {
+              setUpdateBanner(prev => prev ? { ...prev, countdown: secs } : null);
+            } else {
+              clearInterval(countdownInterval);
+            }
+          }, 1000);
+
+          autoRestartTimer = setTimeout(() => {
+            electronAPI.restartAndInstall?.();
+          }, 3200);
+        } else if (status.state === "up-to-date" || status.state === "error") {
+          setUpdateBanner(prev => (prev?.state === "downloading" || prev?.state === "downloaded") ? prev : null);
+        }
+      });
+
+      // Autonomous background check every 15 seconds + on window focus
+      const checkDesktop = () => {
+        electronAPI.checkForUpdates?.().catch(() => {});
+      };
+      checkDesktop();
+      const desktopInterval = setInterval(checkDesktop, 15000);
+      window.addEventListener("focus", checkDesktop);
+
+      return () => {
+        cleanup?.();
+        clearInterval(desktopInterval);
+        window.removeEventListener("focus", checkDesktop);
+        if (autoRestartTimer) clearTimeout(autoRestartTimer);
+        if (countdownInterval) clearInterval(countdownInterval);
+      };
+    } else {
+      // 2. Web Browser Autonomous Live Updater
+      let isUpdating = false;
+      const checkWebVersion = async () => {
+        if (isUpdating) return;
+        try {
+          const res = await fetch("/api/version");
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data?.version && data.version !== APP_VERSION) {
+            isUpdating = true;
+            let secs = 2;
+            setUpdateBanner({
+              state: "reloading",
+              version: data.version,
+              countdown: secs
+            });
+            countdownInterval = setInterval(() => {
+              secs -= 1;
+              if (secs > 0) {
+                setUpdateBanner(prev => prev ? { ...prev, countdown: secs } : null);
+              } else {
+                clearInterval(countdownInterval);
+              }
+            }, 1000);
+
+            setTimeout(() => {
+              window.location.reload();
+            }, 2200);
+          }
+        } catch {}
+      };
+
+      // Periodic check every 5 seconds for web environment
+      checkWebVersion();
+      const webInterval = setInterval(checkWebVersion, 5000);
+      window.addEventListener("focus", checkWebVersion);
+
+      return () => {
+        clearInterval(webInterval);
+        window.removeEventListener("focus", checkWebVersion);
+        if (countdownInterval) clearInterval(countdownInterval);
+      };
+    }
+  }, []);
+
+  // Security: Prevent DevTools (F12, Inspect, View Source) and casual tampering
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Block F12
+      if (e.key === "F12" || e.keyCode === 123) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+      // 2. Block Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C (Inspect/Console)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && ["I", "i", "J", "j", "C", "c"].includes(e.key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+      // 3. Block Ctrl+U (View Page Source)
+      if ((e.ctrlKey || e.metaKey) && (e.key === "u" || e.key === "U")) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    };
+
+    const handleContextMenu = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Allow right-click on input and textarea for copy/paste, block elsewhere to prevent Inspect Element
+      const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (!isInput) {
+        e.preventDefault();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    document.addEventListener("contextmenu", handleContextMenu, { capture: true });
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+      document.removeEventListener("contextmenu", handleContextMenu, { capture: true });
+    };
+  }, []);
+
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryAttempt, setRetryAttempt] = useState<number>(0);
+
+  // Fetch full data state from Express JSON API with resilient retry
+  const fetchState = async (isRetry = false) => {
+    if (!isRetry) setIsLoading(true);
+    setLoadError(null);
+    try {
+      const res = await fetch("/api/db");
+      if (!res.ok) throw new Error(`Server status ${res.status}: Failed to read database`);
+      const data: DatabaseState = await res.json();
+      if (!data || typeof data !== "object") {
+        throw new Error("Invalid database format received");
+      }
+      setDbState(data);
+      setLoadError(null);
+      setRetryAttempt(0);
+    } catch (err: any) {
+      console.error("Failed to load business databases", err);
+      setLoadError(err?.message || "Connection to local database failed");
+      // Resilient auto-retry with backoff up to 5 times
+      setRetryAttempt(prev => {
+        const next = prev + 1;
+        if (next <= 5) {
+          setTimeout(() => {
+            fetchState(true);
+          }, Math.min(next * 1500, 5000));
+        }
+        return next;
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const saved = localStorage.getItem("billingonhand_session") || localStorage.getItem("vyapaar_session");
+    if (saved) {
+      try {
+        setSession(JSON.parse(saved));
+      } catch (err) {
+        localStorage.removeItem("billingonhand_session");
+        localStorage.removeItem("vyapaar_session");
+      }
+    }
+    fetchState();
+  }, []);
+
+  // Google Drive Cloud Backup Service Initialization
+  useEffect(() => {
+    initDriveAuth();
+  }, []);
+
+  // System Startup Backup: Create initial snapshot in firm's name on startup
+  const hasTriggeredStartupBackup = useRef(false);
+  useEffect(() => {
+    if (dbState && !hasTriggeredStartupBackup.current) {
+      hasTriggeredStartupBackup.current = true;
+      setTimeout(async () => {
+        try {
+          await uploadBackupToGoogleDrive(dbState, false);
+        } catch (err) {
+          console.warn("Startup backup snapshot:", err);
+        }
+      }, 1200);
+    }
+  }, [dbState]);
+
+  // Automated Debounced Sync to Google Drive on Database state modification
+  useEffect(() => {
+    if (isInitialDbLoad.current) {
+      if (dbState) isInitialDbLoad.current = false;
+      return;
+    }
+    if (!dbState) return;
+
+    const status = getBackupStatus();
+    if (status.autoBackupEnabled) {
+      if (autoBackupTimerRef.current) clearTimeout(autoBackupTimerRef.current);
+      autoBackupTimerRef.current = setTimeout(async () => {
+        try {
+          await uploadBackupToGoogleDrive(dbState);
+        } catch {}
+      }, 6000);
+    }
+
+    return () => {
+      if (autoBackupTimerRef.current) clearTimeout(autoBackupTimerRef.current);
+    };
+  }, [dbState]);
+
+  // Periodic 15-minute background auto-backup
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      const status = getBackupStatus();
+      if (status.autoBackupEnabled && dbState) {
+        try {
+          await uploadBackupToGoogleDrive(dbState);
+        } catch {}
+      }
+    }, 15 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [dbState]);
+
+  // Update business profile
+  const handleSaveBusiness = async (profile: BusinessProfile) => {
+    try {
+      const res = await fetch("/api/business", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile)
+      });
+      if (res.ok) await fetchState();
+    } catch (err) {
+      console.error("Failed to update business profile", err);
+    }
+  };
+
+  // Add/Modify Stock Item
+  const handleSaveItem = async (item: Item) => {
+    try {
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(item)
+      });
+      if (res.ok) await fetchState();
+    } catch (err) {
+      console.error("Failed to persist item change", err);
+    }
+  };
+
+  // Delete Stock Item
+  const handleDeleteItem = async (id: string) => {
+    try {
+      const res = await fetch(`/api/items/${id}`, { method: "DELETE" });
+      if (res.ok) await fetchState();
+    } catch (err) {
+      console.error("Failed to delete stock item", err);
+    }
+  };
+
+  // Add/Modify Party Contact
+  const handleSaveParty = async (party: Party) => {
+    try {
+      const res = await fetch("/api/parties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(party)
+      });
+      if (res.ok) await fetchState();
+    } catch (err) {
+      console.error("Failed to persist party change", err);
+    }
+  };
+
+  // Delete Party Contact
+  const handleDeleteParty = async (id: string) => {
+    try {
+      const res = await fetch(`/api/parties/${id}`, { method: "DELETE" });
+      if (res.ok) await fetchState();
+    } catch (err) {
+      console.error("Failed to delete contact", err);
+    }
+  };
+
+  // Process Sales / Purchases Invoices
+  const handleSaveInvoice = async (invoice: Invoice) => {
+    try {
+      const res = await fetch("/api/invoices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(invoice)
+      });
+      if (res.ok) {
+        const result = await res.json();
+        await fetchState();
+        // Automatically trigger print popup mockup on newly booked invoice!
+        setSelectedInvoice(result.invoice);
+      } else {
+        throw new Error("Unable to save transaction.");
+      }
+    } catch (err) {
+      console.error("Failed to log billing transaction", err);
+      throw err;
+    }
+  };
+
+  // Delete Invoice with ledger state restoration
+  const handleDeleteInvoice = async (id: string) => {
+    try {
+      const res = await fetch(`/api/invoices/${id}`, { method: "DELETE" });
+      if (res.ok) await fetchState();
+    } catch (err) {
+      console.error("Failed to revert billing invoice", err);
+    }
+  };
+
+  // Delivery Challan Operations
+  const handleSaveChallan = async (challan: DeliveryChallan) => {
+    try {
+      const res = await fetch("/api/challans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(challan)
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to save delivery challan.");
+      }
+    } catch (err) {
+      console.error("Failed to save delivery challan", err);
+      throw err;
+    }
+  };
+
+  const handleCancelChallan = async (id: string) => {
+    try {
+      const res = await fetch(`/api/challans/${id}/cancel`, {
+        method: "POST"
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to cancel delivery challan.");
+      }
+    } catch (err) {
+      console.error("Failed to cancel delivery challan", err);
+      throw err;
+    }
+  };
+
+  const handleDeleteChallan = async (id: string) => {
+    try {
+      const res = await fetch(`/api/challans/${id}`, {
+        method: "DELETE"
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to delete delivery challan.");
+      }
+    } catch (err) {
+      console.error("Failed to delete delivery challan", err);
+      throw err;
+    }
+  };
+
+  const handleConvertChallanToInvoice = (challan: DeliveryChallan) => {
+    const extraCharges: { title: string; amount: number }[] = [];
+    if (challan.hamaliCharge && challan.hamaliStatus === "paid_by_us") {
+      extraCharges.push({ title: "Hamali / Labour Charge", amount: challan.hamaliCharge });
+    }
+    if (challan.freightCharge && challan.freightStatus === "paid_by_us") {
+      extraCharges.push({ title: "Freight / Transport Charge", amount: challan.freightCharge });
+    }
+
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const draftInvoice: Invoice = {
+      id: "",
+      invoiceNumber: `INV-2026-${randomSuffix}`,
+      date: new Date().toISOString().split("T")[0],
+      partyId: challan.partyId,
+      partyName: challan.partyName,
+      partyGstin: challan.partyGstin,
+      type: "sale",
+      items: challan.items.map(ci => ({
+        itemId: ci.itemId,
+        itemName: ci.itemName,
+        hsn: ci.hsn,
+        quantity: ci.quantity,
+        price: ci.price,
+        gstRate: ci.gstRate,
+        amountBeforeTax: ci.amountBeforeTax,
+        taxAmount: ci.taxAmount,
+        cgst: ci.taxAmount / 2,
+        sgst: ci.taxAmount / 2,
+        igst: 0,
+        totalAmount: ci.totalAmount
+      })),
+      subtotal: challan.subtotal,
+      taxAmount: challan.taxAmount,
+      cgstTotal: challan.taxAmount / 2,
+      sgstTotal: challan.taxAmount / 2,
+      igstTotal: 0,
+      extraCharges,
+      totalAmount: challan.totalAmount + extraCharges.reduce((s, c) => s + c.amount, 0),
+      paymentType: "unpaid",
+      paidAmount: 0,
+      remainingAmount: challan.totalAmount + extraCharges.reduce((s, c) => s + c.amount, 0),
+      notes: `Billed against Delivery Challan: ${challan.challanNumber}` + (challan.vehicleNumber ? ` (Vehicle: ${challan.vehicleNumber})` : ""),
+      sourceChallanId: challan.id,
+      sourceChallanNumber: challan.challanNumber
+    };
+
+    setInvoiceToEdit(draftInvoice);
+    setIsReturnMode(false);
+    setActiveTab("sales");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Convert Quotation into Sales Invoice
+  const handleConvertQuotationToInvoice = (quotation: Quotation) => {
+    const extraCharges: { title: string; amount: number }[] = quotation.extraCharges || [];
+
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const draftInvoice: Invoice = {
+      id: "",
+      invoiceNumber: `INV-${new Date().getFullYear()}-${randomSuffix}`,
+      date: new Date().toISOString().split("T")[0],
+      partyId: quotation.partyId,
+      partyName: quotation.partyName,
+      partyGstin: quotation.partyGstin,
+      type: "sale",
+      items: quotation.items.map(qi => ({
+        itemId: qi.itemId,
+        itemName: qi.itemName,
+        hsn: qi.hsn,
+        quantity: qi.quantity,
+        price: qi.price,
+        discount: qi.discount,
+        gstRate: qi.gstRate,
+        amountBeforeTax: qi.amountBeforeTax,
+        taxAmount: qi.taxAmount,
+        cgst: qi.cgst,
+        sgst: qi.sgst,
+        igst: qi.igst,
+        totalAmount: qi.totalAmount
+      })),
+      subtotal: quotation.subtotal,
+      taxAmount: quotation.taxAmount,
+      cgstTotal: quotation.cgstTotal,
+      sgstTotal: quotation.sgstTotal,
+      igstTotal: quotation.igstTotal,
+      extraCharges,
+      totalAmount: quotation.totalAmount,
+      paymentType: "unpaid",
+      paidAmount: 0,
+      remainingAmount: quotation.totalAmount,
+      notes: `Billed against Quotation: ${quotation.quotationNumber}` + (quotation.notes ? ` (${quotation.notes})` : ""),
+      sourceQuotationId: quotation.id,
+      sourceQuotationNumber: quotation.quotationNumber
+    };
+
+    setInvoiceToEdit(draftInvoice);
+    setIsReturnMode(false);
+    setActiveTab("sales");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Quotation CRUD handlers
+  const handleSaveQuotation = async (quotation: Quotation) => {
+    try {
+      const res = await fetch("/api/quotations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(quotation)
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save quotation");
+      }
+    } catch (err) {
+      console.error("Failed to save quotation", err);
+      throw err;
+    }
+  };
+
+  const handleDeleteQuotation = async (id: string) => {
+    try {
+      const res = await fetch(`/api/quotations/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete quotation");
+      }
+    } catch (err) {
+      console.error("Failed to delete quotation", err);
+      throw err;
+    }
+  };
+
+  const handleUpdateQuotationStatus = async (id: string, status: QuotationStatus) => {
+    try {
+      const res = await fetch(`/api/quotations/${id}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status })
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to update quotation status");
+      }
+    } catch (err) {
+      console.error("Failed to update quotation status", err);
+      throw err;
+    }
+  };
+
+  // Godown & Stock Transfer handlers (Phase 9)
+  const handleSaveGodown = async (godown: Godown) => {
+    try {
+      const res = await fetch("/api/godowns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(godown)
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to save godown");
+      }
+    } catch (err) {
+      console.error("Failed to save godown", err);
+      throw err;
+    }
+  };
+
+  const handleDeleteGodown = async (id: string) => {
+    try {
+      const res = await fetch(`/api/godowns/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to delete godown");
+      }
+    } catch (err) {
+      console.error("Failed to delete godown", err);
+      throw err;
+    }
+  };
+
+  const handleCreateStockTransfer = async (voucher: StockTransferVoucher) => {
+    try {
+      const res = await fetch("/api/stock-transfers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(voucher)
+      });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to create stock transfer");
+      }
+    } catch (err) {
+      console.error("Failed to create stock transfer", err);
+      throw err;
+    }
+  };
+
+  const handleCancelStockTransfer = async (id: string) => {
+    try {
+      const res = await fetch(`/api/stock-transfers/${id}`, { method: "DELETE" });
+      if (res.ok) {
+        await fetchState();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to cancel stock transfer");
+      }
+    } catch (err) {
+      console.error("Failed to cancel stock transfer", err);
+      throw err;
+    }
+  };
+
+  const handleEditInvoice = (invoice: Invoice) => {
+    setInvoiceToEdit(invoice);
+    setIsReturnMode(invoice.type === "sale_return" || invoice.type === "purchase_return");
+    if (invoice.type === "sale" || invoice.type === "sale_return") {
+      setActiveTab("sales");
+    } else {
+      setActiveTab("purchases");
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleApplyMunimjiBill = (billData: any) => {
+    // 1. Match party (defaults to walk-in cash customer for instant 1-click billing)
+    let matchedPartyId = "walkin_customer";
+    let matchedPartyName = billData.customerName || "रोख ग्राहक (Cash Customer)";
+    let matchedPartyGstin = "";
+
+    if (billData.customerName) {
+      const isCashWord = /cash|walk-in|रोख|काऊंटर|काउन्टर|किरकोळ/i.test(billData.customerName);
+      if (!isCashWord) {
+        const p = dbState?.parties?.find(party => 
+          party.name.toLowerCase().includes(billData.customerName.toLowerCase()) ||
+          billData.customerName.toLowerCase().includes(party.name.toLowerCase())
+        );
+        if (p) {
+          matchedPartyId = p.id;
+          matchedPartyName = p.name;
+          matchedPartyGstin = p.gstin || "";
+        }
+      }
+    }
+
+    // 2. Map items
+    const invoiceItems = (billData.items || []).map((it: any) => {
+      const itName = String(it.itemName || it.name || it.title || "वस्तू").trim();
+      const matched = dbState?.items?.find(item => 
+        item.name.toLowerCase() === itName.toLowerCase() ||
+        item.name.toLowerCase().includes(itName.toLowerCase()) ||
+        itName.toLowerCase().includes(item.name.toLowerCase())
+      );
+      const unitPrice = it.price || matched?.salePrice || 0;
+      const qty = it.quantity || 1;
+      const amountBeforeTax = qty * unitPrice;
+      const gstRate = it.gstRate !== undefined && it.gstRate !== null
+        ? Number(it.gstRate)
+        : (matched?.gstRate !== undefined ? Number(matched.gstRate) : 0);
+      const taxAmount = (amountBeforeTax * gstRate) / 100;
+      const halfTax = taxAmount / 2;
+      return {
+        itemId: matched?.id || it.itemId || "custom_" + Date.now() + "_" + Math.random().toString(36).substr(2, 4),
+        itemName: matched?.name || itName,
+        hsn: matched?.hsn || "9999",
+        quantity: qty,
+        unit: matched?.unit || it.unit || "PCS",
+        price: unitPrice,
+        discount: 0,
+        gstRate,
+        amountBeforeTax,
+        taxAmount,
+        cgst: halfTax,
+        sgst: halfTax,
+        igst: 0,
+        totalAmount: amountBeforeTax + taxAmount
+      };
+    });
+
+    const isPurchase = billData.type === "purchase" || billData.intent === "PURCHASE_BILL";
+    const subtotal = invoiceItems.reduce((acc: number, item: any) => acc + item.amountBeforeTax, 0);
+    const taxTotal = invoiceItems.reduce((acc: number, item: any) => acc + item.taxAmount, 0);
+    const totalAmount = invoiceItems.reduce((acc: number, item: any) => acc + item.totalAmount, 0);
+    const paymentMode = billData.paymentMode === "cash" ? "cash" : (billData.paymentMode === "bank" ? "bank" : "unpaid");
+
+    const draftInvoice: Invoice = {
+      id: "munimji_" + Date.now(),
+      invoiceNumber: `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+      date: new Date().toISOString().split("T")[0],
+      partyId: matchedPartyId,
+      partyName: matchedPartyName,
+      partyGstin: matchedPartyGstin,
+      type: isPurchase ? "purchase" : "sale",
+      items: invoiceItems,
+      subtotal,
+      taxAmount: taxTotal,
+      cgstTotal: taxTotal / 2,
+      sgstTotal: taxTotal / 2,
+      igstTotal: 0,
+      totalAmount,
+      paymentType: paymentMode,
+      paidAmount: paymentMode === "unpaid" ? 0 : totalAmount,
+      remainingAmount: paymentMode === "unpaid" ? totalAmount : 0,
+      notes: "Generated by Digital Munimji Voice"
+    };
+
+    setInvoiceToEdit(draftInvoice);
+    setIsReturnMode(false);
+    setActiveTab(isPurchase ? "purchases" : "sales");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleReturnInvoice = (invoice: Invoice) => {
+    const returnType = invoice.type === "sale" ? "sale_return" : "purchase_return";
+    const prefix = returnType === "sale_return" ? "CN" : "DN";
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    const returnInv: Invoice = {
+      ...invoice,
+      id: "", // Clear so it creates as a NEW transaction
+      invoiceNumber: `${prefix}-${new Date().getFullYear()}-${randomSuffix}`,
+      originalInvoiceNumber: invoice.invoiceNumber,
+      type: returnType,
+      date: new Date().toISOString().split("T")[0],
+      paymentType: "unpaid",
+      paidAmount: 0,
+      remainingAmount: invoice.totalAmount,
+      notes: `Return against bill #${invoice.invoiceNumber}`
+    };
+    setInvoiceToEdit(returnInv);
+    setIsReturnMode(true);
+    if (returnType === "sale_return") {
+      setActiveTab("sales");
+    } else {
+      setActiveTab("purchases");
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Add or Update Misc Transaction
+  const handleSaveTransaction = async (tx: MiscTransaction) => {
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tx)
+      });
+      if (res.ok) await fetchState();
+    } catch (err) {
+      console.error("Failed to save transaction record", err);
+    }
+  };
+
+  // Delete Misc Transaction
+  const handleDeleteTransaction = async (id: string) => {
+    try {
+      const res = await fetch(`/api/transactions/${id}`, { method: "DELETE" });
+      if (res.ok) await fetchState();
+    } catch (err) {
+      console.error("Failed to delete transaction record", err);
+    }
+  };
+
+  // Factory reset to clean blueprints sample ledger
+  const handleResetDb = async () => {
+    try {
+      setIsLoading(true);
+      const res = await fetch("/api/db/reset", { method: "POST" });
+      if (res.ok) await fetchState();
+    } catch (err) {
+      console.error("Failed to reset ledger data", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Derive warning tallies for sidebar notifications
+  const lowStockCount = useMemo(() => {
+    if (!dbState) return 0;
+    return dbState.items.filter(item => item.stockQuantity <= item.minStockAlert).length;
+  }, [dbState]);
+
+  const unpaidCount = useMemo(() => {
+    if (!dbState) return 0;
+    return dbState.parties.filter(p => p.currentBalance > 0).length;
+  }, [dbState]);
+
+  const pendingChallansCount = useMemo(() => {
+    if (!dbState || !dbState.challans) return 0;
+    return dbState.challans.filter(c => c.status === "pending").length;
+  }, [dbState]);
+
+  const pendingQuotationsCount = useMemo(() => {
+    if (!dbState || !dbState.quotations) return 0;
+    return dbState.quotations.filter(q => q.status === "draft" || q.status === "sent").length;
+  }, [dbState]);
+
+  // Loading phase rendering
+  if (isLoading || !dbState) {
+    return (
+      <div id="v-app-loader" className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-slate-300">
+        <div className="max-w-md w-full bg-slate-800/80 border border-slate-700/80 rounded-2xl p-6 shadow-2xl flex flex-col items-center text-center space-y-4">
+          <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-center text-emerald-400">
+            <RefreshCw className={`w-7 h-7 ${!loadError ? "animate-spin" : ""}`} />
+          </div>
+          <div>
+            <h2 className="text-base font-bold tracking-wider text-slate-100 uppercase font-mono">
+              {loadError ? "डेटाबेस जोडणी त्रुटी (Connection Notice)" : "Billing On Hand Engine सुरू होत आहे..."}
+            </h2>
+            <p className="text-xs text-slate-400 mt-1">
+              {loadError ? loadError : "ऑफलाइन डेटाबेस व जीएसटी टॅक्स नियम लोड होत आहेत..."}
+            </p>
+          </div>
+
+          {loadError ? (
+            <div className="w-full flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => fetchState(false)}
+                className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                पुन्हा प्रयत्न करा (Retry Now)
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="w-full py-2 px-4 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded-xl transition cursor-pointer"
+              >
+                रिफ्रेश करा (Reload Page)
+              </button>
+            </div>
+          ) : (
+            <div className="text-[11px] text-slate-500 font-mono">
+              {retryAttempt > 0 ? `पुनःप्रयत्न सुरू आहे... (${retryAttempt}/5)` : "प्रारंभिक संरचना तपासत आहे..."}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Authentication gate
+  if (!session) {
+    return <LoginView onLoginSuccess={(sess) => setSession(sess)} />;
+  }
+
+  // Find related contact for printable receipt
+  const invoiceSelectedParty = selectedInvoice
+    ? dbState.parties.find(p => p.id === selectedInvoice.partyId)
+    : undefined;
+
+  return (
+    <div id="v-app-grid" className="min-h-screen bg-slate-50 text-slate-900 flex">
+      
+      {/* Sidebar - Fix position */}
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={(tab) => {
+          setActiveTab(tab);
+          setInvoiceToEdit(null);
+          setIsReturnMode(false);
+        }}
+        business={dbState.business}
+        lowStockCount={lowStockCount}
+        unpaidCount={unpaidCount}
+        pendingChallansCount={pendingChallansCount}
+        pendingQuotationsCount={pendingQuotationsCount}
+        onResetDb={handleResetDb}
+        isOpen={mobileSidebarOpen}
+        onClose={() => setMobileSidebarOpen(false)}
+        sessionRole={session?.role}
+        sessionPermissions={session?.permissions}
+      />
+
+      {/* Main Dynamic View Panels - Shifted right by 272px (w-68) on large screens */}
+      <main id="v-app-main" className={`flex-1 min-w-0 pl-0 lg:pl-68 min-h-screen flex flex-col pb-10 print:hidden ${selectedInvoice ? "print:hidden" : ""}`}>
+        
+        {/* Global Toolbar Header - Hidden in printable invoices */}
+        <header id="v-app-toolbar" className="bg-white border-b border-slate-200 h-16 flex items-center justify-between px-4 sm:px-8 select-none print:hidden shadow-xs shrink-0 sticky top-0 z-10 font-sans">
+          <div className="flex items-center space-x-2 sm:space-x-3.5">
+            {/* Hamburger menu trigger */}
+            <button
+              id="v-mobile-menu-trigger"
+              onClick={() => setMobileSidebarOpen(true)}
+              className="lg:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition cursor-pointer"
+              title="Open Menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 hidden sm:inline-block"></span>
+            <span className="text-xs font-semibold text-slate-600 font-sans truncate max-w-[150px] sm:max-w-none">
+              Online {dbState.business?.businessType ? `• ${dbState.business.businessType}` : ""}
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-3 sm:space-x-4">
+            {/* Authenticated User Profile */}
+            <div className="px-2 sm:px-3 py-1 bg-slate-50 border border-slate-200/60 rounded-xl text-right flex items-center space-x-2 sm:space-x-3">
+              <div className="text-right">
+                <span className="text-[11px] font-bold text-slate-800 block truncate max-w-[90px] sm:max-w-[130px]">{session.name}</span>
+                <span className="text-[9px] font-medium text-emerald-700 block capitalize">{session.role}</span>
+              </div>
+              <button
+                id="header-logout-btn"
+                onClick={() => {
+                  localStorage.removeItem("billingonhand_session");
+                  localStorage.removeItem("vyapaar_session");
+                  setSession(null);
+                }}
+                className="p-1.5 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                title="Logout"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="text-right hidden sm:block">
+              <span className="text-[10px] font-medium text-slate-400 block uppercase">GST Verified</span>
+              <span className="text-xs font-bold text-slate-800 block">{dbState.business.gstin || "GST Ready"}</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Global Autonomous Auto-Update Notification Banner */}
+        {updateBanner && (
+          <div id="v-auto-update-banner" className="bg-emerald-700 text-white px-4 sm:px-8 py-2.5 flex items-center justify-between text-xs font-semibold shadow-md print:hidden transition-all duration-300">
+            <div className="flex items-center space-x-2.5">
+              <RefreshCw className={`w-4 h-4 shrink-0 ${updateBanner.state === 'downloading' || updateBanner.state === 'reloading' ? 'animate-spin' : ''}`} />
+              <span>
+                {updateBanner.state === "available" && `New version (v${updateBanner.version || ''}) detected. Starting background download...`}
+                {updateBanner.state === "downloading" && (
+                  (updateBanner.percent && updateBanner.percent >= 100)
+                    ? "Update download complete. Finalizing installation..."
+                    : `Downloading update (${updateBanner.percent || 0}%)... Please wait.`
+                )}
+                {updateBanner.state === "downloaded" && (
+                  `New update (v${updateBanner.version || ''}) is ready. App restarting automatically in ${updateBanner.countdown ?? 3}s...`
+                )}
+                {updateBanner.state === "installing" && (
+                  `Installing update (v${updateBanner.version || ''})... Relaunching application.`
+                )}
+                {updateBanner.state === "reloading" && (
+                  `New update (v${updateBanner.version || ''}) is available. Updating application in ${updateBanner.countdown ?? 2}s...`
+                )}
+              </span>
+            </div>
+            {updateBanner.state === "downloaded" && (
+              <button
+                type="button"
+                onClick={() => (window as any).electronAPI?.restartAndInstall?.()}
+                className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold px-3 py-1 rounded-md text-xs transition cursor-pointer shadow-sm ml-3 shrink-0"
+              >
+                Restart Now
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Core Screen Router */}
+        <div id="v-active-canvas" className={`p-3 sm:p-5 lg:p-6 w-full mx-auto flex-1 print:p-0 ${activeTab === "sales" || activeTab === "purchases" ? "max-w-full 2xl:max-w-[1800px]" : "max-w-7xl"}`}>
+          {activeTab === "dashboard" && (
+            <DashboardView
+              items={dbState.items}
+              parties={dbState.parties}
+              invoices={dbState.invoices}
+              transactions={dbState.transactions}
+              onNavigateTab={(tab) => {
+                setActiveTab(tab);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              onOpenInvoice={(inv) => setSelectedInvoice(inv)}
+            />
+          )}
+
+          {activeTab === "items" && (
+            <ItemsView
+              items={dbState.items}
+              onSaveItem={handleSaveItem}
+              onDeleteItem={handleDeleteItem}
+              onRefreshDb={fetchState}
+              permissions={session?.permissions?.items}
+            />
+          )}
+
+          {activeTab === "godowns" && (
+            <GodownsView
+              godowns={dbState.godowns || []}
+              stockTransfers={dbState.stockTransfers || []}
+              items={dbState.items || []}
+              business={dbState.business}
+              onSaveGodown={handleSaveGodown}
+              onDeleteGodown={handleDeleteGodown}
+              onCreateTransfer={handleCreateStockTransfer}
+              onCancelTransfer={handleCancelStockTransfer}
+              permissions={session?.permissions?.godowns || session?.permissions?.items}
+            />
+          )}
+
+          {activeTab === "parties" && (
+            <PartiesView
+              parties={dbState.parties}
+              invoices={dbState.invoices}
+              onSaveParty={handleSaveParty}
+              onDeleteParty={handleDeleteParty}
+              onSaveInvoice={handleSaveInvoice}
+              onOpenInvoice={(inv) => setSelectedInvoice(inv)}
+              permissions={session?.permissions?.parties}
+            />
+          )}
+
+          {activeTab === "quotations" && (
+            <QuotationsView
+              quotations={dbState.quotations || []}
+              parties={dbState.parties}
+              items={dbState.items}
+              business={dbState.business}
+              onSaveQuotation={handleSaveQuotation}
+              onDeleteQuotation={handleDeleteQuotation}
+              onUpdateQuotationStatus={handleUpdateQuotationStatus}
+              onConvertToInvoice={handleConvertQuotationToInvoice}
+              permissions={session?.permissions?.quotations || session?.permissions?.sales}
+            />
+          )}
+
+          {activeTab === "sales" && (
+            <InvoicingView
+              key="sales"
+              type="sale"
+              items={dbState.items}
+              parties={dbState.parties}
+              business={dbState.business}
+              invoiceToEdit={invoiceToEdit?.type.includes("sale") ? invoiceToEdit : null}
+              isReturnMode={isReturnMode}
+              onSaveInvoice={async (inv) => {
+                await handleSaveInvoice(inv);
+                setInvoiceToEdit(null);
+                setIsReturnMode(false);
+              }}
+              onCancelEdit={() => {
+                setInvoiceToEdit(null);
+                setIsReturnMode(false);
+              }}
+              onNavigateTab={(tab) => {
+                setActiveTab(tab);
+                setInvoiceToEdit(null);
+                setIsReturnMode(false);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              permissions={session?.permissions?.sales}
+            />
+          )}
+
+          {activeTab === "challans" && (
+            <DeliveryChallansView
+              challans={dbState.challans || []}
+              parties={dbState.parties}
+              items={dbState.items}
+              business={dbState.business}
+              onSaveChallan={handleSaveChallan}
+              onCancelChallan={handleCancelChallan}
+              onDeleteChallan={handleDeleteChallan}
+              onConvertToInvoice={handleConvertChallanToInvoice}
+              permissions={session?.permissions?.challans || session?.permissions?.sales}
+            />
+          )}
+
+          {activeTab === "purchases" && (
+            <InvoicingView
+              key="purchases"
+              type="purchase"
+              items={dbState.items}
+              parties={dbState.parties}
+              business={dbState.business}
+              invoiceToEdit={invoiceToEdit?.type.includes("purchase") ? invoiceToEdit : null}
+              isReturnMode={isReturnMode}
+              onSaveInvoice={async (inv) => {
+                await handleSaveInvoice(inv);
+                setInvoiceToEdit(null);
+                setIsReturnMode(false);
+              }}
+              onCancelEdit={() => {
+                setInvoiceToEdit(null);
+                setIsReturnMode(false);
+              }}
+              onNavigateTab={(tab) => {
+                setActiveTab(tab);
+                setInvoiceToEdit(null);
+                setIsReturnMode(false);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              permissions={session?.permissions?.purchases}
+            />
+          )}
+
+          {activeTab === "transactions" && (
+            <TransactionsView
+              transactions={dbState.transactions || []}
+              business={dbState.business}
+              onSaveTransaction={handleSaveTransaction}
+              onDeleteTransaction={handleDeleteTransaction}
+              permissions={session?.permissions?.transactions}
+            />
+          )}
+
+          {activeTab === "reports" && (
+            <ReportsView
+              invoices={dbState.invoices}
+              parties={dbState.parties}
+              items={dbState.items}
+              transactions={dbState.transactions || []}
+              business={dbState.business}
+              onOpenInvoice={(inv) => setSelectedInvoice(inv)}
+              onDeleteInvoice={handleDeleteInvoice}
+              onEditInvoice={handleEditInvoice}
+              onReturnInvoice={handleReturnInvoice}
+              salesPermissions={session?.permissions?.sales}
+              purchasesPermissions={session?.permissions?.purchases}
+            />
+          )}
+
+          {activeTab === "settings" && (
+            <SettingsView
+              business={dbState.business}
+              onSaveBusiness={handleSaveBusiness}
+              onResetDb={handleResetDb}
+              session={session}
+              onUpdateSession={(updatedSession) => {
+                setSession(updatedSession);
+                localStorage.setItem("billingonhand_session", JSON.stringify(updatedSession));
+              }}
+              currentDb={dbState}
+              onRestoreSuccess={fetchState}
+            />
+          )}
+
+          {activeTab === "access_control" && (
+            <AccessControlView 
+              activeSession={session} 
+              onUpdateSession={(updatedSession) => {
+                setSession(updatedSession);
+                localStorage.setItem("billingonhand_session", JSON.stringify(updatedSession));
+              }}
+            />
+          )}
+        </div>
+
+      </main>
+
+      {/* Portal Modal: Printable PDF invoice rendering */}
+      {selectedInvoice && (
+        <InvoicePrintModal
+          invoice={selectedInvoice}
+          business={dbState.business}
+          party={invoiceSelectedParty}
+          onClose={() => setSelectedInvoice(null)}
+        />
+      )}
+
+      {/* Digital Munimji Floating Assistant & Interactive Drawer */}
+      <MunimjiDrawer
+        isOpen={isMunimjiOpen}
+        onClose={() => setIsMunimjiOpen(false)}
+        onOpen={() => setIsMunimjiOpen(true)}
+        dbState={dbState}
+        onRefreshDb={fetchState}
+        onApplyBillToEditor={handleApplyMunimjiBill}
+        onOpenInvoice={(inv) => setSelectedInvoice(inv)}
+        onNavigateTab={(tab) => {
+          const t = String(tab || "").toLowerCase().trim();
+          if (["sales", "sale", "billing", "bill", "pos", "invoice", "invoicing"].includes(t)) setActiveTab("sales");
+          else if (["items", "item", "inventory", "stock", "product", "products"].includes(t)) setActiveTab("items");
+          else if (["parties", "party", "customers", "customer", "suppliers", "supplier", "ledger"].includes(t)) setActiveTab("parties");
+          else if (["purchases", "purchase", "buying", "kharedi"].includes(t)) setActiveTab("purchases");
+          else if (["quotations", "quotation", "quote", "estimates", "estimate"].includes(t)) setActiveTab("quotations");
+          else if (["challans", "challan", "delivery_challans", "dc"].includes(t)) setActiveTab("challans");
+          else if (["transactions", "transaction", "expenses", "expense", "income"].includes(t)) setActiveTab("transactions");
+          else if (["reports", "report", "analytics", "daybook", "gstr"].includes(t)) setActiveTab("reports");
+          else if (["settings", "setting", "profile", "backup"].includes(t)) setActiveTab("settings");
+          else if (["access_control", "users", "user", "permissions"].includes(t)) setActiveTab("access_control");
+          else setActiveTab("dashboard");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+      />
+
+    </div>
+  );
+}

@@ -1,0 +1,123 @@
+name: Build & Release Windows Electron App
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Project Dependencies
+        run: npm ci || npm install
+
+      - name: Automatically Upgrade Application Version
+        shell: bash
+        run: |
+          echo "Executing automated version upgrade..."
+          node scripts/auto-version.cjs
+          RAW_VERSION=$(node -p "require('./package.json').version")
+          VERSION=$(echo "$RAW_VERSION" | tr -d '\r\n[:space:]')
+          TAG="v$VERSION"
+          echo "Target Release Version: $VERSION"
+          echo "Target Release Tag: $TAG"
+          echo "APP_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "APP_TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Commit & Push Version Bump to Repository
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json src/version.ts
+          git commit -m "chore(release): auto-upgrade version to $APP_TAG [skip ci]" || echo "No changes to commit"
+          BRANCH="${{ github.ref_name }}"
+          if [ -n "$BRANCH" ]; then
+            git pull --rebase origin "$BRANCH" || true
+            git push origin "HEAD:$BRANCH" || echo "Direct push skipped; tag release will proceed"
+          fi
+
+      - name: Ensure Git Tag Exists for Release
+        shell: bash
+        run: |
+          CLEAN_TAG=$(echo "$APP_TAG" | tr -d '\r\n[:space:]')
+          echo "Tagging release with $CLEAN_TAG..."
+          git tag -d "$CLEAN_TAG" 2>/dev/null || true
+          git push origin --delete "$CLEAN_TAG" 2>/dev/null || true
+          git tag -a "$CLEAN_TAG" -m "Release $CLEAN_TAG"
+          git push origin "$CLEAN_TAG" --force || true
+
+      - name: Build Web Application and Express Backend
+        run: npm run build
+
+      - name: Ensure Application Icons Exist
+        shell: bash
+        run: |
+          node scripts/ensure-icons.cjs
+
+      - name: Build Windows Executable (.exe) and Release Artifacts
+        run: |
+          npx electron-builder --win --x64 --publish never
+
+      - name: Ensure latest.yml Metadata Exists
+        shell: bash
+        run: |
+          node scripts/ensure-latest-yml.cjs
+
+      - name: Publish Release and Upload Windows Setup to GitHub
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CLEAN_TAG=$(echo "$APP_TAG" | tr -d '\r\n[:space:]')
+          echo "Target Clean Tag: $CLEAN_TAG"
+          echo "Checking generated desktop files in dist-desktop/:"
+          ls -lh dist-desktop/
+
+          echo "Ensuring GitHub Release exists for $CLEAN_TAG..."
+          if gh release view "$CLEAN_TAG" >/dev/null 2>&1; then
+            echo "Release $CLEAN_TAG already exists."
+          else
+            gh release create "$CLEAN_TAG" --title "Billing On Hand $CLEAN_TAG" --notes "Billing On Hand $CLEAN_TAG - Offline Retail & GST ERP Desktop Setup" || echo "Release creation handled"
+          fi
+
+          echo "Uploading installer (.exe), blockmap, and update metadata to GitHub..."
+          for file in dist-desktop/*.exe dist-desktop/*.blockmap dist-desktop/latest.yml; do
+            if [ -f "$file" ]; then
+              echo "Uploading $file..."
+              for attempt in 1 2 3; do
+                if gh release upload "$CLEAN_TAG" "$file" --clobber; then
+                  echo "Successfully uploaded $file"
+                  break
+                else
+                  echo "Upload attempt $attempt failed for $file, retrying in 5 seconds..."
+                  sleep 5
+                fi
+              done
+            fi
+          done
+
+          echo "Setting release as official and public..."
+          gh release edit "$CLEAN_TAG" --draft=false --latest || true
+
+          echo "Final GitHub Release Assets Verification:"
+          gh release view "$CLEAN_TAG"
