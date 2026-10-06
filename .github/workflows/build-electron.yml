@@ -61,7 +61,9 @@ jobs:
         run: |
           CLEAN_TAG=$(echo "$APP_TAG" | tr -d '\r\n[:space:]')
           echo "Tagging release with $CLEAN_TAG..."
-          git tag -f -a "$CLEAN_TAG" -m "Release $CLEAN_TAG"
+          git tag -d "$CLEAN_TAG" 2>/dev/null || true
+          git push origin --delete "$CLEAN_TAG" 2>/dev/null || true
+          git tag -a "$CLEAN_TAG" -m "Release $CLEAN_TAG"
           git push origin "$CLEAN_TAG" --force || true
 
       - name: Build Web Application and Express Backend
@@ -92,8 +94,10 @@ jobs:
           ls -lh dist-desktop/
 
           echo "Ensuring GitHub Release exists for $CLEAN_TAG..."
-          if ! gh release view "$CLEAN_TAG" >/dev/null 2>&1; then
-            gh release create "$CLEAN_TAG" --title "Billing On Hand $CLEAN_TAG" --notes "Billing On Hand $CLEAN_TAG - Offline Retail & GST ERP Desktop Setup"
+          if gh release view "$CLEAN_TAG" >/dev/null 2>&1; then
+            echo "Release $CLEAN_TAG already exists."
+          else
+            gh release create "$CLEAN_TAG" --title "Billing On Hand $CLEAN_TAG" --notes "Billing On Hand $CLEAN_TAG - Offline Retail & GST ERP Desktop Setup" || echo "Release creation handled"
           fi
 
           echo "Uploading installer (.exe), blockmap, and update metadata to GitHub..."

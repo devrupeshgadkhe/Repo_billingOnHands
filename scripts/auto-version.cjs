@@ -29,12 +29,10 @@ try {
     });
     highestTagVersion = tags[tags.length - 1];
   }
-} catch (e) {
-  // If not a git repo or no tags, continue with package.json baseVersion
-}
+} catch (e) {}
 
-// Compare baseVersion and highestTagVersion
-let nextVersion = baseVersion;
+// Compare baseVersion and highestTagVersion to find the highest reference
+let referenceVersion = baseVersion;
 if (highestTagVersion) {
   const pBase = baseVersion.split('.').map(n => parseInt(n, 10) || 0);
   const pTag = highestTagVersion.split('.').map(n => parseInt(n, 10) || 0);
@@ -48,20 +46,18 @@ if (highestTagVersion) {
       break;
     }
   }
-
   if (baseHigher) {
-    // If developer explicitly set a higher version in package.json, honor it
-    nextVersion = baseVersion;
+    referenceVersion = baseVersion;
   } else {
-    // Otherwise automatically increment patch from the highest release tag
-    const parts = highestTagVersion.split('.').map(n => parseInt(n, 10) || 0);
-    while (parts.length < 3) parts.push(0);
-    parts[2] += 1;
-    nextVersion = parts.join('.');
+    referenceVersion = highestTagVersion;
   }
-} else {
-  nextVersion = baseVersion || '1.0.0';
 }
+
+// Always auto-increment the patch version from the reference version so every commit produces a new unique release version!
+const parts = referenceVersion.split('.').map(n => parseInt(n, 10) || 0);
+while (parts.length < 3) parts.push(0);
+parts[2] += 1;
+let nextVersion = parts.join('.');
 
 nextVersion = String(nextVersion).replace(/[^0-9.]/g, '').trim();
 
