@@ -710,7 +710,9 @@ export default function App() {
       const unitPrice = it.price || matched?.salePrice || 0;
       const qty = it.quantity || 1;
       const amountBeforeTax = qty * unitPrice;
-      const gstRate = matched?.gstRate || 0;
+      const gstRate = it.gstRate !== undefined && it.gstRate !== null
+        ? Number(it.gstRate)
+        : (matched?.gstRate !== undefined ? Number(matched.gstRate) : 0);
       const taxAmount = (amountBeforeTax * gstRate) / 100;
       const halfTax = taxAmount / 2;
       return {

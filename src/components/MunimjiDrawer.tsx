@@ -1237,7 +1237,8 @@ export default function MunimjiDrawer({
             name: it.name,
             quantity: it.quantity || 1,
             price: it.rate || it.totalAmount || 0,
-            unit: it.unit || "PCS"
+            unit: it.unit || "PCS",
+            gstRate: it.gstRate !== undefined && it.gstRate !== null ? Number(it.gstRate) : 0
           })),
           subtotal: inv.subtotal || inv.grandTotal,
           totalAmount: inv.grandTotal,

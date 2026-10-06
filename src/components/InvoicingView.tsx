@@ -325,6 +325,10 @@ export default function InvoicingView({
                  (cleanExtractedHsn && i.hsn && cleanExtractedHsn === i.hsn.trim());
         });
 
+        const parsedGstRate = extractedItem.gstRate !== undefined && extractedItem.gstRate !== null
+          ? Number(extractedItem.gstRate)
+          : (matchedDbItem?.gstRate !== undefined ? Number(matchedDbItem.gstRate) : 0);
+
         if (matchedDbItem) {
           newLines.push({
             itemId: matchedDbItem.id,
@@ -332,7 +336,7 @@ export default function InvoicingView({
             customPrice: extractedItem.rate || matchedDbItem.purchasePrice,
             discount: extractedItem.discount || 0,
             discountType: 'percent',
-            gstRate: extractedItem.gstRate !== undefined ? extractedItem.gstRate : matchedDbItem.gstRate
+            gstRate: parsedGstRate
           });
         } else {
           // Register this new item from the bill with accurate details
@@ -345,7 +349,7 @@ export default function InvoicingView({
             salePrice: Math.round((extractedItem.rate || 0) * 1.15),
             stockQuantity: 0,
             minStockAlert: 5,
-            gstRate: extractedItem.gstRate !== undefined ? extractedItem.gstRate : 18,
+            gstRate: parsedGstRate,
             unit: extractedItem.unit || "Nos"
           };
           newItemsToRegister.push(newItem);
@@ -356,7 +360,7 @@ export default function InvoicingView({
             customPrice: extractedItem.rate || 0,
             discount: extractedItem.discount || 0,
             discountType: 'percent',
-            gstRate: newItem.gstRate
+            gstRate: parsedGstRate
           });
 
           // Save new item to database in background

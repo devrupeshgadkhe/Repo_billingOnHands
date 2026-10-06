@@ -239,13 +239,33 @@ export default function ItemsView({
   };
 
   const handleBatchImportScannedItems = async (scannedList: Omit<Item, "id">[]) => {
-    for (const it of scannedList) {
-      await onSaveItem({
+    try {
+      const itemsToSave: Item[] = scannedList.map(it => ({
         ...it,
-        id: "item_" + Date.now() + "_" + Math.floor(Math.random() * 1000)
+        id: "item_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6)
+      }));
+      const res = await fetch("/api/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(itemsToSave)
       });
+      if (res.ok) {
+        if (onRefreshDb) await onRefreshDb();
+      } else {
+        for (const it of itemsToSave) {
+          await onSaveItem(it);
+        }
+        if (onRefreshDb) await onRefreshDb();
+      }
+    } catch {
+      for (const it of scannedList) {
+        await onSaveItem({
+          ...it,
+          id: "item_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6)
+        });
+      }
+      if (onRefreshDb) await onRefreshDb();
     }
-    if (onRefreshDb) await onRefreshDb();
   };
 
   return (

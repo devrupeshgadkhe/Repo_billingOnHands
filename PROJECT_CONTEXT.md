@@ -120,6 +120,10 @@
   - **Desktop App Webcam Auto-Grant (`main.cjs`):** Configured Electron `setPermissionCheckHandler`, `setPermissionRequestHandler`, and `setDevicePermissionHandler` to unconditionally grant video/camera and audio permissions in the desktop application, allowing desktop webcams to start by default without permission denials.
   - **Digital Munimji Camera Scan Option (`MunimjiDrawer.tsx`):** Added a dedicated Live Camera scan button next to the voice recording and upload buttons in the Munimji assistant drawer, enabling 1-click webcam scanning of handwritten bills or item lists with instant Marathi voice & draft card generation.
   - **Dual Scan Options in Purchase Invoicing & Inventory (`InvoiceUploadModal.tsx`, `ItemsScanModal.tsx`, `InvoicingView.tsx`):** Provided clean dual options ("थेट वेबकॅमने स्कॅन करा (Live Camera Scan)" and "फाईल / PDF अपलोड करा") in all document and bill scanning flows.
+* **Precise Handwritten Note GST & Amount Extraction Engine (`server.ts`, `ItemsScanModal.tsx`, `ItemsView.tsx`):**
+  - **AI Prompt Hardening:** Hardened Gemini prompt in `/api/ai/parse-items-list` to strictly extract the exact GST rate written on handwritten notes (0%, 0.1%, 0.25%, 1.5%, 3%, 5%, 6%, 7.5%, 12%, 18%, 28%, 40%), calculate split CGST+SGST, and compute tax rates from written tax amounts without guessing or defaulting to 18% on non-taxed notes.
+  - **Data Normalization & Sanitization:** Implemented `parseGstRate()` in both backend (`server.ts`) and frontend (`ItemsScanModal.tsx`), guaranteeing that parsed percentages match between UI review and database persistence.
+  - **Atomic Batch Item Persistence:** Added support in `/api/items` for array payloads and atomic batch saving to eliminate race conditions when importing large scanned lists.
 
 ---
 

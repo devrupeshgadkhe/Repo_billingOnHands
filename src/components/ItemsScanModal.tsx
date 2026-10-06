@@ -23,6 +23,13 @@ import {
 import { Item, UNITS, TAX_RATES } from "../types.js";
 import CameraScannerModal from "./CameraScannerModal.js";
 
+const parseGstRate = (val: any): number => {
+  if (val === undefined || val === null) return 0;
+  if (typeof val === "number") return isNaN(val) || val < 0 ? 0 : val;
+  const num = parseFloat(String(val).replace(/[^0-9.]/g, ""));
+  return isNaN(num) || num < 0 ? 0 : num;
+};
+
 interface ItemsScanModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -93,25 +100,31 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
       }
 
       setParsedItems(
-        data.items.map((it: any, idx: number) => ({
-          id: `temp_${Date.now()}_${idx}`,
-          selected: true,
-          name: it.name || "",
-          hsn: it.hsn || "",
-          purchasePrice: Number(it.purchasePrice) || 0,
-          salePrice: Number(it.salePrice) || Number(it.purchasePrice) || 0,
-          mrp: Number(it.mrp) || Number(it.salePrice) || 0,
-          wholesalePrice: Number(it.wholesalePrice) || 0,
-          minWholesaleQty: Number(it.minWholesaleQty) || 5,
-          boxPackingRatio: Number(it.boxPackingRatio) || 0,
-          boxUnit: it.boxUnit || "BOX",
-          stockQuantity: Number(it.stockQuantity) || 0,
-          minStockAlert: Number(it.minStockAlert) || 5,
-          gstRate: Number(it.gstRate) || 0,
-          unit: it.unit ? it.unit.toUpperCase() : "PCS",
-          brand: it.brand || "",
-          category: it.category || ""
-        }))
+        data.items.map((it: any, idx: number) => {
+          const cleanGst = parseGstRate(it.gstRate);
+          const pPrice = Number(it.purchasePrice) || 0;
+          const sPrice = Number(it.salePrice) || pPrice || 0;
+
+          return {
+            id: `temp_${Date.now()}_${idx}`,
+            selected: true,
+            name: it.name || "",
+            hsn: it.hsn || "",
+            purchasePrice: pPrice,
+            salePrice: sPrice,
+            mrp: Number(it.mrp) || sPrice,
+            wholesalePrice: Number(it.wholesalePrice) || 0,
+            minWholesaleQty: Number(it.minWholesaleQty) || 5,
+            boxPackingRatio: Number(it.boxPackingRatio) || 0,
+            boxUnit: it.boxUnit || "BOX",
+            stockQuantity: Number(it.stockQuantity) || 0,
+            minStockAlert: Number(it.minStockAlert) || 5,
+            gstRate: cleanGst,
+            unit: it.unit ? it.unit.toUpperCase() : "PCS",
+            brand: it.brand || "",
+            category: it.category || ""
+          };
+        })
       );
       setStep("review");
     } catch (innerErr: any) {
@@ -149,7 +162,13 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
   const handleRowChange = (index: number, field: string, value: any) => {
     setParsedItems((prev) => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
+      let processedValue = value;
+      if (field === "gstRate") {
+        processedValue = parseGstRate(value);
+      } else if (["purchasePrice", "salePrice", "wholesalePrice", "stockQuantity", "mrp", "minWholesaleQty", "boxPackingRatio", "minStockAlert"].includes(field)) {
+        processedValue = parseFloat(value) || 0;
+      }
+      copy[index] = { ...copy[index], [field]: processedValue };
       return copy;
     });
   };
@@ -189,7 +208,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
         brand: r.brand || "",
         stockQuantity: Number(r.stockQuantity) || 0,
         minStockAlert: Number(r.minStockAlert) || 5,
-        gstRate: Number(r.gstRate) || 0,
+        gstRate: parseGstRate(r.gstRate),
         unit: r.unit || "PCS",
         barcodes: []
       }));
@@ -368,7 +387,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                       <th className="p-2.5 text-right w-24">घाऊक (Wholesale)</th>
                       <th className="p-2.5 text-center w-20">साठा (Stock)</th>
                       <th className="p-2.5 text-center w-20">युनिट</th>
-                      <th className="p-2.5 text-center w-20">GST %</th>
+                      <th className="p-2.5 text-center w-28">GST दर व कर रक्कम</th>
                       <th className="p-2.5 text-center w-12">Action</th>
                     </tr>
                   </thead>
@@ -436,15 +455,26 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                           </select>
                         </td>
                         <td className="p-2">
-                          <select
-                            value={row.gstRate}
-                            onChange={(e) => handleRowChange(idx, "gstRate", Number(e.target.value))}
-                            className="w-full px-1 py-1 border border-slate-200 focus:border-emerald-500 rounded text-xs outline-none font-mono text-center"
-                          >
-                            {TAX_RATES.map((t) => (
-                              <option key={t} value={t}>{t}%</option>
-                            ))}
-                          </select>
+                          <div className="flex flex-col items-center">
+                            <select
+                              value={parseGstRate(row.gstRate)}
+                              onChange={(e) => handleRowChange(idx, "gstRate", e.target.value)}
+                              className="w-full px-1.5 py-1 border border-slate-200 focus:border-emerald-500 rounded text-xs outline-none font-mono text-center font-bold text-slate-800"
+                            >
+                              {Array.from(new Set([...TAX_RATES, parseGstRate(row.gstRate)])).sort((a, b) => a - b).map((t) => (
+                                <option key={t} value={t}>{t}%</option>
+                              ))}
+                            </select>
+                            {parseGstRate(row.gstRate) > 0 ? (
+                              <span className="text-[10px] text-emerald-700 font-medium mt-0.5 whitespace-nowrap">
+                                +₹{(((Number(row.salePrice || row.purchasePrice || 0) * parseGstRate(row.gstRate)) / 100)).toFixed(2)} कर
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-400 font-medium mt-0.5 whitespace-nowrap">
+                                ०% करमुक्त
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="p-2 text-center">
                           <button

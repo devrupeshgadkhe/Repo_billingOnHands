@@ -23,7 +23,7 @@ import {
   Plus,
   Camera
 } from "lucide-react";
-import { Party, Item } from "../types.js";
+import { Party, Item, TAX_RATES } from "../types.js";
 import CameraScannerModal from "./CameraScannerModal.js";
 
 export interface ParsedItem {
@@ -203,16 +203,35 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
         setProcessingStep("तपशील लोड झाले. पडताळणी स्क्रीन उघडत आहे...");
         // Sanitize invoice numbers and fields to guarantee no undefined
         const inv = result.invoice;
-        inv.subtotal = Number(inv.subtotal) || 0;
-        inv.taxAmount = Number(inv.taxAmount) || 0;
-        inv.grandTotal = Number(inv.grandTotal) || 0;
-        inv.items = Array.isArray(inv.items) ? inv.items.map((it: any) => ({
-          ...it,
-          quantity: Number(it.quantity) || 1,
-          rate: Number(it.rate) || 0,
-          gstRate: Number(it.gstRate) || 0,
-          totalAmount: Number(it.totalAmount) || ((Number(it.quantity) || 1) * (Number(it.rate) || 0))
-        })) : [];
+        inv.items = Array.isArray(inv.items) ? inv.items.map((it: any) => {
+          const quantity = Number(it.quantity) || 1;
+          const rate = Number(it.rate) || 0;
+          const discount = Number(it.discount) || 0;
+          const gstRate = it.gstRate !== undefined && it.gstRate !== null ? Number(it.gstRate) : 0;
+          const taxableAmount = it.taxableAmount !== undefined && Number(it.taxableAmount) > 0
+            ? Number(it.taxableAmount)
+            : Math.round(((quantity * rate) - discount) * 100) / 100;
+          const tax = Math.round(((taxableAmount * gstRate) / 100) * 100) / 100;
+          const totalAmount = it.totalAmount !== undefined && Number(it.totalAmount) > 0
+            ? Number(it.totalAmount)
+            : Math.round((taxableAmount + tax) * 100) / 100;
+          return {
+            ...it,
+            quantity,
+            rate,
+            discount,
+            gstRate,
+            taxableAmount,
+            totalAmount
+          };
+        }) : [];
+
+        const calculatedSubtotal = Math.round(inv.items.reduce((sum: number, it: any) => sum + (it.taxableAmount || (it.quantity * it.rate)), 0) * 100) / 100;
+        const calculatedTax = Math.round(inv.items.reduce((sum: number, it: any) => sum + (((it.taxableAmount || (it.quantity * it.rate)) * (Number(it.gstRate) || 0)) / 100), 0) * 100) / 100;
+
+        inv.subtotal = inv.subtotal ? Number(inv.subtotal) : calculatedSubtotal;
+        inv.taxAmount = inv.taxAmount !== undefined && inv.taxAmount !== null ? Number(inv.taxAmount) : calculatedTax;
+        inv.grandTotal = inv.grandTotal ? Number(inv.grandTotal) : Math.round((inv.subtotal + inv.taxAmount) * 100) / 100;
 
         setReviewedData(inv);
         setModalStep("review");
@@ -291,14 +310,15 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
 
     const qty = Number(updated[index].quantity) || 1;
     const rate = Number(updated[index].rate) || 0;
-    const gstRate = Number(updated[index].gstRate) || 0;
-    const taxable = qty * rate;
-    const tax = (taxable * gstRate) / 100;
+    const discount = Number(updated[index].discount) || 0;
+    const gstRate = updated[index].gstRate !== undefined && updated[index].gstRate !== null ? Number(updated[index].gstRate) : 0;
+    const taxable = Math.round(((qty * rate) - discount) * 100) / 100;
+    const tax = Math.round(((taxable * gstRate) / 100) * 100) / 100;
     updated[index].taxableAmount = taxable;
     updated[index].totalAmount = Math.round((taxable + tax) * 100) / 100;
 
-    const subtotal = updated.reduce((sum, it) => sum + (it.taxableAmount || (it.quantity * it.rate)), 0);
-    const taxAmount = updated.reduce((sum, it) => sum + (((it.taxableAmount || (it.quantity * it.rate)) * (it.gstRate || 0)) / 100), 0);
+    const subtotal = Math.round(updated.reduce((sum, it) => sum + (it.taxableAmount || (it.quantity * it.rate)), 0) * 100) / 100;
+    const taxAmount = Math.round(updated.reduce((sum, it) => sum + (((it.taxableAmount || (it.quantity * it.rate)) * (Number(it.gstRate) || 0)) / 100), 0) * 100) / 100;
     const grandTotal = Math.round((subtotal + taxAmount) * 100) / 100;
 
     setReviewedData({
@@ -676,15 +696,13 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                             </td>
                             <td className="py-2 px-2">
                               <select
-                                value={item.gstRate !== undefined ? item.gstRate : 18}
-                                onChange={(e) => handleUpdateItem(idx, "gstRate", parseInt(e.target.value, 10))}
-                                className="w-16 px-1 py-1 bg-white border border-slate-200 rounded text-xs font-medium"
+                                value={item.gstRate !== undefined && item.gstRate !== null ? item.gstRate : 0}
+                                onChange={(e) => handleUpdateItem(idx, "gstRate", parseFloat(e.target.value) || 0)}
+                                className="w-18 px-1.5 py-1 bg-white border border-slate-200 rounded text-xs font-bold text-slate-800"
                               >
-                                <option value={0}>0%</option>
-                                <option value={5}>5%</option>
-                                <option value={12}>12%</option>
-                                <option value={18}>18%</option>
-                                <option value={28}>28%</option>
+                                {TAX_RATES.map((t) => (
+                                  <option key={t} value={t}>{t}%</option>
+                                ))}
                               </select>
                             </td>
                             <td className="py-2 px-3 text-right font-bold text-slate-800">

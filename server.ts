@@ -1680,21 +1680,68 @@ app.get("/api/settings", (req, res) => {
   res.json(db.business || {});
 });
 
-// Add or Update Item in Inventory
+// Add or Update Item in Inventory (Single or Batch)
 app.post("/api/items", (req, res) => {
   const db = readDb();
+  if (!db.items) db.items = [];
   const incoming = req.body;
-  const existingIndex = db.items.findIndex(item => item.id === incoming.id);
+
+  const sanitizeItem = (item: any) => {
+    let cleanGst = 0;
+    if (item.gstRate !== undefined && item.gstRate !== null) {
+      const parsed = typeof item.gstRate === "number" ? item.gstRate : parseFloat(String(item.gstRate).replace(/[^0-9.]/g, ""));
+      cleanGst = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+    }
+
+    return {
+      ...item,
+      id: item.id || "item_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+      name: (item.name || "").trim(),
+      hsn: (item.hsn || "").trim(),
+      purchasePrice: Number(item.purchasePrice) || 0,
+      salePrice: Number(item.salePrice) || 0,
+      mrp: Number(item.mrp) || Number(item.salePrice) || 0,
+      wholesalePrice: Number(item.wholesalePrice) || 0,
+      minWholesaleQty: Number(item.minWholesaleQty) || 5,
+      boxPackingRatio: Number(item.boxPackingRatio) || 0,
+      boxUnit: item.boxUnit || "BOX",
+      stockQuantity: Number(item.stockQuantity) || 0,
+      minStockAlert: Number(item.minStockAlert) || 5,
+      gstRate: cleanGst,
+      unit: (item.unit || "PCS").toUpperCase().trim(),
+      brand: (item.brand || "").trim(),
+      category: (item.category || "").trim(),
+      barcodes: Array.isArray(item.barcodes) ? item.barcodes : []
+    };
+  };
+
+  if (Array.isArray(incoming)) {
+    const savedItems: any[] = [];
+    for (const rawItem of incoming) {
+      const item = sanitizeItem(rawItem);
+      const existingIndex = db.items.findIndex(it => it.id === item.id);
+      if (existingIndex > -1) {
+        db.items[existingIndex] = item;
+      } else {
+        db.items.push(item);
+      }
+      savedItems.push(item);
+    }
+    writeDb(db);
+    return res.json({ message: "Items batch saved successfully.", items: savedItems });
+  }
+
+  const item = sanitizeItem(incoming);
+  const existingIndex = db.items.findIndex(it => it.id === item.id);
   
   if (existingIndex > -1) {
-    db.items[existingIndex] = incoming;
+    db.items[existingIndex] = item;
   } else {
-    incoming.id = incoming.id || "item_" + Date.now();
-    db.items.push(incoming);
+    db.items.push(item);
   }
   
   writeDb(db);
-  res.json({ message: "Item saved successfully.", item: incoming });
+  res.json({ message: "Item saved successfully.", item });
 });
 
 // Delete Item
@@ -2666,14 +2713,21 @@ app.post(["/api/ai/parse-invoice", "/api/scanner/parse-bill"], async (req, res) 
   };
 
   const textPart = {
-    text: `You are an expert invoice parser for Indian GST accounting and billing.
-Extract all relevant details from this purchase invoice image or PDF.
+    text: `You are an expert invoice and handwritten bill parser for Indian GST accounting and billing.
+Extract all relevant details from this purchase invoice image, handwritten sales slip, or PDF.
 Instructions:
-1. Identify the Supplier/Vendor Name, GSTIN (15-digit alphanumeric), Address, and Phone if available.
-2. Identify the Invoice/Bill Number and Invoice Date (format as YYYY-MM-DD; if format is DD/MM/YYYY or DD-MM-YYYY convert to YYYY-MM-DD).
-3. Extract each line item: product name, HSN code, quantity, unit (PCS, KGS, LTR, BOX, PKT, etc.), unit purchase price (rate before GST), GST percentage rate (0, 5, 12, 18, or 28), taxable amount, and line total.
-4. Calculate subtotal (sum of taxable amounts), total tax amount, and grand total.
-5. If some field is not explicitly present, make a sensible inference (e.g. unit 'PCS', gstRate based on standard Indian GST slabs, default quantity 1).
+1. Identify the Supplier/Vendor Name, GSTIN (15-digit alphanumeric if present), Address, and Phone.
+2. Identify the Invoice/Bill Number and Invoice Date (format as YYYY-MM-DD; convert DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD).
+3. Extract each line item with exact pricing and GST:
+   - Product name (in original language Marathi, Hindi, or English).
+   - HSN or SAC code if written.
+   - Quantity and unit (PCS, KGS, LTR, BOX, PKT, etc.).
+   - Unit rate (rate before GST). If only a single gross rate is listed and GST% is mentioned, extract base rate = gross / (1 + gstRate/100).
+   - GST rate percentage (0, 0.1, 0.25, 1.5, 3, 5, 6, 7.5, 12, 18, 28, 40). CRITICAL: If the handwritten note or bill explicitly mentions a GST rate (e.g. 5%, 12%, 18%, 28%, or 0%), extract that EXACT number. If no GST is mentioned or if this is a non-GST / cash receipt, set gstRate to 0. Do NOT arbitrarily default to 18%.
+   - Item level discount if any.
+   - Taxable amount = (quantity * rate) - discount.
+   - Line total amount = taxable amount + (taxable amount * gstRate / 100).
+4. Calculate subtotal (sum of taxable amounts), total tax amount (sum of GST amounts), and grand total.
 Ensure output strictly conforms to the JSON schema.`
   };
 
@@ -2698,7 +2752,7 @@ Ensure output strictly conforms to the JSON schema.`
             unit: { type: Type.STRING, description: "Unit of measurement (e.g. PCS, KGS, LTR)" },
             rate: { type: Type.NUMBER, description: "Unit purchase price before GST" },
             discount: { type: Type.NUMBER, description: "Item level discount" },
-            gstRate: { type: Type.NUMBER, description: "GST rate percentage e.g. 0, 5, 12, 18, 28" },
+            gstRate: { type: Type.NUMBER, description: "Exact GST rate percentage e.g. 0, 5, 12, 18, 28" },
             taxableAmount: { type: Type.NUMBER, description: "Taxable value before tax" },
             totalAmount: { type: Type.NUMBER, description: "Total item line amount including taxes" }
           },
@@ -2811,13 +2865,19 @@ app.post("/api/ai/parse-items-list", async (req, res) => {
   };
 
   const textPart = {
-    text: `You are an expert handwritten catalog and inventory extraction assistant for Indian retail and wholesale businesses.
-Extract all product items from this handwritten notebook page, printed price list, distributor quotation, or invoice.
-Instructions:
-1. Extract item name (Marathi, Hindi, or English).
-2. Extract or infer: purchasePrice (खरेदी दर), salePrice (विक्री दर), mrp, wholesalePrice (घाऊक दर), minWholesaleQty (MOQ), stockQuantity (साठा), unit (PCS, KGS, GMS, LTR, BOX, BAG, MTR, SET), HSN code, GST rate percentage (0, 5, 12, 18, 28), brand, category.
-3. If only one price is listed, set both purchasePrice and salePrice to that amount. If only wholesale price is listed, set appropriately. Default unit to 'PCS' if not specified.
-Return strictly valid JSON according to schema.`
+    text: `You are an expert handwritten catalog, inventory list, and bill note extraction assistant for Indian businesses.
+Extract all product items accurately from this handwritten notebook page, diary note, printed price list, or distributor quotation.
+
+CRITICAL GST & TAX EXTRACTION RULES:
+1. Extract the EXACT GST rate % written on the note for each item (0, 0.1, 0.25, 1.5, 3, 5, 6, 7.5, 12, 18, 28, 40).
+2. If split taxes are written (e.g. CGST 9% + SGST 9% or CGST 2.5% + SGST 2.5%), sum them together into total gstRate (9+9=18, 2.5+2.5=5, 6+6=12, 14+14=28).
+3. If tax amount is written (e.g., "किंमत 100 + GST 18 = 118" or "Tax Rs 5"), calculate exact gstRate % = (taxAmount / taxableAmount) * 100.
+4. If NO GST percentage is written or mentioned in the note (e.g., plain handwritten kirana / grocery list / general note), strictly set gstRate to 0 (0% GST). DO NOT invent or default to 18%.
+5. Extract item name (Marathi, Hindi, or English) exactly as written.
+6. Extract purchasePrice (खरेदी दर), salePrice (विक्री दर), mrp, wholesalePrice (घाऊक दर), stockQuantity (साठा), unit (PCS, KGS, GMS, LTR, BOX, BAG, MTR, SET), HSN code, brand, category.
+7. If only one price is written, set both purchasePrice and salePrice to that amount.
+
+Return strictly valid JSON matching the schema.`
   };
 
   const itemsSchema = {
@@ -2840,12 +2900,12 @@ Return strictly valid JSON according to schema.`
             boxUnit: { type: Type.STRING, description: "Box unit name e.g. BOX or BAG" },
             stockQuantity: { type: Type.NUMBER, description: "Initial stock quantity" },
             minStockAlert: { type: Type.NUMBER, description: "Low stock alert threshold" },
-            gstRate: { type: Type.NUMBER, description: "GST rate % (0, 5, 12, 18, 28)" },
+            gstRate: { type: Type.NUMBER, description: "Exact GST rate % (0, 0.1, 0.25, 1.5, 3, 5, 6, 7.5, 12, 18, 28, 40)" },
             unit: { type: Type.STRING, description: "Unit e.g. PCS, KGS, LTR, BAG, BOX" },
             brand: { type: Type.STRING, description: "Brand name" },
             category: { type: Type.STRING, description: "Product category" }
           },
-          required: ["name", "salePrice", "unit"]
+          required: ["name", "salePrice", "unit", "gstRate"]
         }
       }
     },
@@ -2884,9 +2944,40 @@ Return strictly valid JSON according to schema.`
     });
   }
 
+  // Strictly sanitize GST rates and numbers to prevent any discrepancy during saving
+  const sanitizedItems = (parsed.items || []).map((it: any) => {
+    let cleanGst = 0;
+    if (it.gstRate !== undefined && it.gstRate !== null) {
+      const parsedNum = typeof it.gstRate === "number" ? it.gstRate : parseFloat(String(it.gstRate).replace(/[^0-9.]/g, ""));
+      cleanGst = isNaN(parsedNum) || parsedNum < 0 ? 0 : parsedNum;
+    }
+
+    const pPrice = Number(it.purchasePrice) || 0;
+    const sPrice = Number(it.salePrice) || pPrice || 0;
+
+    return {
+      ...it,
+      name: (it.name || "नवीन आयटम").trim(),
+      hsn: (it.hsn || "").trim(),
+      purchasePrice: pPrice,
+      salePrice: sPrice,
+      mrp: Number(it.mrp) || sPrice,
+      wholesalePrice: Number(it.wholesalePrice) || 0,
+      minWholesaleQty: Number(it.minWholesaleQty) || 5,
+      boxPackingRatio: Number(it.boxPackingRatio) || 0,
+      boxUnit: it.boxUnit || "BOX",
+      stockQuantity: Number(it.stockQuantity) || 0,
+      minStockAlert: Number(it.minStockAlert) || 5,
+      gstRate: cleanGst,
+      unit: (it.unit || "PCS").toUpperCase().trim(),
+      brand: (it.brand || "").trim(),
+      category: (it.category || "").trim()
+    };
+  });
+
   res.json({
     success: true,
-    items: parsed.items
+    items: sanitizedItems
   });
 });
 
