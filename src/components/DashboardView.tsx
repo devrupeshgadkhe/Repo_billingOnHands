@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo, useState, useEffect } from "react";
-import { Item, Party, Invoice } from "../types.js";
+import { Item, Party, Invoice, MiscTransaction } from "../types.js";
 import {
   TrendingUp,
   ArrowUpRight,
@@ -32,6 +32,7 @@ interface DashboardViewProps {
   items: Item[];
   parties: Party[];
   invoices: Invoice[];
+  transactions?: MiscTransaction[];
   onNavigateTab: (tab: string) => void;
   onOpenInvoice: (invoice: Invoice) => void;
 }
@@ -40,6 +41,7 @@ export default function DashboardView({
   items,
   parties,
   invoices,
+  transactions = [],
   onNavigateTab,
   onOpenInvoice
 }: DashboardViewProps) {
@@ -50,7 +52,7 @@ export default function DashboardView({
     return "₹" + formatted.toLocaleString("en-IN", { minimumFractionDigits: 2 });
   };
 
-  // Compute standard KPIs
+  // Compute standard KPIs dynamically from database
   const metrics = useMemo(() => {
     const receivables = parties
       .filter(p => p.type === "customer")
@@ -60,15 +62,24 @@ export default function DashboardView({
       .filter(p => p.type === "supplier")
       .reduce((sum, p) => sum + Math.max(0, p.currentBalance), 0);
 
-    // Initial business float + Sales Paid amount - Purchase Paid Amount
-    let cashAndBank = 750000;
+    // Real-time Cash & Bank calculated from actual sales collections, purchase payments, and misc transactions
+    let cashAndBank = 0;
     invoices.forEach(inv => {
-      if (inv.type === "sale") {
-        cashAndBank += inv.paidAmount;
-      } else {
-        cashAndBank -= inv.paidAmount;
+      const paid = Number(inv.paidAmount) || 0;
+      if (inv.type === "sale" || inv.type === "sale_return") {
+        cashAndBank += paid;
+      } else if (inv.type === "purchase" || inv.type === "purchase_return") {
+        cashAndBank -= paid;
       }
     });
+
+    if (transactions && transactions.length > 0) {
+      transactions.forEach(tx => {
+        const amt = Number(tx.amount) || 0;
+        if (tx.type === "income") cashAndBank += amt;
+        if (tx.type === "expense") cashAndBank -= amt;
+      });
+    }
 
     // Total Stock asset value
     const stockAssetValue = items.reduce((sum, item) => sum + (item.stockQuantity * item.purchasePrice), 0);
@@ -84,7 +95,7 @@ export default function DashboardView({
       lowStockCount: lowStockItems.length,
       lowStockItems: lowStockItems.slice(0, 5)
     };
-  }, [items, parties, invoices]);
+  }, [items, parties, invoices, transactions]);
 
   // Aggregate monthly Sales vs Purchases for chart
   const chartData = useMemo(() => {

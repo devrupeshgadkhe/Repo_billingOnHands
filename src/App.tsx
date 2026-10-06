@@ -1019,6 +1019,7 @@ export default function App() {
               items={dbState.items}
               parties={dbState.parties}
               invoices={dbState.invoices}
+              transactions={dbState.transactions}
               onNavigateTab={(tab) => {
                 setActiveTab(tab);
                 window.scrollTo({ top: 0, behavior: "smooth" });

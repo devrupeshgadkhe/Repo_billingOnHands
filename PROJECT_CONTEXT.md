@@ -130,6 +130,7 @@
   - **Stealth Core Engine Signature:** Discreet chip rendered in Settings updater card (`Core Engine: E{n}-OK • Live`). Invisible to unauthorized personnel with a secret 3-tap diagnostic modal revealing engine counts and quota health exclusively to the owner.
   - **Comprehensive DevTools & Anti-Tampering Shield (`main.cjs`, `App.tsx`):** Unconditional interception and blocking of `F12`, `Ctrl+Shift+I`, `Ctrl+Shift+J`, `Ctrl+Shift+C`, `Ctrl+U`, `Ctrl+S`, and right-click context menu inspection across both Electron desktop executable and web browser builds.
   - **Repository Secret Shield:** Expanded `.gitignore` to strictly exclude `gemini_keys.txt`, `gemini_keys*.txt`, `data/gemini_keys.txt`, `*.key`, and `*.pem` from ever being tracked in GitHub.
+  - **100% Real-Time Dynamic Dashboard Liquidity (`DashboardView.tsx`, `App.tsx`):** Removed all hardcoded static amounts (such as `750000`). Cash & Bank liquidity is now calculated dynamically in real-time directly from actual database invoices (sales collections minus purchase payments) and miscellaneous transactions.
 
 ---
 
