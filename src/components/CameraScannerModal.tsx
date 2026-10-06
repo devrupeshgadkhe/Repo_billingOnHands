@@ -262,7 +262,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
         </div>
 
         {/* Camera Viewport / Captured Image Preview */}
-        <div className="relative flex-1 bg-black flex items-center justify-center min-h-[320px] max-h-[520px] overflow-hidden select-none">
+        <div className="relative w-full h-[420px] bg-black flex items-center justify-center overflow-hidden select-none shrink-0">
           
           {/* Shutter Animation Overlay */}
           {isShutterActive && (
@@ -275,7 +275,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
               <img
                 src={capturedImage}
                 alt="Captured Bill Preview"
-                className="max-h-[500px] w-auto max-w-full object-contain rounded-lg shadow-md"
+                className="h-full w-full object-contain rounded-lg shadow-md"
               />
               <div className="absolute top-3 left-3 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs">
                 <Check className="w-4 h-4 text-emerald-400" />
@@ -327,7 +327,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-contain max-h-[500px]"
+                    className="w-full h-full object-cover"
                   />
 
                   {/* Document Alignment & Corner Target Overlay */}
