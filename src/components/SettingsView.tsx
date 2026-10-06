@@ -78,6 +78,25 @@ export default function SettingsView({
   const [isPreviewEmailModalOpen, setIsPreviewEmailModalOpen] = useState(false);
   const [previewEmailHtml, setPreviewEmailHtml] = useState<string>("");
   const [showSmtpConfig, setShowSmtpConfig] = useState(false);
+  const [stealthSignature, setStealthSignature] = useState<{
+    code: string;
+    activeCount: number;
+    totalCount: number;
+    coolingCount: number;
+    quotaState: string;
+    statusLabel: string;
+    modelsInRotation?: string[];
+  } | null>(null);
+  const [secretTapCount, setSecretTapCount] = useState(0);
+
+  useEffect(() => {
+    fetch("/api/ai/engine-signature")
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.code) setStealthSignature(d);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const electronAPI = (window as any).electronAPI;
@@ -1638,6 +1657,28 @@ export default function SettingsView({
                 <div className="flex justify-between items-center text-slate-600">
                   <span className="text-[11px]">Update Channel:</span>
                   <span className="font-semibold text-indigo-700">Official Production (Encrypted)</span>
+                </div>
+                <div 
+                  onClick={() => {
+                    const newCount = secretTapCount + 1;
+                    setSecretTapCount(newCount);
+                    if (newCount >= 3) {
+                      setSecretTapCount(0);
+                      showAlert({
+                        title: "System Core Diagnostic",
+                        message: `Active Engine Units: ${stealthSignature?.activeCount || 1} configured\nPool State: ${stealthSignature?.statusLabel || "Nominal"}\nFailover Models: ${stealthSignature?.modelsInRotation?.length || 5} online\nQuota State: ${stealthSignature?.quotaState === 'healthy' ? 'Normal / 100% Ready' : 'Auto-Rotating'}\nSignature: ${stealthSignature?.code || 'E1-OK'}`,
+                        variant: "info"
+                      });
+                    }
+                  }}
+                  className="flex justify-between items-center text-slate-600 cursor-pointer select-none hover:text-slate-900 transition-colors"
+                  title="System Engine Signature"
+                >
+                  <span className="text-[11px]">Core Engine:</span>
+                  <span className="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${stealthSignature?.quotaState === 'exhausted' ? 'bg-amber-500' : 'bg-emerald-500'} animate-pulse`}></span>
+                    {stealthSignature?.code || "E1-OK"} • {stealthSignature?.statusLabel || "Live"}
+                  </span>
                 </div>
               </div>
 

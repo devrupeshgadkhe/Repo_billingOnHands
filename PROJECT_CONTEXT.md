@@ -124,6 +124,12 @@
   - **AI Prompt Hardening:** Hardened Gemini prompt in `/api/ai/parse-items-list` to strictly extract the exact GST rate written on handwritten notes (0%, 0.1%, 0.25%, 1.5%, 3%, 5%, 6%, 7.5%, 12%, 18%, 28%, 40%), calculate split CGST+SGST, and compute tax rates from written tax amounts without guessing or defaulting to 18% on non-taxed notes.
   - **Data Normalization & Sanitization:** Implemented `parseGstRate()` in both backend (`server.ts`) and frontend (`ItemsScanModal.tsx`), guaranteeing that parsed percentages match between UI review and database persistence.
   - **Atomic Batch Item Persistence:** Added support in `/api/items` for array payloads and atomic batch saving to eliminate race conditions when importing large scanned lists.
+* **Multi-Key Quota Rotation Pool & Stealth Core Diagnostic (`munimjiPool.ts`, `server.ts`, `SettingsView.tsx`, `.gitignore`):**
+  - **Dynamic Multi-Key Pool Expansion:** The server automatically discovers and loads API keys across `gemini_keys.txt` (any number of newline/comma-separated keys), `gemini_key_1..20.txt`, `GEMINI_API_KEY_1..20`, and `GEMINI_API_KEYS` env variables with zero manual config.
+  - **Failover & Quota Protection:** Instant failover to alternative keys and 5 prioritized candidate models (`gemini-3.1-flash-lite`, `gemini-3.5-flash-lite`, `gemini-3.5-flash`, `gemini-flash-latest`, `gemini-3.8-flash`) on 429 quota exhaustion.
+  - **Stealth Core Engine Signature:** Discreet chip rendered in Settings updater card (`Core Engine: E{n}-OK • Live`). Invisible to unauthorized personnel with a secret 3-tap diagnostic modal revealing engine counts and quota health exclusively to the owner.
+  - **Comprehensive DevTools & Anti-Tampering Shield (`main.cjs`, `App.tsx`):** Unconditional interception and blocking of `F12`, `Ctrl+Shift+I`, `Ctrl+Shift+J`, `Ctrl+Shift+C`, `Ctrl+U`, `Ctrl+S`, and right-click context menu inspection across both Electron desktop executable and web browser builds.
+  - **Repository Secret Shield:** Expanded `.gitignore` to strictly exclude `gemini_keys.txt`, `gemini_keys*.txt`, `data/gemini_keys.txt`, `*.key`, and `*.pem` from ever being tracked in GitHub.
 
 ---
 

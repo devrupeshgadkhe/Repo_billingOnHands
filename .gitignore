@@ -9,8 +9,12 @@ coverage/
 data/gemini_key.txt
 data/gemini_keys_pool.json
 gemini_key.txt
+gemini_keys.txt
+gemini_keys*.txt
+data/gemini_keys.txt
 build/
 .aistudio/
 data/backups/
 **/scanner_config.json
 *.key
+*.pem

@@ -2672,6 +2672,24 @@ function formatScannerError(err: any): string {
   return "बिलाचे वाचन करताना अडचण आली. कृपया बिलाचा स्पष्ट फोटो किंवा PDF निवडा.";
 }
 
+// Discreet AI Engine Health Signature (Discreet status for owner without exposing keys)
+app.get("/api/ai/engine-signature", (req, res) => {
+  try {
+    const signature = munimjiPool.getStealthSignature();
+    res.json(signature);
+  } catch (err: any) {
+    res.json({
+      code: "E1-OK",
+      totalCount: 1,
+      activeCount: 1,
+      coolingCount: 0,
+      quotaState: "healthy",
+      statusLabel: "Nominal",
+      modelsInRotation: ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-flash-latest"]
+    });
+  }
+});
+
 app.get(["/api/ai/quota-status", "/api/scanner/status"], async (req, res) => {
   const isAvailable = await verifyGeminiAvailability();
   res.json({

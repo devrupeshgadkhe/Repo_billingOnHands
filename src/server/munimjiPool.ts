@@ -150,50 +150,54 @@ class MunimjiPoolManager {
     const entries: Array<{ key: string; label: string }> = [];
     const add = (key: unknown, label: string) => {
       if (!this.isUsableConfiguredKey(key)) return;
-      entries.push({ key: key.trim(), label });
+      // If content contains multiple lines or commas, split them
+      const parts = String(key).split(/[\r\n,;]+/g);
+      parts.forEach((p, idx) => {
+        const clean = p.trim();
+        if (this.isUsableConfiguredKey(clean)) {
+          entries.push({ key: clean, label: parts.length > 1 ? `${label}_${idx + 1}` : label });
+        }
+      });
     };
 
+    // 1. Environment variables (support up to 20 individual keys and combined strings)
     const envNames = [
       "GEMINI_API_KEY",
-      "GEMINI_API_KEY_1",
-      "GEMINI_API_KEY_2",
-      "GEMINI_API_KEY_3",
-      "GEMINI_API_KEY_4",
+      "GEMINI_API_KEYS",
       "VITE_GEMINI_API_KEY",
-      "VITE_GEMINI_API_KEY_1",
-      "VITE_GEMINI_API_KEY_2",
-      "VITE_GEMINI_API_KEY_3",
-      "VITE_GEMINI_API_KEY_4"
+      "VITE_GEMINI_API_KEYS"
     ];
+    for (let i = 1; i <= 20; i++) {
+      envNames.push(`GEMINI_API_KEY_${i}`, `VITE_GEMINI_API_KEY_${i}`);
+    }
 
     for (const envName of envNames) {
-      add(process.env[envName], envName);
+      if (process.env[envName]) {
+        add(process.env[envName], envName);
+      }
     }
 
-    const combined = process.env.GEMINI_API_KEYS;
-    if (combined) {
-      combined.split(/[\\n,;]+/g).forEach((key, idx) => add(key, `GEMINI_API_KEYS_${idx + 1}`));
-    }
-
-    const fileNames = [
+    // 2. Multi-key and individual key files in both project root and data directory
+    const candidateDirs = [this.getDataDir(), process.cwd()];
+    const candidateFileNames = [
+      "gemini_keys.txt",
       "gemini_key.txt",
-      "gemini_key_1.txt",
-      "gemini_key_2.txt",
-      "gemini_key_3.txt",
-      "gemini_key_4.txt",
-      "gemini_api_key_1.txt",
-      "gemini_api_key_2.txt",
-      "gemini_api_key_3.txt",
-      "gemini_api_key_4.txt"
+      "keys.txt"
     ];
+    for (let i = 1; i <= 20; i++) {
+      candidateFileNames.push(`gemini_key_${i}.txt`, `gemini_api_key_${i}.txt`);
+    }
 
-    for (const fileName of fileNames) {
-      const filePath = path.join(this.getDataDir(), fileName);
-      try {
-        if (fs.existsSync(filePath)) {
-          add(fs.readFileSync(filePath, "utf8"), `file:${fileName}`);
-        }
-      } catch {}
+    for (const dir of candidateDirs) {
+      for (const fileName of candidateFileNames) {
+        const filePath = path.join(dir, fileName);
+        try {
+          if (fs.existsSync(filePath)) {
+            const fileContent = fs.readFileSync(filePath, "utf8");
+            add(fileContent, `file:${fileName}`);
+          }
+        } catch {}
+      }
     }
 
     // De-duplicate while retaining first-seen order.
@@ -344,6 +348,42 @@ class MunimjiPoolManager {
           lastError: k.lastError
         };
       })
+    };
+  }
+
+  public getStealthSignature() {
+    this.loadKeys();
+    const status = this.getStatus();
+    const total = status.totalKeys;
+    const active = status.activeKeys;
+    const cooling = status.coolingDownKeys;
+    let code = `E${active}`;
+    let quotaState: "healthy" | "partial_limit" | "exhausted" = "healthy";
+    let statusLabel = "Live";
+
+    if (active === 0) {
+      quotaState = "exhausted";
+      code = `E0-LIM`;
+      statusLabel = "Cooldown";
+    } else if (cooling > 0) {
+      quotaState = "partial_limit";
+      code = `E${active}-Q${cooling}`;
+      statusLabel = "Failover";
+    } else {
+      code = `E${active}-OK`;
+      statusLabel = "Nominal";
+    }
+
+    return {
+      code,
+      totalCount: total,
+      activeCount: active,
+      coolingCount: cooling,
+      quotaState,
+      statusLabel,
+      modelsInRotation: status.modelsInRotation,
+      currentKeyIndex: status.currentKeyIndex + 1,
+      nextQuotaResetAt: status.nextQuotaResetAt
     };
   }
 

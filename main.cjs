@@ -236,6 +236,18 @@ function createWindow(port) {
     event.preventDefault();
   });
 
+  // Security: Block DevTools and Source Code keyboard shortcuts at native Electron level
+  mainWindow.webContents.on("before-input-event", (event, input) => {
+    if (
+      input.key === "F12" ||
+      (input.control && input.shift && ["I", "i", "J", "j", "C", "c"].includes(input.key)) ||
+      (input.control && ["u", "U", "s", "S"].includes(input.key)) ||
+      (input.meta && input.alt && ["i", "I", "j", "J", "c", "C", "u", "U"].includes(input.key))
+    ) {
+      event.preventDefault();
+    }
+  });
+
   // Gracefully show window once ready or when initial content finished rendering
   let isShown = false;
   const showSafely = () => {
