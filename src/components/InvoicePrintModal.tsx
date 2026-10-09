@@ -4,6 +4,7 @@
  */
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { Invoice, BusinessProfile, Party, ThermalPrintConfig } from "../types.js";
 import { DEFAULT_THERMAL_CONFIG } from "./ThermalDesignerModal.js";
 import { Printer, X } from "lucide-react";
@@ -15,7 +16,7 @@ interface InvoicePrintModalProps {
   onClose: () => void;
 }
 
-type PrintSize = "A4" | "A5" | "thermal_72" | "thermal_58" | "letter";
+type PrintSize = "A4" | "A5" | "thermal_80" | "thermal_72" | "thermal_58" | "letter";
 
 export default function InvoicePrintModal({
   invoice,
@@ -23,7 +24,10 @@ export default function InvoicePrintModal({
   party,
   onClose
 }: InvoicePrintModalProps) {
-  const [printSize, setPrintSize] = useState<PrintSize>("A4");
+  const [printSize, setPrintSize] = useState<PrintSize>(() => {
+    if (business.thermalConfig?.paperWidth === "58mm") return "thermal_58";
+    return "A4";
+  });
 
   // Format currency in Indian Rupees format (e.g., ₹1,50,000.00)
   const formatRupees = (num: number) => {
@@ -89,7 +93,10 @@ export default function InvoicePrintModal({
         return `
           @media print {
             @page { size: A4 portrait; margin: 8mm; }
-            body { font-size: 11px !important; }
+            html, body { background: #ffffff !important; color: #000000 !important; font-size: 11px !important; }
+            body > #root { display: none !important; height: 0 !important; min-height: 0 !important; overflow: hidden !important; }
+            *, *::before, *::after { box-shadow: none !important; -webkit-box-shadow: none !important; text-shadow: none !important; }
+            #print-modal-toolbar, .print\\:hidden, .no-print { display: none !important; }
             #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
           }
         `;
@@ -97,7 +104,10 @@ export default function InvoicePrintModal({
         return `
           @media print {
             @page { size: A5 landscape; margin: 6mm; }
-            body { font-size: 9.5px !important; }
+            html, body { background: #ffffff !important; color: #000000 !important; font-size: 9.5px !important; }
+            body > #root { display: none !important; height: 0 !important; min-height: 0 !important; overflow: hidden !important; }
+            *, *::before, *::after { box-shadow: none !important; -webkit-box-shadow: none !important; text-shadow: none !important; }
+            #print-modal-toolbar, .print\\:hidden, .no-print { display: none !important; }
             #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
           }
         `;
@@ -105,24 +115,168 @@ export default function InvoicePrintModal({
         return `
           @media print {
             @page { size: letter portrait; margin: 8mm; }
-            body { font-size: 11px !important; }
+            html, body { background: #ffffff !important; color: #000000 !important; font-size: 11px !important; }
+            body > #root { display: none !important; height: 0 !important; min-height: 0 !important; overflow: hidden !important; }
+            *, *::before, *::after { box-shadow: none !important; -webkit-box-shadow: none !important; text-shadow: none !important; }
+            #print-modal-toolbar, .print\\:hidden, .no-print { display: none !important; }
             #print-area { padding: 0 !important; width: 100% !important; max-width: none !important; }
           }
         `;
+      case "thermal_80":
       case "thermal_72":
         return `
           @media print {
-            @page { size: 72mm auto; margin: 2mm 3mm; }
-            body { font-size: 9.5px !important; background: white; color: black; }
-            #print-area { padding: 0 !important; width: 66mm !important; max-width: none !important; }
+            @page { 
+              size: 80mm auto; 
+              margin: 0 !important; 
+            }
+            html, body { 
+              background: #ffffff !important; 
+              color: #000000 !important; 
+              margin: 0 !important; 
+              padding: 0 !important; 
+              width: 100% !important;
+              height: auto !important; 
+              min-height: 0 !important; 
+              font-size: 10px !important; 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+            }
+            body > #root {
+              display: none !important;
+              height: 0 !important;
+              min-height: 0 !important;
+              overflow: hidden !important;
+            }
+            *, *::before, *::after {
+              box-shadow: none !important;
+              -webkit-box-shadow: none !important;
+              text-shadow: none !important;
+            }
+            #print-modal-toolbar,
+            .print\\:hidden,
+            .no-print {
+              display: none !important;
+            }
+            #print-modal-container {
+              position: static !important;
+              background: #ffffff !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              border: none !important;
+              box-shadow: none !important;
+              display: block !important;
+              width: 100% !important;
+            }
+            #print-modal-card {
+              position: static !important;
+              background: #ffffff !important;
+              border: none !important;
+              border-radius: 0 !important;
+              box-shadow: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              max-width: none !important;
+              max-height: none !important;
+              width: 100% !important;
+              display: block !important;
+            }
+            #print-area { 
+              padding: 2mm 3mm !important; 
+              margin: 0 auto !important; 
+              width: 74mm !important; 
+              max-width: 74mm !important; 
+              border: none !important; 
+              box-shadow: none !important; 
+              background: #ffffff !important; 
+              display: block !important; 
+            }
+            .thermal-sheet-wrapper {
+              border: none !important;
+              box-shadow: none !important;
+              margin: 0 auto !important;
+              width: 100% !important;
+              max-width: 74mm !important;
+              background: #ffffff !important;
+            }
           }
         `;
       case "thermal_58":
         return `
           @media print {
-            @page { size: 58mm auto; margin: 1mm 2mm; }
-            body { font-size: 8.5px !important; background: white; color: black; }
-            #print-area { padding: 0 !important; width: 54mm !important; max-width: none !important; }
+            @page { 
+              size: 58mm auto; 
+              margin: 0 !important; 
+            }
+            html, body { 
+              background: #ffffff !important; 
+              color: #000000 !important; 
+              margin: 0 !important; 
+              padding: 0 !important; 
+              width: 100% !important;
+              height: auto !important; 
+              min-height: 0 !important; 
+              font-size: 8.5px !important; 
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+            }
+            body > #root {
+              display: none !important;
+              height: 0 !important;
+              min-height: 0 !important;
+              overflow: hidden !important;
+            }
+            *, *::before, *::after {
+              box-shadow: none !important;
+              -webkit-box-shadow: none !important;
+              text-shadow: none !important;
+            }
+            #print-modal-toolbar,
+            .print\\:hidden,
+            .no-print {
+              display: none !important;
+            }
+            #print-modal-container {
+              position: static !important;
+              background: #ffffff !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              border: none !important;
+              box-shadow: none !important;
+              display: block !important;
+              width: 100% !important;
+            }
+            #print-modal-card {
+              position: static !important;
+              background: #ffffff !important;
+              border: none !important;
+              border-radius: 0 !important;
+              box-shadow: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              max-width: none !important;
+              max-height: none !important;
+              width: 100% !important;
+              display: block !important;
+            }
+            #print-area { 
+              padding: 1mm 2mm !important; 
+              margin: 0 auto !important; 
+              width: 52mm !important; 
+              max-width: 52mm !important; 
+              border: none !important; 
+              box-shadow: none !important; 
+              background: #ffffff !important; 
+              display: block !important; 
+            }
+            .thermal-sheet-wrapper {
+              border: none !important;
+              box-shadow: none !important;
+              margin: 0 auto !important;
+              width: 100% !important;
+              max-width: 52mm !important;
+              background: #ffffff !important;
+            }
           }
         `;
       default:
@@ -134,6 +288,7 @@ export default function InvoicePrintModal({
     switch (printSize) {
       case "thermal_58":
         return "max-w-[320px] w-full";
+      case "thermal_80":
       case "thermal_72":
         return "max-w-[380px] w-full";
       case "A5":
@@ -156,7 +311,7 @@ export default function InvoicePrintModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
       id="print-modal-container"
       className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white print:static"
@@ -182,15 +337,15 @@ export default function InvoicePrintModal({
               <span className="text-[11px] font-medium text-slate-500">Paper:</span>
               <select
                 id="receipt-print-size-select"
-                value={printSize}
+                value={printSize === "thermal_72" ? "thermal_80" : printSize}
                 onChange={(e) => setPrintSize(e.target.value as PrintSize)}
                 className="text-xs font-semibold text-slate-700 bg-transparent focus:outline-none cursor-pointer"
               >
                 <option value="A4">A4 (Standard)</option>
                 <option value="A5">A5 (Half Page)</option>
                 <option value="letter">Letter</option>
-                <option value="thermal_72">Thermal 72mm (3 inch)</option>
-                <option value="thermal_58">Thermal 58mm (2 inch)</option>
+                <option value="thermal_80">Thermal 80mm (3 inch POS)</option>
+                <option value="thermal_58">Thermal 58mm (2 inch POS)</option>
               </select>
             </div>
 
@@ -236,8 +391,10 @@ export default function InvoicePrintModal({
               const upiPayload = upiVpa ? `upi://pay?pa=${upiVpa}&pn=${upiPayee}&am=${invoice.totalAmount}&cu=INR&tn=Bill-${invoice.invoiceNumber}` : "";
               const qrUrl = upiPayload ? `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(upiPayload)}` : "";
 
+              const isThermal58 = printSize === "thermal_58";
+
               return (
-                <div className={`mx-auto ${printSize === "thermal_58" ? "max-w-[250px] text-[10px]" : "max-w-[320px] text-[11px]"} font-mono text-slate-900 leading-tight`}>
+                <div className={`mx-auto thermal-sheet-wrapper ${isThermal58 ? "max-w-[250px] text-[10px]" : "max-w-[320px] text-[11px]"} font-mono text-slate-900 leading-tight bg-white`}>
                   
                   {/* Top Auspicious Greeting */}
                   {th.headerGreeting && (
@@ -381,7 +538,7 @@ export default function InvoicePrintModal({
                     )}
 
                     <div className="border-t border-dashed border-slate-400 my-1"></div>
-                    <div className="flex justify-between font-black text-xs bg-slate-100 p-1 rounded">
+                    <div className="flex justify-between font-black text-xs border-y-2 border-black py-1 my-1 bg-white">
                       <span>{isMarathi ? "एकूण रक्कम (TOTAL):" : "TOTAL AMOUNT:"}</span>
                       <span className="text-sm">₹{invoice.totalAmount.toFixed(2)}</span>
                     </div>
@@ -400,14 +557,14 @@ export default function InvoicePrintModal({
 
                   {/* Savings Banner */}
                   {th.showSavingsBanner && totalDiscount > 0 && (
-                    <div className="my-2 p-1 border border-black text-center font-bold text-[9.5px]">
+                    <div className="my-2 p-1 border border-black text-center font-bold text-[9.5px] bg-white">
                       ★ You Saved ₹{totalDiscount.toFixed(2)} Today! ★
                     </div>
                   )}
 
                   {/* Scan to Pay UPI QR Code */}
                   {th.showUpiQrCode && qrUrl && (
-                    <div className="my-2.5 text-center flex flex-col items-center justify-center p-1.5 border border-dashed border-slate-400 rounded-sm">
+                    <div className="my-2.5 text-center flex flex-col items-center justify-center p-1.5 border border-dashed border-black rounded-xs bg-white">
                       <p className="font-bold text-[9px] uppercase mb-1">Scan & Pay via UPI</p>
                       <img
                         src={qrUrl}
@@ -768,6 +925,7 @@ export default function InvoicePrintModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

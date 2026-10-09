@@ -8,6 +8,7 @@
  */
 
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import { BusinessProfile, ThermalPrintConfig, Invoice } from "../types.js";
 import {
   X,
@@ -310,12 +311,108 @@ export default function ThermalDesignerModal({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-6xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[94vh]">
+  return createPortal(
+    <div
+      id="thermal-designer-portal"
+      className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white print:static print:block"
+    >
+      <style>{`
+        @media print {
+          @page {
+            size: ${config.paperWidth === "58mm" ? "58mm auto" : "80mm auto"};
+            margin: 0 !important;
+          }
+          html, body {
+            background: #ffffff !important;
+            color: #000000 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            min-height: 0 !important;
+            font-size: ${config.paperWidth === "58mm" ? "9px" : "10px"} !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body > #root {
+            display: none !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            overflow: hidden !important;
+          }
+          *, *::before, *::after {
+            box-shadow: none !important;
+            -webkit-box-shadow: none !important;
+            text-shadow: none !important;
+          }
+          #thermal-designer-header,
+          #thermal-designer-controls,
+          #thermal-designer-footer,
+          #thermal-designer-preview-header,
+          .print\\:hidden,
+          .no-print {
+            display: none !important;
+          }
+          #thermal-designer-portal {
+            position: static !important;
+            inset: auto !important;
+            background: #ffffff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            display: block !important;
+            width: 100% !important;
+          }
+          #thermal-designer-modal-box {
+            position: static !important;
+            background: #ffffff !important;
+            border: none !important;
+            box-shadow: none !important;
+            max-width: none !important;
+            max-height: none !important;
+            width: 100% !important;
+            display: block !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: visible !important;
+          }
+          #thermal-designer-preview-wrapper {
+            background: #ffffff !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            display: block !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          #thermal-receipt-preview {
+            margin: 0 auto !important;
+            padding: 2mm 3mm !important;
+            border: none !important;
+            border-top: none !important;
+            box-shadow: none !important;
+            -webkit-box-shadow: none !important;
+            border-radius: 0 !important;
+            background: #ffffff !important;
+            color: #000000 !important;
+            width: ${config.paperWidth === "58mm" ? "52mm" : "74mm"} !important;
+            max-width: ${config.paperWidth === "58mm" ? "52mm" : "74mm"} !important;
+            display: block !important;
+          }
+        }
+      `}</style>
+
+      <div
+        id="thermal-designer-modal-box"
+        className="bg-white rounded-2xl max-w-6xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[94vh] print:shadow-none print:border-none print:max-h-none print:w-full print:block"
+      >
         
         {/* Header Bar */}
-        <div className="bg-linear-to-r from-slate-900 via-indigo-950 to-blue-900 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+        <div
+          id="thermal-designer-header"
+          className="bg-linear-to-r from-slate-900 via-indigo-950 to-blue-900 text-white p-4 sm:p-5 flex items-center justify-between shrink-0 print:hidden"
+        >
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center shadow-inner">
               <Printer className="w-6 h-6 text-indigo-300" />
@@ -346,7 +443,10 @@ export default function ThermalDesignerModal({
         <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
           
           {/* LEFT: Configuration Tabs & Controls */}
-          <div className="w-full lg:w-3/5 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col overflow-hidden bg-slate-50/50">
+          <div
+            id="thermal-designer-controls"
+            className="w-full lg:w-3/5 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col overflow-hidden bg-slate-50/50 print:hidden"
+          >
             
             {/* Tab Navigation */}
             <div className="bg-slate-100 p-2 border-b border-slate-200 flex items-center gap-1 overflow-x-auto shrink-0 text-xs">
@@ -947,8 +1047,14 @@ export default function ThermalDesignerModal({
           </div>
 
           {/* RIGHT: Live Realistic Thermal Receipt Simulator */}
-          <div className="w-full lg:w-2/5 p-4 sm:p-6 bg-slate-200/90 overflow-y-auto flex flex-col items-center justify-start shrink-0">
-            <div className="w-full flex items-center justify-between mb-3 text-xs">
+          <div
+            id="thermal-designer-preview-wrapper"
+            className="w-full lg:w-2/5 p-4 sm:p-6 bg-slate-200/90 overflow-y-auto flex flex-col items-center justify-start shrink-0 print:bg-white print:p-0 print:m-0 print:w-full print:block"
+          >
+            <div
+              id="thermal-designer-preview-header"
+              className="w-full flex items-center justify-between mb-3 text-xs print:hidden"
+            >
               <span className="font-bold text-slate-700 flex items-center gap-1.5">
                 <Eye className="w-4 h-4 text-indigo-600" />
                 <span>Live Thermal Slip Simulator ({config.paperWidth})</span>
@@ -962,7 +1068,7 @@ export default function ThermalDesignerModal({
             {/* Simulated Paper Roll */}
             <div
               id="thermal-receipt-preview"
-              className={`bg-white text-black p-4 sm:p-5 shadow-2xl rounded-sm border-t-8 border-slate-400 font-mono text-xs transition-all duration-300 select-none ${
+              className={`bg-white text-black p-4 sm:p-5 shadow-2xl rounded-sm border-t-8 border-slate-400 font-mono text-xs transition-all duration-300 select-none print:shadow-none print:border-none print:p-0 print:m-0 print:w-full ${
                 config.paperWidth === "58mm" ? "w-[260px] text-[10px]" : "w-[340px] text-[11px]"
               }`}
               style={{
@@ -1163,7 +1269,10 @@ export default function ThermalDesignerModal({
         </div>
 
         {/* Modal Bottom Action Bar */}
-        <div className="bg-slate-50 border-t border-slate-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+        <div
+          id="thermal-designer-footer"
+          className="bg-slate-50 border-t border-slate-200 p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0 print:hidden"
+        >
           <div className="flex items-center space-x-2 text-xs text-slate-600">
             {savedSuccess && (
               <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full font-bold flex items-center gap-1 animate-bounce">
@@ -1208,6 +1317,7 @@ export default function ThermalDesignerModal({
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

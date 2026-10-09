@@ -26,6 +26,13 @@ html, body {
     print-color-adjust: exact !important;
   }
 
+  /* Completely eliminate all box-shadows and text-shadows in print */
+  *, *::before, *::after {
+    box-shadow: none !important;
+    -webkit-box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
   /* Reset #root height in print so it doesn't take 100vh of blank space */
   #root {
     min-height: 0 !important;
@@ -33,14 +40,17 @@ html, body {
   }
 
   /* When a print modal is portaled into document.body as a direct child, hide #root completely to avoid blank page 1 */
-  body:has(> #print-modal-container) > #root {
+  body:has(> #print-modal-container) > #root,
+  body:has(> #thermal-designer-portal) > #root,
+  body:has(> #challan-print-modal-container) > #root,
+  body:has(> #quotation-print-modal-container) > #root {
     display: none !important;
     height: 0 !important;
     min-height: 0 !important;
     overflow: hidden !important;
   }
 
-  /* When a print modal is open, completely hide the rest of the app */
+  /* When a print modal is open, completely hide the rest of the app and designer UI */
   #v-sidebar,
   #v-sidebar-overlay,
   #app-header,
@@ -49,14 +59,19 @@ html, body {
   #v-auto-update-banner,
   #app-main-content,
   #print-modal-toolbar,
+  #thermal-designer-header,
+  #thermal-designer-controls,
+  #thermal-designer-footer,
+  #thermal-designer-preview-header,
   .no-print {
     display: none !important;
   }
 
-  #print-modal-container {
+  #print-modal-container,
+  #thermal-designer-portal {
     position: static !important;
     inset: auto !important;
-    background: transparent !important;
+    background: #ffffff !important;
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
@@ -64,10 +79,14 @@ html, body {
     min-height: 0 !important;
     display: block !important;
     overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
-  #print-modal-card {
+  #print-modal-card,
+  #thermal-designer-modal-box {
     box-shadow: none !important;
+    -webkit-box-shadow: none !important;
     border: none !important;
     max-height: none !important;
     height: auto !important;
@@ -77,19 +96,36 @@ html, body {
     padding: 0 !important;
     margin: 0 !important;
     border-radius: 0 !important;
-    background: transparent !important;
+    background: #ffffff !important;
     display: block !important;
     overflow: visible !important;
   }
 
-  #print-area {
+  #thermal-designer-preview-wrapper {
+    background: #ffffff !important;
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
+    display: block !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  #print-area,
+  #thermal-receipt-preview,
+  .thermal-receipt-sheet {
+    box-shadow: none !important;
+    -webkit-box-shadow: none !important;
+    border: none !important;
+    border-top: none !important;
+    outline: none !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
     height: auto !important;
     min-height: 0 !important;
     overflow: visible !important;
     display: block !important;
+    background: #ffffff !important;
   }
 }
 
