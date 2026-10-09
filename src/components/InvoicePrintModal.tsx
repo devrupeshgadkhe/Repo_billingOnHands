@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { Invoice, BusinessProfile, Party, ThermalPrintConfig } from "../types.js";
 import { DEFAULT_THERMAL_CONFIG } from "./ThermalDesignerModal.js";
+import { printThermalElement } from "../utils/thermalPrinter.js";
 import { Printer, X } from "lucide-react";
 
 interface InvoicePrintModalProps {
@@ -83,7 +84,11 @@ export default function InvoicePrintModal({
   }>);
 
   const handlePrint = () => {
-    window.print();
+    if (printSize.startsWith("thermal")) {
+      printThermalElement("thermal-receipt-invoice-content", printSize === "thermal_58" ? "58mm" : "80mm");
+    } else {
+      window.print();
+    }
   };
 
   // CSS rules for clean single page printing
@@ -394,7 +399,7 @@ export default function InvoicePrintModal({
               const isThermal58 = printSize === "thermal_58";
 
               return (
-                <div className={`mx-auto thermal-sheet-wrapper ${isThermal58 ? "max-w-[250px] text-[10px]" : "max-w-[320px] text-[11px]"} font-mono text-slate-900 leading-tight bg-white`}>
+                <div id="thermal-receipt-invoice-content" className={`mx-auto thermal-sheet-wrapper ${isThermal58 ? "max-w-[250px] text-[10px]" : "max-w-[320px] text-[11px]"} font-mono text-slate-900 leading-tight bg-white`}>
                   
                   {/* Top Auspicious Greeting */}
                   {th.headerGreeting && (

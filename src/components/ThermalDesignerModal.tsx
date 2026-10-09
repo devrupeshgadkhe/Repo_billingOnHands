@@ -10,6 +10,7 @@
 import React, { useState } from "react";
 import { createPortal } from "react-dom";
 import { BusinessProfile, ThermalPrintConfig, Invoice } from "../types.js";
+import { printThermalElement } from "../utils/thermalPrinter.js";
 import {
   X,
   Printer,
@@ -300,7 +301,7 @@ export default function ThermalDesignerModal({
   };
 
   const handlePrintTestSlip = () => {
-    window.print();
+    printThermalElement("thermal-receipt-preview", config.paperWidth);
   };
 
   // Generate UPI QR String: upi://pay?pa=VPA&pn=NAME&am=AMOUNT&cu=INR
@@ -1065,10 +1066,13 @@ export default function ThermalDesignerModal({
               </span>
             </div>
 
-            {/* Simulated Paper Roll */}
+            {/* Simulated Paper Roll Dispenser (Preview only) */}
+            <div className={`h-2 bg-slate-400 rounded-t-md print:hidden shrink-0 ${config.paperWidth === "58mm" ? "w-[260px]" : "w-[340px]"}`} />
+
+            {/* Clean Thermal Receipt Slip (Borderless in print) */}
             <div
               id="thermal-receipt-preview"
-              className={`bg-white text-black p-4 sm:p-5 shadow-2xl rounded-sm border-t-8 border-slate-400 font-mono text-xs transition-all duration-300 select-none print:shadow-none print:border-none print:p-0 print:m-0 print:w-full ${
+              className={`bg-white text-black p-4 sm:p-5 rounded-b-sm border border-slate-200 font-mono text-xs transition-all duration-300 select-none print:border-none print:shadow-none print:p-0 print:m-0 print:w-full ${
                 config.paperWidth === "58mm" ? "w-[260px] text-[10px]" : "w-[340px] text-[11px]"
               }`}
               style={{

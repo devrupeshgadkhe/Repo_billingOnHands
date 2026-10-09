@@ -184,6 +184,56 @@ export default function InvoicingView({
   const [sourceQuotationId, setSourceQuotationId] = useState<string | undefined>(undefined);
   const [sourceQuotationNumber, setSourceQuotationNumber] = useState<string | undefined>(undefined);
 
+  // Billing Mode state (GST vs Non-GST 0% Tax)
+  const [billingMode, setBillingMode] = useState<'gst' | 'non_gst'>(() => {
+    if (invoiceToEdit) {
+      return (invoiceToEdit.isNonGst || invoiceToEdit.billingMode === 'non_gst') ? 'non_gst' : 'gst';
+    }
+    if (business?.defaultBillingMode === 'non_gst' || business?.defaultGstSlab === 0) {
+      return 'non_gst';
+    }
+    try {
+      const saved = localStorage.getItem('billingonhand_billing_mode');
+      if (saved === 'non_gst') return 'non_gst';
+    } catch {}
+    return 'gst';
+  });
+
+  // Helper to determine effective GST rate when adding/selecting items
+  const getEffectiveItemGstRate = (itemGstRate: number | undefined) => {
+    if (type === "sale") {
+      if (billingMode === 'non_gst' || business?.defaultBillingMode === 'non_gst' || business?.defaultGstSlab === 0) {
+        return 0;
+      }
+    }
+    return itemGstRate ?? 0;
+  };
+
+  // Toggle billing mode and sync line items
+  const handleToggleBillingMode = (newMode: 'gst' | 'non_gst') => {
+    setBillingMode(newMode);
+    try {
+      localStorage.setItem('billingonhand_billing_mode', newMode);
+    } catch {}
+    if (newMode === 'non_gst') {
+      setInvoiceLines(prev => prev.map(line => ({ ...line, gstRate: 0 })));
+    } else {
+      setInvoiceLines(prev => prev.map(line => {
+        const origItem = items.find(i => i.id === line.itemId);
+        return { ...line, gstRate: origItem ? origItem.gstRate : line.gstRate };
+      }));
+    }
+  };
+
+  // Sync with business settings if changed
+  useEffect(() => {
+    if (!invoiceToEdit && type === "sale") {
+      if (business?.defaultBillingMode === 'non_gst' || business?.defaultGstSlab === 0) {
+        setBillingMode('non_gst');
+      }
+    }
+  }, [business?.defaultBillingMode, business?.defaultGstSlab, invoiceToEdit, type]);
+
   // Quick-Pick Catalog UI state
   const [showCatalog, setShowCatalog] = useState(true);
   const [catalogSearch, setCatalogSearch] = useState("");
@@ -614,7 +664,10 @@ export default function InvoicingView({
         lineDisc = (grossAmt * Math.min(100, rawDisc)) / 100;
       }
 
-      const lineGstRate = line.gstRate !== undefined ? line.gstRate : (originalItem?.gstRate || 0);
+      const rawGstRate = line.gstRate !== undefined ? line.gstRate : (originalItem?.gstRate || 0);
+      const lineGstRate = (type === "sale" && (billingMode === 'non_gst' || business?.defaultBillingMode === 'non_gst' || business?.defaultGstSlab === 0))
+        ? 0
+        : rawGstRate;
       const amtBeforeTax = Math.max(0, grossAmt - lineDisc);
       const rowTax = amtBeforeTax * (lineGstRate / 100);
       const rowTotal = amtBeforeTax + rowTax;
@@ -728,7 +781,7 @@ export default function InvoicingView({
         customPrice: type === "sale" ? selectedItem.salePrice : selectedItem.purchasePrice,
         discount: copy[idx].discount || 0,
         discountType: copy[idx].discountType || 'percent',
-        gstRate: selectedItem.gstRate
+        gstRate: getEffectiveItemGstRate(selectedItem.gstRate)
       };
       return copy;
     });
@@ -848,7 +901,7 @@ export default function InvoicingView({
           customPrice: type === "sale" ? item.salePrice : item.purchasePrice,
           discount: 0,
           discountType: 'percent',
-          gstRate: item.gstRate
+          gstRate: getEffectiveItemGstRate(item.gstRate)
         };
         // Clean up leading blank row if exists
         const cleaned = prev.filter(p => p.itemId);
@@ -1085,12 +1138,14 @@ export default function InvoicingView({
       partyName: resolvedPartyName,
       partyGstin: resolvedPartyGstin,
       type: txSubtype,
+      isNonGst: billingMode === "non_gst" || business?.defaultBillingMode === "non_gst" || business?.defaultGstSlab === 0,
+      billingMode: billingMode,
       items: validLines,
       subtotal: computedInvoiceDetails.subtotal,
-      taxAmount: computedInvoiceDetails.taxAmount,
-      cgstTotal: computedInvoiceDetails.cgstTotal,
-      sgstTotal: computedInvoiceDetails.sgstTotal,
-      igstTotal: computedInvoiceDetails.igstTotal,
+      taxAmount: billingMode === "non_gst" ? 0 : computedInvoiceDetails.taxAmount,
+      cgstTotal: billingMode === "non_gst" ? 0 : computedInvoiceDetails.cgstTotal,
+      sgstTotal: billingMode === "non_gst" ? 0 : computedInvoiceDetails.sgstTotal,
+      igstTotal: billingMode === "non_gst" ? 0 : computedInvoiceDetails.igstTotal,
       extraCharges: extraCharges.filter(c => c.title.trim() && c.amount > 0),
       totalAmount: computedInvoiceDetails.grandTotal,
       paymentType,
@@ -1224,6 +1279,36 @@ export default function InvoicingView({
               <span>{type === "sale" ? "Credit Note" : "Debit Note"}</span>
             </button>
           </div>
+
+          {/* Billing Mode (GST vs Non-GST 0% Tax) Toggle */}
+          {type === "sale" && (
+            <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => handleToggleBillingMode('gst')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer select-none ${
+                  billingMode === 'gst'
+                    ? "bg-emerald-600 text-white shadow-xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                title="GST Tax Invoice (CGST/SGST कर लागू होईल)"
+              >
+                <span>GST Tax Bill</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleBillingMode('non_gst')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer select-none ${
+                  billingMode === 'non_gst'
+                    ? "bg-amber-600 text-white shadow-xs font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+                title="Non-GST (साधी पावती / 0% कर - सर्व वस्तू ०% कर आकारल्या जातील)"
+              >
+                <span>Non-GST (0% कर)</span>
+              </button>
+            </div>
+          )}
 
           {invoiceToEdit && (
             <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-1 rounded-lg text-xs font-bold uppercase">

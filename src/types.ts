@@ -134,6 +134,7 @@ export interface BusinessProfile {
   loyaltyConfig?: LoyaltyConfig;
   scheduledEmailConfig?: ScheduledEmailConfig;
   defaultBillingMode?: 'gst' | 'non_gst';
+  defaultGstSlab?: number; // 0 for Non-GST / Exempt, or standard GST percentage (5, 12, 18, 28)
 }
 
 export interface ItemBatch {

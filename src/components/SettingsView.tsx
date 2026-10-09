@@ -727,21 +727,26 @@ export default function SettingsView({
             </div>
 
             {/* Default Billing Mode Preference (GST vs Non-GST) */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
-              <div className="flex items-center justify-between">
+            {/* Default Billing Mode & GST Slab Preference */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 uppercase tracking-wide">
                     डिफॉल्ट बिलिंग मोड (Default Billing Mode)
                   </label>
                   <p className="text-[11px] text-slate-500">
-                    नवीन बिलांसाठी सुरुवातीचा प्रकार निवडा (हे प्रत्येक बिलाच्या वेळीही टॉगल करता येते)
+                    नवीन बिलांसाठी सुरुवातीचा प्रकार निवडा (हे प्रत्येक बिलाच्या वेळीही बदलता येते)
                   </p>
                 </div>
                 <div className="inline-flex rounded-lg bg-white p-1 border border-slate-200 text-xs font-bold shadow-2xs">
                   <button
                     type="button"
                     onClick={() => {
-                      setFormData(prev => ({ ...prev, defaultBillingMode: "gst" }));
+                      setFormData(prev => ({
+                        ...prev,
+                        defaultBillingMode: "gst",
+                        defaultGstSlab: prev.defaultGstSlab === 0 ? 18 : prev.defaultGstSlab
+                      }));
                       try { localStorage.setItem("billingonhand_billing_mode", "gst"); } catch {}
                     }}
                     className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
@@ -755,7 +760,11 @@ export default function SettingsView({
                   <button
                     type="button"
                     onClick={() => {
-                      setFormData(prev => ({ ...prev, defaultBillingMode: "non_gst" }));
+                      setFormData(prev => ({
+                        ...prev,
+                        defaultBillingMode: "non_gst",
+                        defaultGstSlab: 0
+                      }));
                       try { localStorage.setItem("billingonhand_billing_mode", "non_gst"); } catch {}
                     }}
                     className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
@@ -764,8 +773,45 @@ export default function SettingsView({
                         : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    Non-GST (साधी पावती)
+                    Non-GST (साधी पावती / 0% कर)
                   </button>
+                </div>
+              </div>
+
+              {/* Default Sales GST Slab */}
+              <div className="pt-2.5 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800">
+                    डीफॉल्ट विक्री जीएसटी स्लॅब (Default Sales GST Slab)
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    नॉन-जीएसटी (०%) स्लॅब निवडल्यास सेल बिलात आयटम ॲड करताना जीएसटी बाय डिफॉल्ट ०% येईल
+                  </p>
+                </div>
+                <div className="w-full sm:w-64">
+                  <select
+                    id="settings-default-gst-slab"
+                    value={formData.defaultBillingMode === 'non_gst' ? 0 : (formData.defaultGstSlab !== undefined ? formData.defaultGstSlab : 18)}
+                    onChange={(e) => {
+                      const slab = Number(e.target.value);
+                      const isZero = slab === 0;
+                      setFormData(prev => ({
+                        ...prev,
+                        defaultGstSlab: slab,
+                        defaultBillingMode: isZero ? 'non_gst' : 'gst'
+                      }));
+                      try {
+                        localStorage.setItem("billingonhand_billing_mode", isZero ? "non_gst" : "gst");
+                      } catch {}
+                    }}
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold bg-white text-slate-800 focus:outline-emerald-500 cursor-pointer"
+                  >
+                    <option value={0}>0% - नॉन-जीएसटी / करमुक्त (Non-GST / Zero Tax)</option>
+                    <option value={5}>5% - अत्यावश्यक किराणा व अन्नधान्य</option>
+                    <option value={12}>12% - प्रक्रिया केलेले खाद्यपदार्थ व वस्तू</option>
+                    <option value={18}>18% - सर्वसाधारण रिटेल विक्री (Standard 18%)</option>
+                    <option value={28}>28% - लक्झरी व इलेक्ट्रॉनिक्स वस्तू</option>
+                  </select>
                 </div>
               </div>
             </div>
