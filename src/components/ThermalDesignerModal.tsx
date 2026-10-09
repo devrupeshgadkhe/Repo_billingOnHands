@@ -7,7 +7,7 @@
  * bilingual Marathi/English labels, dynamic UPI QR code generator, and preset templates.
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { BusinessProfile, ThermalPrintConfig, Invoice } from "../types.js";
 import { printThermalElement } from "../utils/thermalPrinter.js";
@@ -193,9 +193,31 @@ export default function ThermalDesignerModal({
   const [config, setConfig] = useState<ThermalPrintConfig>(() => ({
     ...DEFAULT_THERMAL_CONFIG,
     ...(business.thermalConfig || {}),
-    upiId: business.thermalConfig?.upiId || business.phone ? `${business.phone}@upi` : "",
-    upiMerchantName: business.thermalConfig?.upiMerchantName || business.name || "BillingOnHand Store"
+    upiId: (business.thermalConfig?.upiId || business.upiId) || (business.phone ? `${business.phone}@upi` : ""),
+    upiMerchantName: (business.thermalConfig?.upiMerchantName || business.upiMerchantName) || business.name || "BillingOnHand Store",
+    bankName: business.thermalConfig?.bankName || business.bankName || "",
+    bankAccountNo: business.thermalConfig?.bankAccountNo || business.bankAccountNo || "",
+    bankIfsc: business.thermalConfig?.bankIfsc || business.bankIfsc || "",
+    bankBranch: business.thermalConfig?.bankBranch || business.bankBranch || "",
+    showBankDetails: business.thermalConfig?.showBankDetails ?? business.showBankDetails ?? false
   }));
+
+  // Re-sync config whenever modal is opened or business profile changes
+  useEffect(() => {
+    if (isOpen) {
+      setConfig({
+        ...DEFAULT_THERMAL_CONFIG,
+        ...(business.thermalConfig || {}),
+        upiId: (business.thermalConfig?.upiId || business.upiId) || (business.phone ? `${business.phone}@upi` : ""),
+        upiMerchantName: (business.thermalConfig?.upiMerchantName || business.upiMerchantName) || business.name || "BillingOnHand Store",
+        bankName: business.thermalConfig?.bankName || business.bankName || "",
+        bankAccountNo: business.thermalConfig?.bankAccountNo || business.bankAccountNo || "",
+        bankIfsc: business.thermalConfig?.bankIfsc || business.bankIfsc || "",
+        bankBranch: business.thermalConfig?.bankBranch || business.bankBranch || "",
+        showBankDetails: business.thermalConfig?.showBankDetails ?? business.showBankDetails ?? false
+      });
+    }
+  }, [isOpen, business]);
 
   const [activeTab, setActiveTab] = useState<'presets' | 'header' | 'customer' | 'items' | 'totals' | 'footer'>('presets');
   const [isSaving, setIsSaving] = useState(false);
@@ -996,6 +1018,64 @@ export default function ThermalDesignerModal({
                       </div>
                     )}
 
+                    {/* Bank Details Configuration */}
+                    <div className="pt-2 border-t border-slate-200">
+                      <label className="flex items-center space-x-2 cursor-pointer mb-2">
+                        <input
+                          type="checkbox"
+                          checked={config.showBankDetails}
+                          onChange={(e) => updateConfig('showBankDetails', e.target.checked)}
+                          className="w-4 h-4 rounded text-indigo-600"
+                        />
+                        <span className="text-slate-900 font-bold">Print Bank Account Details on Receipts</span>
+                      </label>
+
+                      {config.showBankDetails && (
+                        <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">बँकेचे नाव (Bank Name)</label>
+                            <input
+                              type="text"
+                              value={config.bankName || ""}
+                              onChange={(e) => updateConfig('bankName', e.target.value)}
+                              placeholder="उदा. State Bank of India"
+                              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-medium"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">खाते क्रमांक (Account Number)</label>
+                            <input
+                              type="text"
+                              value={config.bankAccountNo || ""}
+                              onChange={(e) => updateConfig('bankAccountNo', e.target.value)}
+                              placeholder="उदा. 30123456789"
+                              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-mono font-bold"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">IFSC कोड (IFSC Code)</label>
+                            <input
+                              type="text"
+                              value={config.bankIfsc || ""}
+                              onChange={(e) => updateConfig('bankIfsc', e.target.value.toUpperCase())}
+                              placeholder="उदा. SBIN0001234"
+                              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-mono font-bold uppercase"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">बँक शाखा (Branch)</label>
+                            <input
+                              type="text"
+                              value={config.bankBranch || ""}
+                              onChange={(e) => updateConfig('bankBranch', e.target.value)}
+                              placeholder="उदा. Main Market Branch"
+                              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="pt-2">
                       <label className="block text-[11px] font-semibold text-slate-700 mb-1">Terms & Conditions (अटी व शर्ती)</label>
                       <textarea
@@ -1236,6 +1316,17 @@ export default function ThermalDesignerModal({
                     className="w-24 h-24 object-contain"
                   />
                   <p className="text-[8.5px] text-slate-600 font-mono mt-1">{upiVpa}</p>
+                </div>
+              )}
+
+              {/* Bank Account Settlement Details */}
+              {config.showBankDetails && (config.bankName || config.bankAccountNo) && (
+                <div className="my-2 p-1.5 border border-dashed border-black rounded-xs text-[9px] font-mono leading-tight bg-white">
+                  <p className="font-bold uppercase text-[9px] mb-0.5 text-center">Bank Account Details</p>
+                  {config.bankName && <p><strong>Bank:</strong> {config.bankName}</p>}
+                  {config.bankAccountNo && <p><strong>A/C:</strong> {config.bankAccountNo}</p>}
+                  {config.bankIfsc && <p><strong>IFSC:</strong> {config.bankIfsc}</p>}
+                  {config.bankBranch && <p><strong>Branch:</strong> {config.bankBranch}</p>}
                 </div>
               )}
 

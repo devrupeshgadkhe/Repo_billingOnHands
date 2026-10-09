@@ -48,6 +48,18 @@ try {
   app.commandLine.appendSwitch("enable-features", "AudioServiceOutOfProcess");
 } catch {}
 
+// Ensure Windows 11 uses the robust Win32 print dialog (prevents "This app doesn't support print preview" banner)
+if (process.platform === "win32") {
+  try {
+    const { exec } = require("child_process");
+    exec('reg add "HKCU\\Software\\Microsoft\\Print\\UnifiedPrintDialog" /v "PreferLegacyPrintDialog" /t REG_DWORD /d "1" /f', (err) => {
+      if (!err) {
+        console.log("[Electron] Enabled Windows legacy print dialog for seamless POS/thermal printing.");
+      }
+    });
+  } catch {}
+}
+
 // Dynamic free port resolution to allow multiple instances or handle blocked ports gracefully
 function getFreePort(startPort, callback) {
   const server = net.createServer();
@@ -466,6 +478,40 @@ ipcMain.handle("app:open-external", (_event, url) => {
   if (url && (url.startsWith("http://") || url.startsWith("https://"))) {
     shell.openExternal(url);
   }
+});
+
+// Native Print & PDF Preview IPC Handlers
+ipcMain.handle("app:print", async (_event, options) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return new Promise((resolve) => {
+      mainWindow.webContents.print(
+        {
+          silent: false,
+          printBackground: true,
+          ...(options || {})
+        },
+        (success, failureReason) => {
+          resolve({ success, failureReason });
+        }
+      );
+    });
+  }
+  return { success: false, failureReason: "Main window not available" };
+});
+
+ipcMain.handle("app:print-to-pdf", async (_event, options) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      const data = await mainWindow.webContents.printToPDF({
+        printBackground: true,
+        ...(options || {})
+      });
+      return { success: true, pdfBase64: data.toString("base64") };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }
+  return { success: false, error: "Main window not available" };
 });
 
 // Helper to poll the local health endpoint

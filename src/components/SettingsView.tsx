@@ -37,9 +37,12 @@ import {
   Send,
   Clock,
   Eye,
-  Calendar
+  Calendar,
+  QrCode,
+  CreditCard,
+  Landmark
 } from "lucide-react";
-import ThermalDesignerModal from "./ThermalDesignerModal.js";
+import ThermalDesignerModal, { DEFAULT_THERMAL_CONFIG } from "./ThermalDesignerModal.js";
 
 interface SettingsViewProps {
   business: BusinessProfile;
@@ -208,8 +211,8 @@ export default function SettingsView({
     setIsSaving(true);
     setSaveSuccessMsg(null);
     try {
-      const payload = specificProfile || formData;
-      if (!payload.name?.trim()) {
+      const base = specificProfile || formData;
+      if (!base.name?.trim()) {
         await showAlert({
           title: "व्यवसायाचे नाव आवश्यक",
           message: "कृपया व्यवसायाचे नाव प्रविष्ट करा.",
@@ -218,6 +221,39 @@ export default function SettingsView({
         setIsSaving(false);
         return;
       }
+
+      const upiId = (base.upiId || base.thermalConfig?.upiId || "").trim();
+      const upiMerchantName = base.upiMerchantName || base.thermalConfig?.upiMerchantName || base.name || "";
+      const bankName = base.bankName || base.thermalConfig?.bankName || "";
+      const bankAccountNo = (base.bankAccountNo || base.thermalConfig?.bankAccountNo || "").trim();
+      const bankIfsc = (base.bankIfsc || base.thermalConfig?.bankIfsc || "").trim().toUpperCase();
+      const bankBranch = base.bankBranch || base.thermalConfig?.bankBranch || "";
+      const showUpiQrCode = base.showUpiQrCode ?? base.thermalConfig?.showUpiQrCode ?? true;
+      const showBankDetails = base.showBankDetails ?? base.thermalConfig?.showBankDetails ?? false;
+
+      const payload: BusinessProfile = {
+        ...base,
+        upiId,
+        upiMerchantName,
+        bankName,
+        bankAccountNo,
+        bankIfsc,
+        bankBranch,
+        showUpiQrCode,
+        showBankDetails,
+        thermalConfig: {
+          ...(base.thermalConfig || DEFAULT_THERMAL_CONFIG),
+          upiId,
+          upiMerchantName,
+          bankName,
+          bankAccountNo,
+          bankIfsc,
+          bankBranch,
+          showUpiQrCode,
+          showBankDetails
+        }
+      };
+      setFormData(payload);
 
       await onSaveBusiness(payload);
 
@@ -816,8 +852,213 @@ export default function SettingsView({
               </div>
             </div>
 
-                {/* Business Profile Direct Save */}
-                <div className="pt-4 border-t border-slate-100 flex justify-end">
+            {/* Dedicated Bank Account & Dynamic UPI QR Code Configuration */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-600/10 text-emerald-700 flex items-center justify-center">
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wide">
+                      बँक खाते, UPI आणि QR कोड पेमेंट तपशील (Bank Account & UPI QR Details)
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      बिलांवर व थर्मल पावत्यांवर पेमेंटसाठी बँक तपशील व डायनॅमिक UPI QR कोड दाखवा
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center space-x-1.5 cursor-pointer text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={formData.showUpiQrCode ?? formData.thermalConfig?.showUpiQrCode ?? true}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData(prev => ({
+                          ...prev,
+                          showUpiQrCode: checked,
+                          thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), showUpiQrCode: checked }
+                        }));
+                      }}
+                      className="w-4 h-4 rounded text-emerald-600 cursor-pointer"
+                    />
+                    <span>UPI QR कोड चालू करा</span>
+                  </label>
+
+                  <label className="flex items-center space-x-1.5 cursor-pointer text-xs font-semibold text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={formData.showBankDetails ?? formData.thermalConfig?.showBankDetails ?? false}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData(prev => ({
+                          ...prev,
+                          showBankDetails: checked,
+                          thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), showBankDetails: checked }
+                        }));
+                      }}
+                      className="w-4 h-4 rounded text-emerald-600 cursor-pointer"
+                    />
+                    <span>बँक तपशील बिलावर छापा</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* UPI Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                    Merchant UPI ID (VPA)
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="settings-upi-id"
+                      type="text"
+                      name="upiId"
+                      value={formData.upiId || formData.thermalConfig?.upiId || ""}
+                      onChange={(e) => {
+                        const val = e.target.value.trim();
+                        setFormData(prev => ({
+                          ...prev,
+                          upiId: val,
+                          thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), upiId: val }
+                        }));
+                      }}
+                      placeholder="उदा. 9876543210@okaxis किंवा store@ybl"
+                      className="w-full pl-3 pr-10 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs font-mono font-bold outline-none bg-white"
+                    />
+                    <div className="absolute right-3 top-2.5 text-slate-400">
+                      <QrCode className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">Google Pay, PhonePe, Paytm, BHIM द्वारे थेट दुकानाच्या बँक खात्यात पैसे स्वीकारण्यासाठी</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                    UPI Payee / दुकानदाराचे नाव (Merchant Name)
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="settings-upi-merchant-name"
+                      type="text"
+                      name="upiMerchantName"
+                      value={formData.upiMerchantName || formData.thermalConfig?.upiMerchantName || ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFormData(prev => ({
+                          ...prev,
+                          upiMerchantName: val,
+                          thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), upiMerchantName: val }
+                        }));
+                      }}
+                      placeholder={formData.name || "दुकान / व्यवसायाचे नाव"}
+                      className="w-full pl-3 pr-10 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs outline-none bg-white font-medium"
+                    />
+                    <div className="absolute right-3 top-2.5 text-slate-400">
+                      <Building2 className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">ग्राहकाच्या UPI ॲपमध्ये पेमेंट करताना दिसणारे नाव</p>
+                </div>
+              </div>
+
+              {/* Bank Details Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200/60">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                    बँकेचे नाव (Bank Name)
+                  </label>
+                  <input
+                    id="settings-bank-name"
+                    type="text"
+                    name="bankName"
+                    value={formData.bankName || formData.thermalConfig?.bankName || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData(prev => ({
+                        ...prev,
+                        bankName: val,
+                        thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), bankName: val }
+                      }));
+                    }}
+                    placeholder="उदा. State Bank of India"
+                    className="w-full px-3 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs outline-none bg-white font-medium"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                    खाते क्रमांक (Account Number)
+                  </label>
+                  <input
+                    id="settings-bank-account-no"
+                    type="text"
+                    name="bankAccountNo"
+                    value={formData.bankAccountNo || formData.thermalConfig?.bankAccountNo || ""}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setFormData(prev => ({
+                        ...prev,
+                        bankAccountNo: val,
+                        thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), bankAccountNo: val }
+                      }));
+                    }}
+                    placeholder="उदा. 30123456789"
+                    className="w-full px-3 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs font-mono font-bold outline-none bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                    IFSC कोड (IFSC Code)
+                  </label>
+                  <input
+                    id="settings-bank-ifsc"
+                    type="text"
+                    name="bankIfsc"
+                    value={formData.bankIfsc || formData.thermalConfig?.bankIfsc || ""}
+                    onChange={(e) => {
+                      const val = e.target.value.trim().toUpperCase();
+                      setFormData(prev => ({
+                        ...prev,
+                        bankIfsc: val,
+                        thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), bankIfsc: val }
+                      }));
+                    }}
+                    placeholder="उदा. SBIN0001234"
+                    className="w-full px-3 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs font-mono font-bold uppercase outline-none bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                    शाखा (Branch)
+                  </label>
+                  <input
+                    id="settings-bank-branch"
+                    type="text"
+                    name="bankBranch"
+                    value={formData.bankBranch || formData.thermalConfig?.bankBranch || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setFormData(prev => ({
+                        ...prev,
+                        bankBranch: val,
+                        thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), bankBranch: val }
+                      }));
+                    }}
+                    placeholder="उदा. Main Branch"
+                    className="w-full px-3 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs outline-none bg-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Business Profile Direct Save */}
+            <div className="pt-4 border-t border-slate-100 flex justify-end">
                   <button
                     id="save-profile-btn"
                     type="button"

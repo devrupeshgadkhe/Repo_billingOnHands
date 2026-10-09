@@ -19,5 +19,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     return () => ipcRenderer.removeListener("updater:status", listener);
   },
   
-  openExternal: (url) => ipcRenderer.invoke("app:open-external", url)
+  openExternal: (url) => ipcRenderer.invoke("app:open-external", url),
+  print: (options) => ipcRenderer.invoke("app:print", options),
+  printToPdf: (options) => ipcRenderer.invoke("app:print-to-pdf", options)
 });

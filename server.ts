@@ -1627,18 +1627,30 @@ app.post("/api/business", (req, res) => {
     const db = readDb();
     const existing: any = db.business || {};
     const incoming: any = req.body || {};
+
+    const mergedThermalConfig = incoming.thermalConfig
+      ? { ...(existing.thermalConfig || {}), ...incoming.thermalConfig }
+      : (existing.thermalConfig ? { ...existing.thermalConfig } : {});
+    
+    if (incoming.upiId !== undefined) mergedThermalConfig.upiId = incoming.upiId;
+    if (incoming.upiMerchantName !== undefined) mergedThermalConfig.upiMerchantName = incoming.upiMerchantName;
+    if (incoming.bankName !== undefined) mergedThermalConfig.bankName = incoming.bankName;
+    if (incoming.bankAccountNo !== undefined) mergedThermalConfig.bankAccountNo = incoming.bankAccountNo;
+    if (incoming.bankIfsc !== undefined) mergedThermalConfig.bankIfsc = incoming.bankIfsc;
+    if (incoming.bankBranch !== undefined) mergedThermalConfig.bankBranch = incoming.bankBranch;
+    if (incoming.showUpiQrCode !== undefined) mergedThermalConfig.showUpiQrCode = incoming.showUpiQrCode;
+    if (incoming.showBankDetails !== undefined) mergedThermalConfig.showBankDetails = incoming.showBankDetails;
+
     db.business = {
       ...existing,
       ...incoming,
+      thermalConfig: Object.keys(mergedThermalConfig).length > 0 ? mergedThermalConfig : undefined,
       loyaltyConfig: incoming.loyaltyConfig
         ? { ...(existing.loyaltyConfig || {}), ...incoming.loyaltyConfig }
         : existing.loyaltyConfig,
       scheduledEmailConfig: incoming.scheduledEmailConfig
         ? { ...(existing.scheduledEmailConfig || {}), ...incoming.scheduledEmailConfig }
-        : existing.scheduledEmailConfig,
-      thermalConfig: incoming.thermalConfig
-        ? { ...(existing.thermalConfig || {}), ...incoming.thermalConfig }
-        : existing.thermalConfig
+        : existing.scheduledEmailConfig
     };
     writeDb(db);
     console.log("[Settings] Business profile & store preferences updated in database successfully.");
@@ -1655,18 +1667,30 @@ app.post("/api/settings", (req, res) => {
     const db = readDb();
     const existing: any = db.business || {};
     const incoming: any = req.body || {};
+
+    const mergedThermalConfig = incoming.thermalConfig
+      ? { ...(existing.thermalConfig || {}), ...incoming.thermalConfig }
+      : (existing.thermalConfig ? { ...existing.thermalConfig } : {});
+    
+    if (incoming.upiId !== undefined) mergedThermalConfig.upiId = incoming.upiId;
+    if (incoming.upiMerchantName !== undefined) mergedThermalConfig.upiMerchantName = incoming.upiMerchantName;
+    if (incoming.bankName !== undefined) mergedThermalConfig.bankName = incoming.bankName;
+    if (incoming.bankAccountNo !== undefined) mergedThermalConfig.bankAccountNo = incoming.bankAccountNo;
+    if (incoming.bankIfsc !== undefined) mergedThermalConfig.bankIfsc = incoming.bankIfsc;
+    if (incoming.bankBranch !== undefined) mergedThermalConfig.bankBranch = incoming.bankBranch;
+    if (incoming.showUpiQrCode !== undefined) mergedThermalConfig.showUpiQrCode = incoming.showUpiQrCode;
+    if (incoming.showBankDetails !== undefined) mergedThermalConfig.showBankDetails = incoming.showBankDetails;
+
     db.business = {
       ...existing,
       ...incoming,
+      thermalConfig: Object.keys(mergedThermalConfig).length > 0 ? mergedThermalConfig : undefined,
       loyaltyConfig: incoming.loyaltyConfig
         ? { ...(existing.loyaltyConfig || {}), ...incoming.loyaltyConfig }
         : existing.loyaltyConfig,
       scheduledEmailConfig: incoming.scheduledEmailConfig
         ? { ...(existing.scheduledEmailConfig || {}), ...incoming.scheduledEmailConfig }
-        : existing.scheduledEmailConfig,
-      thermalConfig: incoming.thermalConfig
-        ? { ...(existing.thermalConfig || {}), ...incoming.thermalConfig }
-        : existing.thermalConfig
+        : existing.scheduledEmailConfig
     };
     writeDb(db);
     res.json({ success: true, message: "Settings saved successfully to database.", business: db.business });

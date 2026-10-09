@@ -87,7 +87,14 @@ export default function InvoicePrintModal({
     if (printSize.startsWith("thermal")) {
       printThermalElement("thermal-receipt-invoice-content", printSize === "thermal_58" ? "58mm" : "80mm");
     } else {
-      window.print();
+      const electronAPI = (window as any).electronAPI;
+      if (electronAPI?.print) {
+        electronAPI.print({ silent: false, printBackground: true }).catch(() => {
+          window.print();
+        });
+      } else {
+        window.print();
+      }
     }
   };
 
@@ -391,8 +398,8 @@ export default function InvoicePrintModal({
 
               const isMarathi = th.language === "mr";
               const totalDiscount = invoice.items.reduce((s, i) => s + (i.discount || 0), 0);
-              const upiVpa = th.upiId || (business.phone ? `${business.phone}@upi` : "");
-              const upiPayee = encodeURIComponent(th.upiMerchantName || business.name || "Store");
+              const upiVpa = th.upiId || business.upiId || (business.phone ? `${business.phone}@upi` : "");
+              const upiPayee = encodeURIComponent(th.upiMerchantName || business.upiMerchantName || business.name || "Store");
               const upiPayload = upiVpa ? `upi://pay?pa=${upiVpa}&pn=${upiPayee}&am=${invoice.totalAmount}&cu=INR&tn=Bill-${invoice.invoiceNumber}` : "";
               const qrUrl = upiPayload ? `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(upiPayload)}` : "";
 
@@ -577,6 +584,17 @@ export default function InvoicePrintModal({
                         className="w-20 h-20 object-contain"
                       />
                       <p className="text-[8px] text-slate-600 font-mono mt-0.5">{upiVpa}</p>
+                    </div>
+                  )}
+
+                  {/* Bank Account Details */}
+                  {(th.showBankDetails || business.showBankDetails) && (th.bankName || business.bankName || th.bankAccountNo || business.bankAccountNo) && (
+                    <div className="my-2 p-1.5 border border-dashed border-black rounded-xs text-[9px] font-mono leading-tight bg-white">
+                      <p className="font-bold uppercase text-[9px] mb-0.5 text-center">Bank Account Details</p>
+                      {(th.bankName || business.bankName) && <p><strong>Bank:</strong> {th.bankName || business.bankName}</p>}
+                      {(th.bankAccountNo || business.bankAccountNo) && <p><strong>A/C:</strong> {th.bankAccountNo || business.bankAccountNo}</p>}
+                      {(th.bankIfsc || business.bankIfsc) && <p><strong>IFSC:</strong> {th.bankIfsc || business.bankIfsc}</p>}
+                      {(th.bankBranch || business.bankBranch) && <p><strong>Branch:</strong> {th.bankBranch || business.bankBranch}</p>}
                     </div>
                   )}
 
@@ -900,6 +918,33 @@ export default function InvoicePrintModal({
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+
+              {/* Bank & UPI Payment Settlement Block */}
+              {(business.bankAccountNo || business.bankName || business.upiId || business.thermalConfig?.upiId) && (
+                <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono print:bg-white print:border-slate-300">
+                  <div>
+                    <span className="font-bold uppercase text-[10px] text-slate-500 block mb-1">Bank Payment Settlement</span>
+                    {(business.bankName || business.thermalConfig?.bankName) && <p className="font-bold text-slate-800">Bank: {business.bankName || business.thermalConfig?.bankName}</p>}
+                    {(business.bankAccountNo || business.thermalConfig?.bankAccountNo) && <p className="text-slate-700">A/C No: {business.bankAccountNo || business.thermalConfig?.bankAccountNo}</p>}
+                    {(business.bankIfsc || business.thermalConfig?.bankIfsc) && <p className="text-slate-700">IFSC: {business.bankIfsc || business.thermalConfig?.bankIfsc}</p>}
+                    {(business.bankBranch || business.thermalConfig?.bankBranch) && <p className="text-slate-600">Branch: {business.bankBranch || business.thermalConfig?.bankBranch}</p>}
+                  </div>
+                  {(business.upiId || business.thermalConfig?.upiId || business.phone) && (
+                    <div className="flex items-center justify-end space-x-3">
+                      <div className="text-right">
+                        <span className="font-bold uppercase text-[10px] text-slate-500 block">Instant UPI Payment</span>
+                        <p className="font-bold text-slate-800 text-[11px]">{business.upiId || business.thermalConfig?.upiId || `${business.phone}@upi`}</p>
+                        <p className="text-[10px] text-slate-500">Scan QR Code to pay</p>
+                      </div>
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`upi://pay?pa=${business.upiId || business.thermalConfig?.upiId || `${business.phone}@upi`}&pn=${encodeURIComponent(business.name)}&am=${invoice.totalAmount}&cu=INR&tn=Bill-${invoice.invoiceNumber}`)}`}
+                        alt="UPI QR"
+                        className="w-16 h-16 border border-slate-300 rounded bg-white p-0.5"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 

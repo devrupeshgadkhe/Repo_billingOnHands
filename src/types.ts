@@ -130,6 +130,14 @@ export interface BusinessProfile {
   fssaiNo?: string;
   exciseLicenseNo?: string;
   logoUrl?: string; // base64 or source url of local store logo
+  bankName?: string;
+  bankAccountNo?: string;
+  bankIfsc?: string;
+  bankBranch?: string;
+  upiId?: string;
+  upiMerchantName?: string;
+  showUpiQrCode?: boolean;
+  showBankDetails?: boolean;
   thermalConfig?: ThermalPrintConfig;
   loyaltyConfig?: LoyaltyConfig;
   scheduledEmailConfig?: ScheduledEmailConfig;

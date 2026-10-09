@@ -230,6 +230,7 @@ export default function InvoicingView({
     if (!invoiceToEdit && type === "sale") {
       if (business?.defaultBillingMode === 'non_gst' || business?.defaultGstSlab === 0) {
         setBillingMode('non_gst');
+        setInvoiceLines(prev => prev.map(line => ({ ...line, gstRate: 0 })));
       }
     }
   }, [business?.defaultBillingMode, business?.defaultGstSlab, invoiceToEdit, type]);
@@ -1927,7 +1928,8 @@ export default function InvoicingView({
                       const rawDisc = typeof line.discount === 'number' && !isNaN(line.discount) ? Math.max(0, line.discount) : 0;
                       const rowDisc = line.discountType === 'amount' ? Math.min(gross, rawDisc) : (gross * Math.min(100, rawDisc)) / 100;
                       const lineTotalExclGst = Math.max(0, gross - rowDisc);
-                      const lineTax = lineTotalExclGst * (line.gstRate / 100);
+                      const effectiveLineGstRate = (type === "sale" && (billingMode === 'non_gst' || business?.defaultBillingMode === 'non_gst' || business?.defaultGstSlab === 0)) ? 0 : (line.gstRate ?? 0);
+                      const lineTax = lineTotalExclGst * (effectiveLineGstRate / 100);
                       const lineTotalInclGst = lineTotalExclGst + lineTax;
 
                       return (
@@ -2036,17 +2038,23 @@ export default function InvoicingView({
 
                           {/* GST Rate */}
                           <td className="py-2.5 px-2 text-center">
-                            <select
-                              value={line.gstRate}
-                              onChange={(e) => handleLineValueChange(idx, 'gstRate', parseInt(e.target.value) || 0)}
-                              className="px-1.5 py-1 border border-slate-200 rounded-md text-[11px] font-mono outline-none bg-white"
-                            >
-                              <option value="0">0%</option>
-                              <option value="5">5%</option>
-                              <option value="12">12%</option>
-                              <option value="18">18%</option>
-                              <option value="28">28%</option>
-                            </select>
+                            {billingMode === 'non_gst' || (type === "sale" && (business?.defaultBillingMode === 'non_gst' || business?.defaultGstSlab === 0)) ? (
+                              <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-mono font-bold text-[10px] select-none whitespace-nowrap">
+                                0% (Non-GST)
+                              </span>
+                            ) : (
+                              <select
+                                value={line.gstRate}
+                                onChange={(e) => handleLineValueChange(idx, 'gstRate', parseInt(e.target.value) || 0)}
+                                className="px-1.5 py-1 border border-slate-200 rounded-md text-[11px] font-mono outline-none bg-white font-semibold"
+                              >
+                                <option value="0">0%</option>
+                                <option value="5">5%</option>
+                                <option value="12">12%</option>
+                                <option value="18">18%</option>
+                                <option value="28">28%</option>
+                              </select>
+                            )}
                           </td>
 
                           {/* Line Total */}
