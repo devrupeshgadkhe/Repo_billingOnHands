@@ -19,7 +19,7 @@ import DeliveryChallansView from "./components/DeliveryChallansView";
 import QuotationsView from "./components/QuotationsView";
 import GodownsView from "./components/GodownsView";
 import TablesView from "./components/TablesView";
-import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher, RestaurantTable } from "./types";
+import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher, RestaurantTable, BUSINESS_TYPES } from "./types";
 import { RefreshCw, LayoutGrid, CheckCircle, LogOut, Menu } from "lucide-react";
 import { APP_VERSION } from "./version";
 import MunimjiDrawer from "./components/MunimjiDrawer";
@@ -982,8 +982,8 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
             <span className="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 hidden sm:inline-block"></span>
-            <span className="text-xs font-semibold text-slate-600 font-sans truncate max-w-[150px] sm:max-w-none">
-              Online {dbState.business?.businessType ? `• ${dbState.business.businessType}` : ""}
+            <span className="text-xs font-semibold text-slate-600 font-sans truncate max-w-[200px] sm:max-w-none">
+              Online {dbState.business?.businessType ? `• ${BUSINESS_TYPES.find(b => b.id === dbState.business.businessType)?.label || dbState.business.businessType}` : ""}
             </span>
           </div>
 

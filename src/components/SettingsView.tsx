@@ -663,6 +663,17 @@ export default function SettingsView({
                 ))}
               </select>
               <p className="text-[11px] text-slate-400 mt-1">व्यवसायाचा प्रकार निवडल्यास त्यानुसार हॉटेल टेबल मॅनेजमेंट, रेस्टॉरंट KOT किंवा बारकोड फीचर्स सक्रिय होतात.</p>
+              {formData.businessType && (
+                <div className="mt-2.5 p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2.5">
+                  <div className="w-5 h-5 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0 font-bold text-[10px] mt-0.5">✓</div>
+                  <div>
+                    <span className="font-bold block text-emerald-950">सक्रिय व्यवसाय मोड (Active Business Mode):</span>
+                    <p className="text-emerald-800 text-[11px] mt-0.5">
+                      {BUSINESS_TYPES.find(b => b.id === formData.businessType)?.desc || "Customized retail & billing features enabled."}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* GSTIN and State side-by-side */}
