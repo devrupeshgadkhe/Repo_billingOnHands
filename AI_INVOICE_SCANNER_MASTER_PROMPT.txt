@@ -1,0 +1,376 @@
+# MASTER PROMPT: PURE GEMINI AI INVOICE SCANNER WITH QUOTA-BASED VISIBILITY
+
+Implement an automated Purchase Bill / Tax Invoice Scanner in my existing application using official Google Gemini AI. Follow these exact technical requirements and architecture:
+
+---
+
+## 1. Core Architectural Requirements & Rules
+1. **Pure Gemini AI Only:**
+   - Do NOT use any local or JS-based OCR libraries (no Tesseract.js, no pdf-parse text regexes, etc.).
+   - Rely solely on the official Google GenAI multimodal vision capabilities to extract structured invoice data directly from images (JPG, PNG, WEBP) and PDFs.
+2. **Quota-Based Dynamic Button Visibility:**
+   - The "Scan Bill" / "AI Scan" button must ONLY be visible on the Purchase / Invoice view if valid Gemini API credits are available.
+   - If the API key is missing, leaked/revoked (HTTP 403), or the daily/rate quota is exceeded (HTTP 429), the button MUST be completely hidden/invisible from the UI.
+   - Users should never see a broken scan button or encounter quota crash errors.
+
+---
+
+## 2. Backend Implementation (Node.js / Express or API Route)
+
+### A. Dependency:
+Install the official modern SDK:
+```bash
+npm install @google/genai
+```
+
+### B. Server-Side Key & Client Setup:
+```typescript
+import { GoogleGenAI, Type } from "@google/genai";
+
+export function getGenAIClient(): GoogleGenAI | null {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) return null;
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'invoice-scanner-app'
+      }
+    }
+  });
+}
+```
+
+### C. Endpoint 1: Health & Quota Checker (`GET /api/ai/quota-status`)
+Check API key validity and quota balance with a low-cost, 1-token test probe:
+```typescript
+app.get("/api/ai/quota-status", async (req, res) => {
+  const ai = getGenAIClient();
+  if (!ai) {
+    return res.json({ available: false, quotaExceeded: false, reason: "NO_API_KEY" });
+  }
+
+  try {
+    // Probe API with minimal tokens to test connectivity & quota
+    await ai.models.generateContent({
+      model: "gemini-3.1-flash-lite",
+      contents: "ping",
+      config: { maxOutputTokens: 1 }
+    });
+    return res.json({ available: true, quotaExceeded: false });
+  } catch (err: any) {
+    const status = err.status || err.code;
+    const msg = (err.message || "").toLowerCase();
+    
+    // Check for 403 (invalid / leaked key) or 429 (quota exhausted)
+    const isQuotaOrAuthError = 
+      status === 403 || 
+      status === 429 || 
+      msg.includes("quota") || 
+      msg.includes("leaked") || 
+      msg.includes("resource_exhausted");
+
+    return res.json({
+      available: false,
+      quotaExceeded: isQuotaOrAuthError,
+      reason: isQuotaOrAuthError ? "QUOTA_OR_AUTH_UNAVAILABLE" : "UNKNOWN_ERROR"
+    });
+  }
+});
+```
+
+### D. Endpoint 2: Document Parser (`POST /api/ai/parse-invoice`)
+Accept base64 file data and extract structured GST purchase data with a strict JSON schema:
+```typescript
+app.post("/api/ai/parse-invoice", async (req, res) => {
+  const { fileBase64, mimeType } = req.body || {};
+
+  if (!fileBase64 || !mimeType) {
+    return res.status(400).json({ error: "File data (base64) and MIME type are required." });
+  }
+
+  const ai = getGenAIClient();
+  if (!ai) {
+    return res.status(503).json({ error: "AI scanner service is not configured." });
+  }
+
+  const invoiceSchema = {
+    type: Type.OBJECT,
+    properties: {
+      supplierName: { type: Type.STRING, description: "Vendor or Supplier business name" },
+      supplierGstin: { type: Type.STRING, description: "15-digit GSTIN if available" },
+      supplierAddress: { type: Type.STRING, description: "Supplier full address" },
+      supplierPhone: { type: Type.STRING, description: "Supplier contact number" },
+      supplierEmail: { type: Type.STRING, description: "Supplier email address" },
+      invoiceNumber: { type: Type.STRING, description: "Bill / Invoice Number" },
+      invoiceDate: { type: Type.STRING, description: "Invoice date formatted as YYYY-MM-DD" },
+      items: {
+        type: Type.ARRAY,
+        description: "List of purchased items / products",
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING, description: "Product description / name" },
+            hsn: { type: Type.STRING, description: "HSN / SAC Code" },
+            quantity: { type: Type.NUMBER, description: "Quantity purchased" },
+            unit: { type: Type.STRING, description: "Unit of measurement (e.g. PCS, NOS, BOX, KG)" },
+            rate: { type: Type.NUMBER, description: "Unit price / rate before tax" },
+            discount: { type: Type.NUMBER, description: "Item level discount amount" },
+            gstRate: { type: Type.NUMBER, description: "GST percentage rate (e.g. 0, 5, 12, 18, 28)" },
+            taxableAmount: { type: Type.NUMBER, description: "Taxable value before tax" },
+            totalAmount: { type: Type.NUMBER, description: "Line total including taxes" }
+          },
+          required: ["name", "quantity", "rate", "gstRate", "totalAmount"]
+        }
+      },
+      subtotal: { type: Type.NUMBER, description: "Total taxable amount before tax" },
+      taxAmount: { type: Type.NUMBER, description: "Total GST amount" },
+      grandTotal: { type: Type.NUMBER, description: "Net payable invoice total" }
+    },
+    required: ["supplierName", "invoiceNumber", "items", "grandTotal"]
+  };
+
+  const candidateModels = [
+    "gemini-3.1-flash-lite",
+    "gemini-3.8-flash",
+    "gemini-flash-latest"
+  ];
+
+  let parsedData: any = null;
+  let lastError: any = null;
+
+  for (const model of candidateModels) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: {
+          parts: [
+            { inlineData: { mimeType, data: fileBase64 } },
+            {
+              text: `You are an expert purchase invoice and GST receipt parser. 
+Extract all invoice details, vendor info, invoice number, invoice date (in YYYY-MM-DD format), and all line items.
+Conform strictly to the provided JSON schema.`
+            }
+          ]
+        },
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: invoiceSchema
+        }
+      });
+
+      const text = response.text?.trim() || "{}";
+      parsedData = JSON.parse(text);
+      if (parsedData && parsedData.items && parsedData.items.length > 0) {
+        break;
+      }
+    } catch (err: any) {
+      lastError = err;
+      const status = err.status || err.code;
+      // If quota exceeded or permission denied, exit model retry loop early
+      if (status === 403 || status === 429) break;
+    }
+  }
+
+  if (!parsedData || !parsedData.items || parsedData.items.length === 0) {
+    const isQuota = lastError?.status === 429 || (lastError?.message || "").includes("quota");
+    const isAuth = lastError?.status === 403;
+    const errorMsg = isQuota
+      ? "Daily AI scanning quota exceeded. Please enter bill details manually."
+      : isAuth
+      ? "AI Scanner API key is invalid or expired."
+      : "Unable to detect invoice items. Please upload a clear photo or PDF.";
+
+    return res.status(422).json({ error: errorMsg });
+  }
+
+  return res.json(parsedData);
+});
+```
+
+---
+
+## 3. Frontend Implementation (React / TypeScript)
+
+### A. Fetch Quota Status in Purchase View:
+```tsx
+import React, { useState, useEffect } from "react";
+import { InvoiceUploadModal } from "./InvoiceUploadModal";
+
+export const PurchaseInvoiceView: React.FC = () => {
+  const [isScanAvailable, setIsScanAvailable] = useState<boolean>(false);
+  const [isScanModalOpen, setIsScanModalOpen] = useState<boolean>(false);
+
+  // Check quota availability on mount
+  useEffect(() => {
+    let isMounted = true;
+    fetch("/api/ai/quota-status")
+      .then(res => res.json())
+      .then(data => {
+        if (isMounted) {
+          setIsScanAvailable(Boolean(data && data.available === true));
+        }
+      })
+      .catch(() => {
+        if (isMounted) setIsScanAvailable(false);
+      });
+
+    return () => { isMounted = false; };
+  }, []);
+
+  const handleScanComplete = (scannedInvoice: any) => {
+    // Populate your state/form with scannedInvoice:
+    // scannedInvoice.supplierName, supplierGstin, invoiceNumber, invoiceDate, items, etc.
+    setIsScanModalOpen(false);
+  };
+
+  return (
+    <div className="p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-xl font-bold">New Purchase Bill</h1>
+
+        {/* Dynamic button visibility: Only rendered if AI credits are available */}
+        {isScanAvailable && (
+          <button
+            type="button"
+            onClick={() => setIsScanModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium shadow transition-colors"
+          >
+            <span>📷</span>
+            <span>Scan Purchase Bill (AI)</span>
+          </button>
+        )}
+      </div>
+
+      {/* Bill creation form inputs ... */}
+
+      {isScanModalOpen && (
+        <InvoiceUploadModal
+          onClose={() => setIsScanModalOpen(false)}
+          onSuccess={handleScanComplete}
+          onQuotaExceeded={() => setIsScanAvailable(false)}
+        />
+      )}
+    </div>
+  );
+};
+```
+
+### B. Upload Modal Component (`InvoiceUploadModal.tsx`):
+```tsx
+import React, { useState } from "react";
+
+interface InvoiceUploadModalProps {
+  onClose: () => void;
+  onSuccess: (data: any) => void;
+  onQuotaExceeded?: () => void;
+}
+
+export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
+  onClose,
+  onSuccess,
+  onQuotaExceeded
+}) => {
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+      setError(null);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file) {
+      setError("Please select an invoice image or PDF file.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        const base64Data = (reader.result as string).split(",")[1];
+        const mimeType = file.type || "application/pdf";
+
+        const res = await fetch("/api/ai/parse-invoice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ fileBase64: base64Data, mimeType })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          if (res.status === 403 || res.status === 429) {
+            onQuotaExceeded?.();
+          }
+          throw new Error(data.error || "Failed to scan invoice.");
+        }
+
+        onSuccess(data);
+      };
+      reader.onerror = () => {
+        setError("Error reading file. Please try again.");
+        setLoading(false);
+      };
+    } catch (err: any) {
+      setError(err.message || "Scanning failed.");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+          AI Invoice Scanner
+        </h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+          Upload a clear photo (JPG, PNG) or PDF of the vendor purchase bill.
+        </p>
+
+        {error && (
+          <div className="p-3 mb-4 rounded-lg bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300 text-sm">
+            {error}
+          </div>
+        )}
+
+        <input
+          type="file"
+          accept="image/*,application/pdf"
+          onChange={handleFileChange}
+          disabled={loading}
+          className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 dark:file:bg-indigo-950 dark:file:text-indigo-300 cursor-pointer"
+        />
+
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="px-4 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={loading || !file}
+            className="px-5 py-2 text-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg font-medium transition-colors"
+          >
+            {loading ? "Scanning with AI..." : "Scan & Extract"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+```
+
+Please generate or apply this implementation to my project.

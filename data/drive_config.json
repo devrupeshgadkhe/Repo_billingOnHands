@@ -1,0 +1,7 @@
+{
+  "targetAccount": "pradipayanbackup@gmail.com",
+  "targetFolder": "BillingOnHand_Backups",
+  "webhookUrl": "https://script.google.com/macros/s/AKfycbyAYKVB5xsVTtyKjQv1R-9sSRKsCJo8VZFHZPgqCaKOHZYpbRQJI_PgFvGACKZ32r8/exec",
+  "deploymentId": "AKfycbyAYKVB5xsVTtyKjQv1R-9sSRKsCJo8VZFHZPgqCaKOHZYpbRQJI_PgFvGACKZ32r8",
+  "lastSyncStatus": "Automated Cloud Backup Active"
+}
