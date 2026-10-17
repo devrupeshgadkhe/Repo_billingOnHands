@@ -96,7 +96,7 @@ export async function sendMunimjiCommand(params: {
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error || "मुनीमजीशी संपर्क करताना त्रुटी आली.");
+    throw new Error(data.error || "Failed to communicate with Munimji AI.");
   }
   return data;
 }
@@ -110,7 +110,7 @@ export async function executeMunimjiAction(actionType: string, payload: any): Pr
 
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data.error || "ॲक्शन पूर्ण करताना अडचण आली.");
+    throw new Error(data.error || "Failed to execute Munimji action.");
   }
   return data;
 }

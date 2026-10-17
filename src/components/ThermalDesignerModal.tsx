@@ -46,7 +46,7 @@ export const DEFAULT_THERMAL_CONFIG: ThermalPrintConfig = {
   // Header
   showLogo: true,
   logoHeight: 50,
-  headerGreeting: "|| श्री गणेशाय नमः ||",
+  headerGreeting: "WELCOME",
   showBusinessName: true,
   businessNameSize: "large",
   showAddress: true,
@@ -97,8 +97,8 @@ export const DEFAULT_THERMAL_CONFIG: ThermalPrintConfig = {
   bankIfsc: "",
   bankBranch: "",
   showTerms: true,
-  termsAndConditions: "१. विकलेला माल बिलाशिवाय परत घेतला जाणार नाही.\n२. सर्व वाद स्थानिक न्यायालयाच्या अधिकार कक्षेत.",
-  footerNote: "धन्यवाद! पुन्हा भेट द्या • Thank You! Visit Again!",
+  termsAndConditions: "1. Goods once sold cannot be returned without original invoice.\n2. Subject to local jurisdiction.",
+  footerNote: "Thank You! Visit Again!",
   showBarcode: true,
   cutterFeedLines: 2
 };
@@ -107,8 +107,8 @@ export const PRESET_CONFIGS: Record<string, Partial<ThermalPrintConfig>> = {
   retail_standard: {
     paperWidth: "80mm",
     templatePreset: "retail_standard",
-    headerGreeting: "|| श्री गणेशाय नमः ||",
-    language: "bilingual",
+    headerGreeting: "WELCOME",
+    language: "en",
     showLogo: true,
     showHsn: true,
     showBatch: true,
@@ -134,8 +134,8 @@ export const PRESET_CONFIGS: Record<string, Partial<ThermalPrintConfig>> = {
   medical_batch: {
     paperWidth: "80mm",
     templatePreset: "medical_batch",
-    headerGreeting: "|| श्री स्वामी समर्थ ||",
-    language: "bilingual",
+    headerGreeting: "HEALTHCARE & PHARMACY",
+    language: "en",
     showDrugLicense: true,
     showBatch: true,
     showExpiry: true,
@@ -229,13 +229,13 @@ export default function ThermalDesignerModal({
     invoiceNumber: "INV-2026-089",
     date: new Date().toISOString().split("T")[0],
     partyId: "p_1",
-    partyName: "राजेश पाटील (Rajesh Patil)",
+    partyName: "Rajesh Patil (Customer)",
     partyGstin: "27AABCP1234F1Z5",
     type: "sale",
     items: [
       {
         itemId: "it_1",
-        itemName: "फॉर्च्युन सनफ्लॉवर तेल (1L)",
+        itemName: "Fortune Sunflower Oil (1L)",
         hsn: "1512",
         quantity: 2,
         unit: "LTR",
@@ -253,7 +253,7 @@ export default function ThermalDesignerModal({
       },
       {
         itemId: "it_2",
-        itemName: "पतंजली गायीचे तूप (500g)",
+        itemName: "Patanjali Pure Cow Ghee (500g)",
         hsn: "0405",
         quantity: 1,
         unit: "PCS",
@@ -271,7 +271,7 @@ export default function ThermalDesignerModal({
       },
       {
         itemId: "it_3",
-        itemName: "टाटा मीठ (Tata Salt 1kg)",
+        itemName: "Tata Salt Iodized (1kg)",
         hsn: "2501",
         quantity: 3,
         unit: "PCS",
@@ -448,7 +448,7 @@ export default function ThermalDesignerModal({
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5">
-                सानुकूल थर्मल प्रिंटर लेआउट, लोगो, QR कोड, आणि मराठी/इंग्रजी पावती एडिटर
+                Custom thermal printer layout, logo, QR code, and receipt designer
               </p>
             </div>
           </div>
@@ -481,7 +481,7 @@ export default function ThermalDesignerModal({
                 }`}
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Presets (थीम्स)</span>
+                <span>Presets</span>
               </button>
 
               <button
@@ -492,7 +492,7 @@ export default function ThermalDesignerModal({
                 }`}
               >
                 <Building2 className="w-3.5 h-3.5" />
-                <span>Header (शीर्षक)</span>
+                <span>Header</span>
               </button>
 
               <button
@@ -572,9 +572,9 @@ export default function ThermalDesignerModal({
                           onChange={(e) => updateConfig('language', e.target.value)}
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white font-bold"
                         >
-                          <option value="bilingual">मराठी + English (Bilingual Standard)</option>
-                          <option value="mr">केवळ मराठी (Marathi Only)</option>
-                          <option value="en">English Only</option>
+                          <option value="en">English (Default)</option>
+                          <option value="bilingual">Bilingual (Marathi + English)</option>
+                          <option value="mr">Marathi Only</option>
                         </select>
                       </div>
                     </div>
@@ -583,7 +583,7 @@ export default function ThermalDesignerModal({
                   <div>
                     <h4 className="font-bold text-slate-800 uppercase tracking-wider text-[11px] mb-2 flex items-center space-x-1.5">
                       <Sparkles className="w-4 h-4 text-amber-500" />
-                      <span>Ready-Made Industry Templates (१-क्लिक लेआउट)</span>
+                      <span>Ready-Made Industry Templates (1-Click Layouts)</span>
                     </h4>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -628,7 +628,7 @@ export default function ThermalDesignerModal({
                         type="text"
                         value={config.headerGreeting}
                         onChange={(e) => updateConfig('headerGreeting', e.target.value)}
-                        placeholder="e.g. || श्री गणेशाय नमः || or WELCOME"
+                        placeholder="e.g. WELCOME or SEASON GREETINGS"
                         className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
                       />
                     </div>
@@ -723,7 +723,7 @@ export default function ThermalDesignerModal({
                         type="text"
                         value={config.customHeaderNote || ""}
                         onChange={(e) => updateConfig('customHeaderNote', e.target.value)}
-                        placeholder="e.g. सर्व प्रकारच्या किराणा व धान्याचे ठोक व किरकोळ विक्रेते"
+                        placeholder="e.g. Wholesalers & Retailers"
                         className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
                       />
                     </div>
@@ -846,7 +846,7 @@ export default function ThermalDesignerModal({
                           onChange={(e) => updateConfig('showRate', e.target.checked)}
                           className="w-4 h-4 rounded text-indigo-600"
                         />
-                        <span className="text-slate-700">Show Unit Rate (दर)</span>
+                        <span className="text-slate-700">Show Unit Rate</span>
                       </label>
 
                       <label className="flex items-center space-x-2 cursor-pointer">
@@ -917,8 +917,8 @@ export default function ThermalDesignerModal({
                         onChange={(e) => updateConfig('itemSpacing', e.target.value as any)}
                         className="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white"
                       >
-                        <option value="comfortable">Comfortable Spacing (वाचायला सोपे)</option>
-                        <option value="compact">Ultra-Compact (कमी कागद खर्च)</option>
+                        <option value="comfortable">Comfortable Spacing</option>
+                        <option value="compact">Ultra-Compact (Paper Saver)</option>
                       </select>
                     </div>
                   </div>
@@ -1033,42 +1033,42 @@ export default function ThermalDesignerModal({
                       {config.showBankDetails && (
                         <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                           <div>
-                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">बँकेचे नाव (Bank Name)</label>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Bank Name</label>
                             <input
                               type="text"
                               value={config.bankName || ""}
                               onChange={(e) => updateConfig('bankName', e.target.value)}
-                              placeholder="उदा. State Bank of India"
+                              placeholder="e.g. State Bank of India"
                               className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-medium"
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">खाते क्रमांक (Account Number)</label>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Account Number</label>
                             <input
                               type="text"
                               value={config.bankAccountNo || ""}
                               onChange={(e) => updateConfig('bankAccountNo', e.target.value)}
-                              placeholder="उदा. 30123456789"
+                              placeholder="e.g. 30123456789"
                               className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-mono font-bold"
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">IFSC कोड (IFSC Code)</label>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">IFSC Code</label>
                             <input
                               type="text"
                               value={config.bankIfsc || ""}
                               onChange={(e) => updateConfig('bankIfsc', e.target.value.toUpperCase())}
-                              placeholder="उदा. SBIN0001234"
+                              placeholder="e.g. SBIN0001234"
                               className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white font-mono font-bold uppercase"
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">बँक शाखा (Branch)</label>
+                            <label className="block text-[11px] font-semibold text-slate-700 mb-1">Bank Branch</label>
                             <input
                               type="text"
                               value={config.bankBranch || ""}
                               onChange={(e) => updateConfig('bankBranch', e.target.value)}
-                              placeholder="उदा. Main Market Branch"
+                              placeholder="e.g. Main Market Branch"
                               className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white"
                             />
                           </div>
@@ -1077,7 +1077,7 @@ export default function ThermalDesignerModal({
                     </div>
 
                     <div className="pt-2">
-                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Terms & Conditions (अटी व शर्ती)</label>
+                      <label className="block text-[11px] font-semibold text-slate-700 mb-1">Terms &amp; Conditions</label>
                       <textarea
                         rows={2}
                         value={config.termsAndConditions}
@@ -1092,7 +1092,7 @@ export default function ThermalDesignerModal({
                         type="text"
                         value={config.footerNote}
                         onChange={(e) => updateConfig('footerNote', e.target.value)}
-                        placeholder="e.g. धन्यवाद! पुन्हा भेट द्या • Thank You! Visit Again!"
+                        placeholder="e.g. Thank You! Visit Again!"
                         className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs"
                       />
                     </div>
@@ -1232,8 +1232,8 @@ export default function ThermalDesignerModal({
 
               {/* Items Table Header */}
               <div className="flex justify-between font-bold text-[10px] border-b border-black pb-0.5">
-                <span>{config.language === "mr" ? "तपशील / वस्तू" : "Item Description"}</span>
-                <span>{config.language === "mr" ? "रक्कम" : "Amount"}</span>
+                <span>{config.language === "mr" ? "Item / Particulars" : "Item Description"}</span>
+                <span>{config.language === "mr" ? "Amount" : "Amount"}</span>
               </div>
 
               {/* Items Rows */}
@@ -1287,7 +1287,7 @@ export default function ThermalDesignerModal({
                 
                 {/* Hero Grand Total */}
                 <div className="border-t-2 border-black my-1 pt-1 flex justify-between font-black text-xs">
-                  <span>{config.language === "mr" ? "एकूण रक्कम (TOTAL):" : "GRAND TOTAL:"}</span>
+                  <span>GRAND TOTAL:</span>
                   <span className="text-sm font-mono">₹{dummyInvoice.totalAmount.toFixed(2)}</span>
                 </div>
 
@@ -1372,11 +1372,11 @@ export default function ThermalDesignerModal({
             {savedSuccess && (
               <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full font-bold flex items-center gap-1 animate-bounce">
                 <Check className="w-3.5 h-3.5" />
-                <span>थर्मल लेआउट यशस्वीरीत्या सेव्ह झाला!</span>
+                <span>Thermal layout saved successfully!</span>
               </span>
             )}
             {!savedSuccess && (
-              <span>थर्मल डिझाइन बदलल्यास ते आपोआप सर्व बिलांवर लागू होईल.</span>
+              <span>Thermal layout changes will automatically apply to all receipts.</span>
             )}
           </div>
 

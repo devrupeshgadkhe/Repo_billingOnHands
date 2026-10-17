@@ -544,7 +544,7 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
 
   const defaultGodown: Godown = {
     id: "godown_main",
-    name: "Main Store / मुख्य दुकान",
+    name: "Main Store",
     address: business.address || "Main Store Counter",
     managerName: "Store In-charge",
     phone: business.phone || "",
@@ -1581,7 +1581,7 @@ app.post("/api/db/hard-reset", (req, res) => {
 
     const cleanSlate: DatabaseState = {
       business: currentDb.business || {
-        name: "माझे दुकान / माय स्टोअर",
+        name: "My Store",
         gstin: "",
         address: "",
         state: "Maharashtra",
@@ -1612,12 +1612,12 @@ app.post("/api/db/hard-reset", (req, res) => {
     console.log("[Database] Hard reset performed. Database completely wiped to a clean slate.");
     res.json({
       success: true,
-      message: "सर्व डेटाबेस यशस्वीरीत्या पुसला गेला आहे. सॉफ्टवेअर आता नवीन नोंदींसाठी १००% सज्ज आहे.",
+      message: "Database has been reset successfully. Software is ready for fresh entries.",
       db: cleanSlate
     });
   } catch (err: any) {
     console.error("Hard reset failed", err);
-    res.status(500).json({ error: "हार्ड रिसेट करताना त्रुटी आली: " + (err?.message || "Internal server error") });
+    res.status(500).json({ error: "Hard reset failed: " + (err?.message || "Internal server error") });
   }
 });
 
@@ -2669,7 +2669,7 @@ export async function verifyGeminiAvailability(): Promise<boolean> {
 
 // User-friendly error formatter that eliminates raw JSON traces
 function formatScannerError(err: any): string {
-  if (!err) return "बिलाचे वाचन करताना अडचण आली. कृपया पुन्हा प्रयत्न करा.";
+  if (!err) return "Could not read the document. Please try again.";
   const raw = typeof err === "string" ? err : (err.message || "");
   const lower = raw.toLowerCase();
 
@@ -2681,32 +2681,32 @@ function formatScannerError(err: any): string {
       if (parsed.error && parsed.error.message) {
         const innerMsg = parsed.error.message.toLowerCase();
         if (innerMsg.includes("high demand") || innerMsg.includes("unavailable") || parsed.error.code === 503) {
-          return "सर्व्हरवर सध्या जास्त गर्दी आहे. कृपया काही सेकंदांनी पुन्हा प्रयत्न करा.";
+          return "Server is currently experiencing high demand. Please try again in a few moments.";
         }
         if (innerMsg.includes("leaked") || innerMsg.includes("permission_denied") || parsed.error.code === 403) {
-          return "API की प्रमाणीकरण त्रुटी. कृपया अधिकृत API की तपासा.";
+          return "API key authorization error. Please verify your configured API key.";
         }
         if (innerMsg.includes("quota") || innerMsg.includes("resource_exhausted") || parsed.error.code === 429) {
-          return "आजची मोफत स्कॅनिंग मर्यादा पूर्ण झाली आहे. मर्यादा उद्या रिसेट होईल.";
+          return "Daily free AI scanning quota reached. Quota will reset tomorrow.";
         }
       }
     }
   } catch {}
 
   if (lower.includes("503") || lower.includes("high demand") || lower.includes("unavailable")) {
-    return "सर्व्हरवर सध्या जास्त गर्दी आहे. कृपया काही सेकंदांनी पुन्हा प्रयत्न करा.";
+    return "Server is currently experiencing high demand. Please try again in a few moments.";
   }
   if (lower.includes("429") || lower.includes("quota") || lower.includes("resource_exhausted")) {
-    return "आजची मोफत स्कॅनिंग मर्यादा पूर्ण झाली आहे. मर्यादा उद्या रिसेट होईल.";
+    return "Daily free AI scanning quota reached. Quota will reset tomorrow.";
   }
   if (lower.includes("403") || lower.includes("leaked") || lower.includes("permission")) {
-    return "API की प्रमाणीकरण अयशस्वी. कृपया अधिकृत API की तपासा.";
+    return "API key authorization error. Please verify your configured API key.";
   }
   if (lower.includes("format") || lower.includes("unsupported")) {
-    return "कृपया स्पष्ट JPG, PNG किंवा PDF फॉरमॅटमधील बिल निवडा.";
+    return "Please choose a clear JPG, PNG, WEBP, or PDF invoice.";
   }
 
-  return "बिलाचे वाचन करताना अडचण आली. कृपया बिलाचा स्पष्ट फोटो किंवा PDF निवडा.";
+  return "Could not read the document clearly. Please provide a clear invoice photo or PDF.";
 }
 
 // Discreet AI Engine Health Signature (Discreet status for owner without exposing keys)
@@ -2740,7 +2740,7 @@ app.post(["/api/ai/parse-invoice", "/api/scanner/parse-bill"], async (req, res) 
   const isAvailable = await verifyGeminiAvailability();
   if (!isAvailable) {
     return res.status(429).json({
-      error: "सध्या AI स्कॅनिंग उपलब्ध नाही किंवा आजची मोफत मर्यादा पूर्ण झाली आहे."
+      error: "AI scanning is currently unavailable or daily free quota has been exhausted."
     });
   }
 
@@ -2898,7 +2898,7 @@ app.post("/api/ai/parse-items-list", async (req, res) => {
   const isAvailable = await verifyGeminiAvailability();
   if (!isAvailable) {
     return res.status(429).json({
-      error: "सध्या AI स्कॅनिंग उपलब्ध नाही किंवा आजची मोफत मर्यादा पूर्ण झाली आहे."
+      error: "AI scanning is currently unavailable or daily free quota has been exhausted."
     });
   }
 
@@ -2926,10 +2926,10 @@ Extract all product items accurately from this handwritten notebook page, diary 
 CRITICAL GST & TAX EXTRACTION RULES:
 1. Extract the EXACT GST rate % written on the note for each item (0, 0.1, 0.25, 1.5, 3, 5, 6, 7.5, 12, 18, 28, 40).
 2. If split taxes are written (e.g. CGST 9% + SGST 9% or CGST 2.5% + SGST 2.5%), sum them together into total gstRate (9+9=18, 2.5+2.5=5, 6+6=12, 14+14=28).
-3. If tax amount is written (e.g., "किंमत 100 + GST 18 = 118" or "Tax Rs 5"), calculate exact gstRate % = (taxAmount / taxableAmount) * 100.
-4. If NO GST percentage is written or mentioned in the note (e.g., plain handwritten kirana / grocery list / general note), strictly set gstRate to 0 (0% GST). DO NOT invent or default to 18%.
-5. Extract item name (Marathi, Hindi, or English) exactly as written.
-6. Extract purchasePrice (खरेदी दर), salePrice (विक्री दर), mrp, wholesalePrice (घाऊक दर), stockQuantity (साठा), unit (PCS, KGS, GMS, LTR, BOX, BAG, MTR, SET), HSN code, brand, category.
+3. If tax amount is written, calculate exact gstRate % = (taxAmount / taxableAmount) * 100.
+4. If NO GST percentage is written or mentioned in the note, strictly set gstRate to 0 (0% GST). DO NOT invent or default to 18%.
+5. Extract item name accurately.
+6. Extract purchasePrice, salePrice, mrp, wholesalePrice, stockQuantity, unit (PCS, KGS, GMS, LTR, BOX, BAG, MTR, SET), HSN code, brand, category.
 7. If only one price is written, set both purchasePrice and salePrice to that amount.
 
 Return strictly valid JSON matching the schema.`
@@ -2995,7 +2995,7 @@ Return strictly valid JSON matching the schema.`
 
   if (!parsed || !parsed.items || parsed.items.length === 0) {
     return res.status(422).json({
-      error: formatScannerError(lastError) || "आयटम लिस्ट वाचता आली नाही."
+      error: formatScannerError(lastError) || "Could not read items list from image."
     });
   }
 
@@ -3012,7 +3012,7 @@ Return strictly valid JSON matching the schema.`
 
     return {
       ...it,
-      name: (it.name || "नवीन आयटम").trim(),
+      name: (it.name || "New Item").trim(),
       hsn: (it.hsn || "").trim(),
       purchasePrice: pPrice,
       salePrice: sPrice,
@@ -3142,19 +3142,19 @@ app.post("/api/migration/import-data", (req, res) => {
     writeDb(db);
     res.json({
       success: true,
-      message: `डेटा यशस्वीरीत्या आयात झाला. (नवीन: ${addedCount}, अपडेट: ${updatedCount})`,
+      message: `Data imported successfully. (New: ${addedCount}, Updated: ${updatedCount})`,
       added: addedCount,
       updated: updatedCount,
       total: addedCount + updatedCount
     });
   } catch (err: any) {
     console.error("Migration import error:", err);
-    res.status(500).json({ error: "डेटा आयात करताना त्रुटी आली: " + err.message });
+    res.status(500).json({ error: "Failed to import data: " + err.message });
   }
 });
 
 // ==========================================
-// डिजिटल मुनीमजी (Digital Munimji) APIs
+// Digital Munimji Assistant APIs
 // ==========================================
 
 // Get pool status, active keys, and rotation stats
@@ -3209,13 +3209,13 @@ app.post("/api/munimji/process", async (req, res) => {
   } catch (err: any) {
     console.error("[Munimji Process Error]:", err);
     res.status(500).json({ 
-      error: "मुनीमजीशी संपर्क करताना अडचण आली. कृपया पुन्हा प्रयत्न करा.",
+      error: "Failed to communicate with Munimji AI. Please try again.",
       details: err?.message || String(err)
     });
   }
 });
 
-// Helper to parse traditional Indian quantities and decimals (e.g. पाव, अर्धा किलो, तीन पाव, दीड, 200g, etc.)
+// Helper to parse traditional quantities and decimals (e.g. quarter, half, 1.5, 200g, etc.)
 function parseIndianQuantity(input: any): number {
   if (typeof input === "number") return isNaN(input) || input <= 0 ? 1 : input;
   if (!input) return 1;
@@ -3340,7 +3340,7 @@ function executeMunimjiUniversalCrud(
         for (const seg of segments) {
           if (!seg || seg.trim().length < 2) continue;
 
-          // Strip numbering labels like "आयटम 1", "Item 1", "पहिला", "1.", etc.
+          // Strip numbering labels like "1.", "Item 1", ordinal prefixes, etc.
           let cleanSeg = seg
             .replace(/^(?:(?:आयटम|item|वस्तू|प्रॉडक्ट)\s*(?:\d+|एक|दोन|तीन|चार|पाच|१|२|३|४|५|one|two|three)?[.:\-\s]*)/i, "")
             .replace(/^(?:(?:\d+|[०-९]+)[\.\)\-\:\s]+)/i, "")
@@ -3507,12 +3507,12 @@ function executeMunimjiUniversalCrud(
       }
 
       if (processedItems.length > 1) {
-        message = `मालक, एकूण ${processedItems.length} वस्तू इन्व्हेंटरी डेटाबेसमध्ये स्वतंत्रपणे सेव्ह केल्या आहेत: ${processedItems.map((i: any) => i.name).join(", ")}.`;
+        message = `Successfully saved ${processedItems.length} items to inventory database: ${processedItems.map((i: any) => i.name).join(", ")}.`;
         resultData = processedItems;
         modified = true;
       } else if (processedItems.length === 1) {
         const single = processedItems[0];
-        message = `'${single.name}' ही वस्तू इन्व्हेंटरी डेटाबेसमध्ये यशस्वीरीत्या ॲड केली आहे (विक्री भाव: ₹${single.salePrice}, खरेदी भाव: ₹${single.purchasePrice}).`;
+        message = `Item '${single.name}' successfully added to inventory (Sale Price: ₹${single.salePrice}, Purchase Price: ₹${single.purchasePrice}).`;
         resultData = single;
         modified = true;
       }
@@ -3537,7 +3537,7 @@ function executeMunimjiUniversalCrud(
 
       if (!item) {
         // Create new item with this stock so user stock update is never discarded
-        const newItemName = targetName || "नवीन वस्तू";
+        const newItemName = targetName || "New Item";
         item = {
           id: "item_" + Date.now(),
           name: newItemName,
@@ -3550,13 +3550,13 @@ function executeMunimjiUniversalCrud(
           unit: payload?.unit || "PCS"
         };
         db.items.push(item);
-        message = `'${item.name}' नवीन तयार करून तिचा साठा ${item.stockQuantity} ${item.unit} केला.`;
+        message = `Created new item '${item.name}' with initial stock of ${item.stockQuantity} ${item.unit}.`;
       } else {
         const prevStock = item.stockQuantity || 0;
         if (operation === "SET") item.stockQuantity = changeQty;
         else if (operation === "SUBTRACT") item.stockQuantity = Math.max(0, prevStock - changeQty);
         else item.stockQuantity = prevStock + changeQty;
-        message = `'${item.name}' चा साठा अपडेट केला. जुना साठा: ${prevStock}, नवीन साठा: ${item.stockQuantity} ${item.unit || "नग"}.`;
+        message = `Updated stock for '${item.name}'. Previous: ${prevStock}, New: ${item.stockQuantity} ${item.unit || "PCS"}.`;
       }
       resultData = item;
       modified = true;
@@ -3576,7 +3576,7 @@ function executeMunimjiUniversalCrud(
         if (payload?.purchasePrice !== undefined || payload?.costPrice !== undefined) {
           item.purchasePrice = Number(payload.purchasePrice ?? payload.costPrice);
         }
-        message = `'${item.name}' चे दर अपडेट केले. विक्री भाव: ₹${item.salePrice}, खरेदी भाव: ₹${item.purchasePrice}.`;
+        message = `Updated rates for '${item.name}'. Sale Price: ₹${item.salePrice}, Purchase Price: ₹${item.purchasePrice}.`;
         resultData = item;
         modified = true;
       }
@@ -3592,7 +3592,7 @@ function executeMunimjiUniversalCrud(
       );
       if (idx !== -1) {
         const removed = db.items.splice(idx, 1)[0];
-        message = `'${removed.name}' ही वस्तू इन्व्हेंटरीमधून काढून टाकली.`;
+        message = `Removed item '${removed.name}' from inventory.`;
         resultData = removed;
         modified = true;
       }
@@ -3672,13 +3672,13 @@ function executeMunimjiUniversalCrud(
             creditDays: Number(payload?.creditDays || 0) || undefined
           };
           db.parties.push(party);
-          message = `${party.type === "supplier" ? "सप्लायर" : "ग्राहक"} '${party.name}' चे खाते डेटाबेसमध्ये सेव्ह केले आहे.${party.phone ? ` (फोन: ${party.phone})` : ""}`;
+          message = `Saved ${party.type === "supplier" ? "supplier" : "customer"} account '${party.name}' to database.${party.phone ? ` (Phone: ${party.phone})` : ""}`;
         } else {
           if (phone) party.phone = phone;
           if (payload?.address) party.address = payload.address;
           if (payload?.type) party.type = isSupplier ? "supplier" : "customer";
           if (initialBalance !== 0) party.currentBalance = (party.currentBalance || 0) + initialBalance;
-          message = `'${party.name}' चे खाते आधीच अस्तित्वात आहे (माहिती अपडेट केली).`;
+          message = `Account for '${party.name}' already exists (details updated).`;
         }
         resultData = party;
         modified = true;
@@ -3692,7 +3692,7 @@ function executeMunimjiUniversalCrud(
       const idx = db.parties.findIndex((p: any) => (targetName && p.name.toLowerCase().includes(targetName)) || p.id === payload?.partyId);
       if (idx !== -1) {
         const removed = db.parties.splice(idx, 1)[0];
-        message = `'${removed.name}' चे खाते डेटाबेसमधून काढून टाकले.`;
+        message = `Removed account '${removed.name}' from database.`;
         resultData = removed;
         modified = true;
       }
@@ -3711,7 +3711,7 @@ function executeMunimjiUniversalCrud(
         notes: payload?.notes || userText || "Munimji logged expense"
       };
       db.transactions.push(newTx);
-      message = `₹${newTx.amount} चा '${newTx.category}' खर्च डेटाबेसमध्ये नोंदवला आहे.`;
+      message = `Recorded expense of ₹${newTx.amount} under '${newTx.category}'.`;
       resultData = newTx;
       modified = true;
     }
@@ -3744,7 +3744,7 @@ function executeMunimjiUniversalCrud(
         date: new Date().toISOString().split("T")[0],
         validUntil,
         partyId: payload?.partyId || "walkin_customer",
-        partyName: payload?.customerName || payload?.partyName || "ग्राहक (Customer)",
+        partyName: payload?.customerName || payload?.partyName || "Customer",
         partyGstin: "",
         items,
         subtotal: totalAmount,
@@ -3757,7 +3757,7 @@ function executeMunimjiUniversalCrud(
         notes: "Generated by Digital Munimji"
       };
       db.quotations.push(quotation);
-      message = `${quotation.partyName} साठी कोटेशन ${quoteNum} (₹${totalAmount}) तयार केले आहे.`;
+      message = `Created quotation ${quoteNum} (₹${totalAmount}) for ${quotation.partyName}.`;
       resultData = quotation;
       modified = true;
     }
@@ -3784,7 +3784,7 @@ function executeMunimjiUniversalCrud(
         challanNumber: chNum,
         date: new Date().toISOString().split("T")[0],
         partyId: payload?.partyId || "walkin_customer",
-        partyName: payload?.partyName || "ग्राहक / पार्टी",
+        partyName: payload?.partyName || "Customer / Party",
         partyGstin: "",
         purpose: "dispatch" as const,
         items,
@@ -3796,14 +3796,14 @@ function executeMunimjiUniversalCrud(
         notes: "Generated by Digital Munimji"
       };
       db.challans.push(challan);
-      message = `${challan.partyName} साठी डिलिव्हरी चलन ${chNum} तयार केले आहे.`;
+      message = `Created delivery challan ${chNum} for ${challan.partyName}.`;
       resultData = challan;
       modified = true;
     }
 
     // 10. SALES INVOICE / BILL
     else if (act.includes("OPEN_NEW_BILL")) {
-      message = "नवीन बिलिंग काउंटर उघडत आहे.";
+      message = "Opening new billing counter.";
       resultData = { action: "OPEN_NEW_BILL", targetTab: "sales" };
       return { success: true, message, data: resultData };
     }
@@ -3817,7 +3817,7 @@ function executeMunimjiUniversalCrud(
       if (!invoice.invoiceNumber) invoice.invoiceNumber = "INV-" + Date.now().toString().slice(-6);
       if (!invoice.date) invoice.date = new Date().toISOString().split("T")[0];
       if (!invoice.partyId) invoice.partyId = "walkin_customer";
-      if (!invoice.partyName) invoice.partyName = "रोख ग्राहक (Cash Customer)";
+      if (!invoice.partyName) invoice.partyName = "Cash Customer";
       invoice.type = "sales";
 
       const isNonGstBill = Boolean(
@@ -3862,7 +3862,7 @@ function executeMunimjiUniversalCrud(
           } else if (lineName) {
             // Dynamic Out-of-Catalog Item Auto-Addition with exact name
             const newId = "item_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-            const unitType = line.unit || (lineName.includes("तेल") || lineName.includes("oil") || lineName.includes("दूध") ? "LTR" : "PCS");
+            const unitType = line.unit || (lineName.toLowerCase().includes("oil") || lineName.toLowerCase().includes("milk") ? "LTR" : "PCS");
             const salePrice = Number(line.price || 100);
             const newProd = {
               id: newId,
@@ -3898,7 +3898,7 @@ function executeMunimjiUniversalCrud(
       }
 
       db.invoices.push(invoice as Invoice);
-      message = `सेल्स बिल ${invoice.invoiceNumber} (₹${invoice.totalAmount || 0}) यशस्वीरीत्या सेव्ह केले आहे.`;
+      message = `Sales bill ${invoice.invoiceNumber} (₹${invoice.totalAmount || 0}) saved successfully.`;
       resultData = invoice;
       modified = true;
     }
@@ -3936,7 +3936,7 @@ function executeMunimjiUniversalCrud(
       }
 
       db.invoices.push(invoice as Invoice);
-      message = `खरेदी बिल ${invoice.invoiceNumber} (₹${invoice.totalAmount || 0}) नोंदवले आणि साठा अपडेट केला.`;
+      message = `Purchase bill ${invoice.invoiceNumber} (₹${invoice.totalAmount || 0}) recorded and stock updated.`;
       resultData = invoice;
       modified = true;
     }
@@ -3944,7 +3944,7 @@ function executeMunimjiUniversalCrud(
     // 12. CREATE DYNAMIC OFFER / SCHEME
     else if (act.includes("OFFER_CREATE") || act.includes("CREATE_OFFER") || act.includes("ADD_OFFER") || act.includes("CREATE_SCHEME") || act.includes("ADD_SCHEME") || intent === "OFFER_CREATE") {
       if (!db.offers) db.offers = [];
-      const title = String(payload?.title || payload?.name || "नवीन विशेष ऑफर").trim();
+      const title = String(payload?.title || payload?.name || "Special Offer").trim();
       const type = String(payload?.type || "percentage_discount");
       const targetType = String(payload?.targetType || "all");
       const targetValue = String(payload?.targetValue || payload?.brand || payload?.category || payload?.itemName || "").trim();
@@ -3969,7 +3969,7 @@ function executeMunimjiUniversalCrud(
       };
 
       db.offers.push(newOffer);
-      message = `नवीन स्कीम/ऑफर '${newOffer.title}' सिस्टीममध्ये सक्रिय (Active) केली आहे.`;
+      message = `New scheme/offer '${newOffer.title}' is now active in system.`;
       resultData = newOffer;
       modified = true;
     }
@@ -3981,7 +3981,7 @@ function executeMunimjiUniversalCrud(
       const initialCount = db.offers.length;
       db.offers = db.offers.filter(o => o.id !== targetTitle && !o.title.toLowerCase().includes(targetTitle));
       if (db.offers.length < initialCount) {
-        message = `स्कीम/ऑफर सिस्टीममधून यशस्वीरीत्या काढून टाकली.`;
+        message = `Scheme/offer removed successfully.`;
         modified = true;
       }
     }
@@ -3994,39 +3994,39 @@ function executeMunimjiUniversalCrud(
       let targetTab = String(payload?.targetTab || payload?.tab || payload?.page || "").toLowerCase();
       if (!targetTab) {
         const textToSearch = (userText || replyText || "").toLowerCase();
-        if (textToSearch.includes("eway") || textToSearch.includes("e-way") || textToSearch.includes("ई-वे") || textToSearch.includes("einvoice") || textToSearch.includes("e-invoice")) {
-          targetTab = textToSearch.includes("चलन") || textToSearch.includes("challan") ? "challans" : "sales";
+        if (textToSearch.includes("eway") || textToSearch.includes("e-way") || textToSearch.includes("einvoice") || textToSearch.includes("e-invoice")) {
+          targetTab = textToSearch.includes("challan") ? "challans" : "sales";
         }
-        else if (textToSearch.includes("रिपोर्ट") || textToSearch.includes("report") || textToSearch.includes("gstr") || textToSearch.includes("daybook")) targetTab = "reports";
-        else if (textToSearch.includes("आयटम") || textToSearch.includes("प्रॉडक्ट") || textToSearch.includes("स्टॉक") || textToSearch.includes("इन्व्हेंटरी") || textToSearch.includes("item") || textToSearch.includes("inventory") || textToSearch.includes("product")) targetTab = "items";
-        else if (textToSearch.includes("ग्राहक") || textToSearch.includes("सप्लायर") || textToSearch.includes("पार्टी") || textToSearch.includes("खाते") || textToSearch.includes("party") || textToSearch.includes("customer") || textToSearch.includes("supplier")) targetTab = "parties";
-        else if (textToSearch.includes("विक्री") || textToSearch.includes("सेल") || textToSearch.includes("बिलिंग") || textToSearch.includes("pos") || textToSearch.includes("sale")) targetTab = "sales";
-        else if (textToSearch.includes("खरेदी") || textToSearch.includes("परचेस") || textToSearch.includes("purchase")) targetTab = "purchases";
-        else if (textToSearch.includes("कोटेशन") || textToSearch.includes("अंदाजपत्रक") || textToSearch.includes("quotation") || textToSearch.includes("quote")) targetTab = "quotations";
-        else if (textToSearch.includes("चलन") || textToSearch.includes("challan") || textToSearch.includes("डिलिव्हरी")) targetTab = "challans";
-        else if (textToSearch.includes("खर्च") || textToSearch.includes("उत्पन्न") || textToSearch.includes("expense") || textToSearch.includes("transaction")) targetTab = "transactions";
-        else if (textToSearch.includes("सेटिंग") || textToSearch.includes("बॅकअप") || textToSearch.includes("setting")) targetTab = "settings";
-        else if (textToSearch.includes("लॉयल्टी") || textToSearch.includes("loyalty") || textToSearch.includes("पॉईंट्स") || textToSearch.includes("points")) targetTab = "parties";
-        else if (textToSearch.includes("वापरकर्ता") || textToSearch.includes("युझर") || textToSearch.includes("user") || textToSearch.includes("access")) targetTab = "access_control";
+        else if (textToSearch.includes("report") || textToSearch.includes("gstr") || textToSearch.includes("daybook")) targetTab = "reports";
+        else if (textToSearch.includes("item") || textToSearch.includes("inventory") || textToSearch.includes("stock") || textToSearch.includes("product")) targetTab = "items";
+        else if (textToSearch.includes("party") || textToSearch.includes("customer") || textToSearch.includes("supplier") || textToSearch.includes("khata")) targetTab = "parties";
+        else if (textToSearch.includes("sale") || textToSearch.includes("pos") || textToSearch.includes("bill") || textToSearch.includes("invoice")) targetTab = "sales";
+        else if (textToSearch.includes("purchase") || textToSearch.includes("procurement")) targetTab = "purchases";
+        else if (textToSearch.includes("quotation") || textToSearch.includes("quote") || textToSearch.includes("estimate")) targetTab = "quotations";
+        else if (textToSearch.includes("challan") || textToSearch.includes("delivery")) targetTab = "challans";
+        else if (textToSearch.includes("expense") || textToSearch.includes("transaction")) targetTab = "transactions";
+        else if (textToSearch.includes("setting") || textToSearch.includes("backup")) targetTab = "settings";
+        else if (textToSearch.includes("loyalty") || textToSearch.includes("points")) targetTab = "parties";
+        else if (textToSearch.includes("user") || textToSearch.includes("access")) targetTab = "access_control";
         else targetTab = "dashboard";
       }
 
       const TAB_NAMES: Record<string, string> = {
-        dashboard: "डॅशबोर्ड",
-        items: "आयटम्स व इन्व्हेंटरी",
-        parties: "ग्राहक व सप्लायर (पार्टीज)",
-        quotations: "कोटेशन्स (अंदाजपत्रक)",
-        sales: "विक्री बिलिंग (Sales POS)",
-        challans: "डिलिव्हरी चलन",
-        purchases: "खरेदी बिले (Purchases)",
-        transactions: "खर्च व उत्पन्न नोंद",
-        reports: "रिपोर्ट्स व GST विश्लेषक",
-        settings: "सेटिंग्ज व प्रोफाईल",
-        access_control: "युझर ॲक्सेस कंट्रोल"
+        dashboard: "Dashboard",
+        items: "Items & Inventory",
+        parties: "Customers & Suppliers",
+        quotations: "Quotations / Estimates",
+        sales: "Sales Billing (POS)",
+        challans: "Delivery Challans",
+        purchases: "Purchases",
+        transactions: "Expenses & Transactions",
+        reports: "Reports & GST Analytics",
+        settings: "Settings & Profile",
+        access_control: "User Access Control"
       };
 
       const tabTitle = TAB_NAMES[targetTab] || targetTab;
-      message = `मालक, मी ${tabTitle} पेज उघडत आहे.`;
+      message = `Opening ${tabTitle} page.`;
       resultData = { targetTab, tabTitle };
       return { success: true, message, data: resultData };
     }
@@ -4063,15 +4063,15 @@ function executeMunimjiUniversalCrud(
               description: payload?.reason || "Munimji Voice Loyalty Adjustment"
             });
             modified = true;
-            message = `${party.name} यांच्या खात्यात ${addPts > 0 ? '+' + addPts : addPts} पॉईंट्स ॲडजस्ट केले. नवीन शिल्लक: ${party.loyaltyPoints} पॉईंट्स (मूल्य: ₹${(party.loyaltyPoints * rate).toFixed(2)}).`;
+            message = `Adjusted ${addPts > 0 ? '+' + addPts : addPts} loyalty points for ${party.name}. New balance: ${party.loyaltyPoints} points (Value: ₹${(party.loyaltyPoints * rate).toFixed(2)}).`;
           }
         } else {
-          message = `ग्राहक ${party.name} यांच्याकडे ${pts} लॉयल्टी पॉईंट्स शिल्लक आहेत (रोख मूल्य: ₹${rupeeVal}).`;
+          message = `Customer ${party.name} has ${pts} loyalty points (Cash value: ₹${rupeeVal}).`;
         }
         resultData = { party, loyaltyPoints: party.loyaltyPoints, valueInRupees: rupeeVal };
         return { success: true, message, data: resultData };
       } else {
-        message = `माफ करा, संबंधित ग्राहक सिस्टीममध्ये सापडला नाही.`;
+        message = `Customer not found in system.`;
         return { success: false, message };
       }
     }
@@ -4080,13 +4080,12 @@ function executeMunimjiUniversalCrud(
     else if (
       act.includes("EOD") || act.includes("SEND_EMAIL") || act.includes("DAILY_REPORT") ||
       act.includes("EMAIL_REPORT") || intent === "SEND_EOD_EMAIL" || intent === "DAILY_SUMMARY" ||
-      combinedContext.includes("ईमेल अहवाल") || combinedContext.includes("डे एंड") || combinedContext.includes("eod email") ||
-      combinedContext.includes("आजचा अहवाल पाठवा") || combinedContext.includes("ईमेल पाठवा")
+      combinedContext.includes("eod email") || combinedContext.includes("daily report") || combinedContext.includes("send report")
     ) {
       const summary = generateEodSummary(db);
       sendEodEmailReport(db).catch(e => console.warn("Munimji voice triggered email send error:", e));
       writeDb(db);
-      message = `आजचा डे-एंड सारांश तयार करण्यात आला आहे. एकूण विक्री: ₹${summary.sales.netSalesTotal.toFixed(2)} (${summary.sales.invoiceCount} बिले), रोख जमा: ₹${summary.sales.cashCollected.toFixed(2)}. मालकाच्या ईमेलवर अहवाल यशस्वीरीत्या पाठवला आहे!`;
+      message = `End-of-day summary generated. Total Sales: ₹${summary.sales.netSalesTotal.toFixed(2)} (${summary.sales.invoiceCount} invoices), Cash: ₹${summary.sales.cashCollected.toFixed(2)}. EOD report sent to owner email!`;
       resultData = { summary };
       return { success: true, message, data: resultData };
     }
@@ -4094,13 +4093,13 @@ function executeMunimjiUniversalCrud(
     // 17. GODOWN & STOCK TRANSFER (Phase 9)
     else if (
       act.includes("GODOWN") || act.includes("STOCK_TRANSFER") || act.includes("WAREHOUSE") ||
-      combinedContext.includes("गोदाम") || combinedContext.includes("गोडाऊन") || combinedContext.includes("स्टॉक ट्रान्सफर")
+      combinedContext.includes("godown") || combinedContext.includes("warehouse") || combinedContext.includes("stock transfer")
     ) {
       if (!db.godowns) db.godowns = [];
       const gCount = db.godowns.length;
       const tCount = (db.stockTransfers || []).length;
       const names = db.godowns.map(g => g.name).join(", ");
-      message = `आपल्याकडे एकूण ${gCount} गोदामांची नोंद आहे (${names}) आणि ${tCount} स्टॉक ट्रान्सफर व्हॉउचर्स आहेत.`;
+      message = `You have ${gCount} registered godowns (${names}) and ${tCount} stock transfer vouchers.`;
       resultData = { godowns: db.godowns, stockTransfers: db.stockTransfers || [] };
       return { success: true, message, data: resultData };
     }
@@ -4109,10 +4108,10 @@ function executeMunimjiUniversalCrud(
       writeDb(db);
       performAutoBackup(db);
       console.info(`[Munimji Real Database CRUD] Successfully committed action: ${act}`);
-      return { success: true, message: message || "कृती यशस्वीरीत्या पूर्ण झाली!", data: resultData };
+      return { success: true, message: message || "Action completed successfully!", data: resultData };
     }
 
-    return { success: false, message: "कोणताही बदल झाला नाही." };
+    return { success: false, message: "No changes made." };
   } catch (err: any) {
     console.error("[Munimji Universal CRUD Error]:", err);
     return { success: false, message: err?.message || "Failed to commit CRUD" };

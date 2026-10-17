@@ -719,11 +719,11 @@ export default function App() {
   const handleApplyMunimjiBill = (billData: any) => {
     // 1. Match party (defaults to walk-in cash customer for instant 1-click billing)
     let matchedPartyId = "walkin_customer";
-    let matchedPartyName = billData.customerName || "रोख ग्राहक (Cash Customer)";
+    let matchedPartyName = billData.customerName || "Cash Customer";
     let matchedPartyGstin = "";
 
     if (billData.customerName) {
-      const isCashWord = /cash|walk-in|रोख|काऊंटर|काउन्टर|किरकोळ/i.test(billData.customerName);
+      const isCashWord = /cash|walk-in|counter|retail/i.test(billData.customerName);
       if (!isCashWord) {
         const p = dbState?.parties?.find(party => 
           party.name.toLowerCase().includes(billData.customerName.toLowerCase()) ||
@@ -739,7 +739,7 @@ export default function App() {
 
     // 2. Map items
     const invoiceItems = (billData.items || []).map((it: any) => {
-      const itName = String(it.itemName || it.name || it.title || "वस्तू").trim();
+      const itName = String(it.itemName || it.name || it.title || "Product").trim();
       const matched = dbState?.items?.find(item => 
         item.name.toLowerCase() === itName.toLowerCase() ||
         item.name.toLowerCase().includes(itName.toLowerCase()) ||
@@ -898,10 +898,10 @@ export default function App() {
           </div>
           <div>
             <h2 className="text-base font-bold tracking-wider text-slate-100 uppercase font-mono">
-              {loadError ? "डेटाबेस जोडणी त्रुटी (Connection Notice)" : "Billing On Hand Engine सुरू होत आहे..."}
+              {loadError ? "Database Connection Notice" : "Starting Billing On Hand Engine..."}
             </h2>
             <p className="text-xs text-slate-400 mt-1">
-              {loadError ? loadError : "ऑफलाइन डेटाबेस व जीएसटी टॅक्स नियम लोड होत आहेत..."}
+              {loadError ? loadError : "Loading local offline database and GST tax rules..."}
             </p>
           </div>
 
@@ -913,19 +913,19 @@ export default function App() {
                 className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl shadow transition cursor-pointer flex items-center justify-center gap-2"
               >
                 <RefreshCw className="w-4 h-4" />
-                पुन्हा प्रयत्न करा (Retry Now)
+                Retry Connection Now
               </button>
               <button
                 type="button"
                 onClick={() => window.location.reload()}
                 className="w-full py-2 px-4 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs rounded-xl transition cursor-pointer"
               >
-                रिफ्रेश करा (Reload Page)
+                Reload Page
               </button>
             </div>
           ) : (
             <div className="text-[11px] text-slate-500 font-mono">
-              {retryAttempt > 0 ? `पुनःप्रयत्न सुरू आहे... (${retryAttempt}/5)` : "प्रारंभिक संरचना तपासत आहे..."}
+              {retryAttempt > 0 ? `Retrying connection... (${retryAttempt}/5)` : "Verifying local database structure..."}
             </div>
           )}
         </div>
@@ -1073,6 +1073,7 @@ export default function App() {
               onDeleteItem={handleDeleteItem}
               onRefreshDb={fetchState}
               permissions={session?.permissions?.items}
+              business={dbState.business}
             />
           )}
 
@@ -1189,8 +1190,6 @@ export default function App() {
           {activeTab === "tables" && (
             <TablesView
               tables={dbState.tables || []}
-              items={dbState.items}
-              business={dbState.business}
               onSaveTable={handleSaveTable}
               onDeleteTable={handleDeleteTable}
               onOpenTablePOS={(t) => {

@@ -648,8 +648,8 @@ export default function EWayBillModal({
                       onChange={(e) => setSupplyType(e.target.value as any)}
                       className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     >
-                      <option value="O">Outward (विक्री / पाठवणे)</option>
-                      <option value="I">Inward (खरेदी / येणे)</option>
+                      <option value="O">Outward (Sales / Dispatch)</option>
+                      <option value="I">Inward (Purchase / Return)</option>
                     </select>
                   </div>
 
@@ -660,14 +660,14 @@ export default function EWayBillModal({
                       onChange={(e) => setSubSupplyType(e.target.value)}
                       className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     >
-                      <option value="1">Supply (नियमित विक्री)</option>
-                      <option value="2">Import (आयात)</option>
-                      <option value="3">Export (निर्यात)</option>
-                      <option value="4">Job Work (जॉब वर्क)</option>
-                      <option value="5">For Own Use (स्वतःच्या वापरासाठी)</option>
+                      <option value="1">Supply (Regular Sale)</option>
+                      <option value="2">Import</option>
+                      <option value="3">Export</option>
+                      <option value="4">Job Work</option>
+                      <option value="5">For Own Use</option>
                       <option value="6">Recipient Not Known</option>
-                      <option value="7">Line Sales (फेरी विक्री)</option>
-                      <option value="8">Others (इतर)</option>
+                      <option value="7">Line Sales</option>
+                      <option value="8">Others</option>
                     </select>
                   </div>
 
@@ -694,7 +694,7 @@ export default function EWayBillModal({
                       onChange={(e) => setTransType(Number(e.target.value))}
                       className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     >
-                      <option value={1}>Regular (थेट व्यवहार)</option>
+                      <option value={1}>Regular</option>
                       <option value={2}>Bill To - Ship To</option>
                       <option value={3}>Bill From - Dispatch From</option>
                       <option value={4}>Combination of 2 & 3</option>
@@ -710,7 +710,7 @@ export default function EWayBillModal({
                 <div className="p-4 bg-blue-50/40 border border-blue-200/80 rounded-xl space-y-2.5 text-xs">
                   <div className="flex items-center space-x-1.5 font-bold text-blue-900 border-b border-blue-200 pb-1.5">
                     <Building2 className="w-4 h-4 text-blue-700" />
-                    <span>Part-A: Consignor / From (प्रेषक)</span>
+                    <span>Part-A: Consignor / From</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -785,7 +785,7 @@ export default function EWayBillModal({
                 <div className="p-4 bg-emerald-50/40 border border-emerald-200/80 rounded-xl space-y-2.5 text-xs">
                   <div className="flex items-center space-x-1.5 font-bold text-emerald-900 border-b border-emerald-200 pb-1.5">
                     <User className="w-4 h-4 text-emerald-700" />
-                    <span>Part-A: Consignee / To (प्राप्तकर्ता)</span>
+                    <span>Part-A: Consignee / To</span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -865,7 +865,7 @@ export default function EWayBillModal({
                 <div className="flex items-center justify-between border-b border-amber-200 pb-1.5">
                   <div className="flex items-center space-x-1.5 font-bold text-amber-900">
                     <Truck className="w-4 h-4 text-amber-700" />
-                    <span>Part-B: Transporter & Vehicle Details (वाहतूक माहिती)</span>
+                    <span>Part-B: Transporter &amp; Vehicle Details</span>
                   </div>
                   <span className="text-[10px] text-amber-800 font-semibold">Required for Movement Validation</span>
                 </div>
@@ -878,10 +878,10 @@ export default function EWayBillModal({
                       onChange={(e) => setTransMode(e.target.value)}
                       className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     >
-                      <option value="1">1 - Road (रस्ते वाहतूक)</option>
-                      <option value="2">2 - Rail (रेल्वे)</option>
-                      <option value="3">3 - Air (विमान)</option>
-                      <option value="4">4 - Ship (जलमार्ग)</option>
+                      <option value="1">1 - Road</option>
+                      <option value="2">2 - Rail</option>
+                      <option value="3">3 - Air</option>
+                      <option value="4">4 - Ship</option>
                     </select>
                   </div>
 
@@ -927,7 +927,7 @@ export default function EWayBillModal({
                       onChange={(e) => setVehicleType(e.target.value as any)}
                       className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     >
-                      <option value="R">Regular (नियमित)</option>
+                      <option value="R">Regular</option>
                       <option value="O">Over Dimensional Cargo (ODC)</option>
                     </select>
                   </div>
@@ -1015,8 +1015,8 @@ export default function EWayBillModal({
                       onChange={(e) => setEinvRegRev(e.target.value as any)}
                       className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg bg-white"
                     >
-                      <option value="N">No (सामान्य)</option>
-                      <option value="Y">Yes (रिव्हर्स चार्ज लागू)</option>
+                      <option value="N">No (Standard)</option>
+                      <option value="Y">Yes (Reverse Charge Applicable)</option>
                     </select>
                   </div>
 

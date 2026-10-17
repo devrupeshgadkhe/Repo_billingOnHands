@@ -105,7 +105,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
     if (!inputWebhookUrl.trim()) {
       setActionMessage({
         type: "error",
-        text: "कृपया Google Apps Script Webhook URL प्रविष्ट करा."
+        text: "Please enter a valid Google Apps Script Webhook URL."
       });
       return;
     }
@@ -116,14 +116,14 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
       const res = await saveDriveWebhookConfig(inputWebhookUrl.trim());
       setActionMessage({
         type: "success",
-        text: `गुगल ड्राईव्ह यशस्वीरीत्या लिंक झाले! (${TARGET_BACKUP_EMAIL}). टेस्ट बॅकअप स्नॅपशॉट तात्काळ तयार करण्यात आला.`
+        text: `Google Drive linked successfully! (${TARGET_BACKUP_EMAIL}). Test backup snapshot created immediately.`
       });
       setShowSetupGuide(false);
       await loadFiles();
     } catch (err: any) {
       setActionMessage({
         type: "error",
-        text: err.message || "Webhook URL सेव्ह करताना त्रुटी आली."
+        text: err.message || "Failed to save Webhook URL."
       });
     } finally {
       setIsSavingConfig(false);
@@ -138,15 +138,15 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
       const result = await uploadBackupToGoogleDrive(currentDb, true);
       setActionMessage({
         type: "success",
-        text: `बॅकअप यशस्वीरीत्या तयार झाला: ${result.fileName}${
-          status.isConfigured ? ` (आणि ${TARGET_BACKUP_EMAIL} गुगल ड्राईव्हवर सेव्ह झाला)` : " (सिस्टममध्ये सुरक्षित सेव्ह झाला)."
+        text: `Backup created successfully: ${result.fileName}${
+          status.isConfigured ? ` (and saved to ${TARGET_BACKUP_EMAIL} Google Drive)` : " (saved securely in system)."
         }`
       });
       await loadFiles();
     } catch (err: any) {
       setActionMessage({
         type: "error",
-        text: err.message || "बॅकअप तयार करताना त्रुटी आली."
+        text: err.message || "Failed to create backup."
       });
     } finally {
       setIsProcessingAction(false);
@@ -168,9 +168,9 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
   const handleRestoreFile = async (file: DriveBackupFile) => {
     const confirmed = await showConfirm({
       title: "Restore Database Backup?",
-      message: `सध्याचे सर्व इनव्हॉइसेस, स्टॉक आणि लेजर्स '${file.name}' फाईलमधून पूर्ववत (Restore) केले जातील. आपण खात्रीशीर आहात का?`,
-      confirmText: "होय, Restore करा",
-      cancelText: "रद्द करा",
+      message: `All current invoices, stock, and ledgers will be restored from '${file.name}'. Are you sure you want to proceed?`,
+      confirmText: "Yes, Restore",
+      cancelText: "Cancel",
       variant: "danger"
     });
 
@@ -182,7 +182,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
       const result = await restoreAutomatedBackup(file.name);
       await showAlert({
         title: "Restore Successful",
-        message: result.message || `डेटा '${file.name}' फाईलमधून यशस्वीरीत्या रिस्टोअर झाला.`,
+        message: result.message || `Data successfully restored from '${file.name}'.`,
         variant: "success"
       });
 
@@ -191,7 +191,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
     } catch (err: any) {
       await showAlert({
         title: "Restore Failed",
-        message: err.message || "बॅकअप रिस्टोअर करताना त्रुटी आली.",
+        message: err.message || "Failed to restore backup.",
         variant: "danger"
       });
     } finally {
@@ -289,10 +289,10 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
           <div className="space-y-1">
             <div className="flex items-center space-x-2 text-slate-900 font-bold text-xs">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>१००% ऑटोमॅटिक बॅकअप - Google Account: <span className="text-emerald-800 font-mono underline">{TARGET_BACKUP_EMAIL}</span></span>
+              <span>100% Automatic Backup - Google Account: <span className="text-emerald-800 font-mono underline">{TARGET_BACKUP_EMAIL}</span></span>
             </div>
             <p className="text-[11px] text-slate-600 leading-relaxed max-w-2xl">
-              सिस्टम सुरू होताना, प्रत्येक बिल किंवा स्टॉक अपडेट होताना आणि दर १५ मिनिटांनी तुमच्या फर्मच्या नावाने (<strong>{storeName}</strong>) JSON फाईल आपोआप <strong>{BACKUP_FOLDER_NAME}</strong> फोल्डरमध्ये पाठवली जाते. कर्मचाऱ्यांना कुठलेही लॉगिन बटण दाबण्याची गरज नाही.
+              Automated backups are triggered upon system start, invoice creation/stock updates, and every 15 minutes under your firm's name (<strong>{storeName}</strong>) to folder <strong>{BACKUP_FOLDER_NAME}</strong>. Zero manual login required.
             </p>
           </div>
 
@@ -302,7 +302,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
               onClick={() => setShowSetupGuide(!showSetupGuide)}
               className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
             >
-              <span>{showSetupGuide ? "तपशील लपवा" : "क्लाऊड बॅकअप तपशील"}</span>
+              <span>{showSetupGuide ? "Hide Details" : "Cloud Backup Details"}</span>
               {showSetupGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
             </button>
           </div>
@@ -331,7 +331,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
           <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
             <div className="flex items-center space-x-2 text-slate-900 font-bold text-xs">
               <FolderLock className="w-4 h-4 text-emerald-600" />
-              <span>गुगल ड्राईव्ह ऑटोमॅटिक सिंक तपशील ({TARGET_BACKUP_EMAIL}):</span>
+              <span>Google Drive Automatic Sync Details ({TARGET_BACKUP_EMAIL}):</span>
             </div>
             <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-semibold rounded-full">
               Pre-Configured &amp; Active
@@ -345,9 +345,9 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
               <div><strong>Deployment ID:</strong> {DEFAULT_GOOGLE_DEPLOYMENT_ID}</div>
             </div>
             <div className="flex items-start gap-2">
-              <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-[10px]">१</span>
+              <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-[10px]">1</span>
               <p>
-                ब्राउझरमध्ये <strong>{TARGET_BACKUP_EMAIL}</strong> हे गुगल खाते लॉगिन करा आणि{" "}
+                In your browser, sign in to <strong>{TARGET_BACKUP_EMAIL}</strong> and visit{" "}
                 <a
                   href="https://script.google.com/home/start"
                   target="_blank"
@@ -357,22 +357,22 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
                   <span>script.google.com</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>{" "}
-                ओपन करून <strong>"New project"</strong> (नवीन प्रोजेक्ट) वर क्लिक करा.
+                to click <strong>"New project"</strong>.
               </p>
             </div>
 
             <div className="flex items-start gap-2">
-              <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-[10px]">२</span>
+              <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-[10px]">2</span>
               <div className="space-y-1.5 w-full">
                 <div className="flex items-center justify-between">
-                  <p>तेथील जुना कोड खोडून खालील रेडीमेड कोड पेस्ट करा:</p>
+                  <p>Replace existing code with the ready-made script below:</p>
                   <button
                     type="button"
                     onClick={handleCopyScript}
                     className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded text-[10px] font-semibold inline-flex items-center gap-1 transition cursor-pointer"
                   >
                     {copiedScript ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedScript ? "कोड कॉपी झाला!" : "स्क्रिप्ट कोड कॉपी करा (Copy)"}</span>
+                    <span>{copiedScript ? "Code Copied!" : "Copy Script Code"}</span>
                   </button>
                 </div>
                 <div className="bg-slate-900 text-slate-100 p-2.5 rounded-lg text-[10px] font-mono max-h-32 overflow-y-auto border border-slate-800">
@@ -382,22 +382,22 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
             </div>
 
             <div className="flex items-start gap-2">
-              <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-[10px]">३</span>
+              <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-[10px]">3</span>
               <p>
-                वर उजव्या बाजूला <strong>"Deploy" (डिप्लॉय)</strong> बटनावर क्लिक करा &gt; <strong>"New deployment"</strong> निवडा &gt; डाव्या बाजूला गियर आयकॉनवर क्लिक करून <strong>"Web app"</strong> निवडा.
+                In the top-right corner, click <strong>"Deploy"</strong> &gt; select <strong>"New deployment"</strong> &gt; click the gear icon and select <strong>"Web app"</strong>.
                 <br />
                 - Execute as: <strong>Me ({TARGET_BACKUP_EMAIL})</strong>
                 <br />
-                - Who has access: <strong>Anyone</strong> (कोणीही)
+                - Who has access: <strong>Anyone</strong>
                 <br />
-                त्यानंतर <strong>"Deploy"</strong> वर क्लिक करा आणि आलेली <strong>Web App URL</strong> कॉपी करा.
+                Then click <strong>"Deploy"</strong> and copy the generated <strong>Web App URL</strong>.
               </p>
             </div>
 
             <div className="flex items-start gap-2">
-              <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-[10px]">४</span>
+              <span className="w-5 h-5 rounded-full bg-amber-200 text-amber-900 font-bold flex items-center justify-center shrink-0 text-[10px]">4</span>
               <div className="w-full space-y-2">
-                <p>कॉपी केलेली Web App URL खाली पेस्ट करा आणि सेव्ह करा:</p>
+                <p>Paste your Web App URL below and click Save:</p>
                 <form onSubmit={handleSaveWebhook} className="flex flex-col sm:flex-row gap-2">
                   <input
                     type="url"
@@ -415,12 +415,12 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
                     {isSavingConfig ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>पडताळणी चालू आहे...</span>
+                        <span>Validating...</span>
                       </>
                     ) : (
                       <>
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>सेव्ह करा &amp; कनेक्ट करा</span>
+                        <span>Save &amp; Connect</span>
                       </>
                     )}
                   </button>
@@ -497,12 +497,12 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
           {status.state === "syncing" || isProcessingAction ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>बॅकअप तयार आणि अपलोड करत आहे...</span>
+              <span>Creating &amp; uploading backup...</span>
             </>
           ) : (
             <>
               <CloudUpload className="w-4 h-4" />
-              <span>Create Instant Snapshot Now (तात्काळ बॅकअप घ्या)</span>
+              <span>Create Instant Snapshot Now</span>
             </>
           )}
         </button>
@@ -515,7 +515,7 @@ export const GoogleDriveBackupPanel: React.FC<GoogleDriveBackupPanelProps> = ({
           title="Refresh Backups List"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLoadingFiles ? "animate-spin" : ""}`} />
-          <span>रिफ्रेश यादी</span>
+          <span>Refresh List</span>
         </button>
       </div>
 

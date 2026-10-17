@@ -13,7 +13,7 @@ export interface ThermalPrintConfig {
   // Header Section
   showLogo: boolean;
   logoHeight: number; // 40, 60, 80 px
-  headerGreeting: string; // e.g. "|| श्री गणेशाय नमः ||" or "WELCOME"
+  headerGreeting: string; // e.g. "WELCOME" or "THANK YOU FOR SHOPPING WITH US"
   showBusinessName: boolean;
   businessNameSize: 'normal' | 'large' | 'huge';
   showAddress: boolean;
@@ -174,6 +174,7 @@ export interface Item {
   gstRate: number; // e.g., 0, 0.25, 3, 5, 12, 18, 28, or custom decimal
   unit: string; // "PCS", "KGS", "BOX", "LIR", "MTR", etc.
   barcodes?: string[];
+  barcodeEntries?: BarcodeEntry[];
   batchNumber?: string; // Active/Default batch number (e.g. "B-2026/09")
   expiryDate?: string; // Active/Default expiry date (YYYY-MM-DD or YYYY-MM)
   mfgDate?: string; // Manufacturing date
@@ -498,6 +499,13 @@ export interface DatabaseState {
   tables?: RestaurantTable[];
 }
 
+export interface BarcodeEntry {
+  code: string;
+  type?: 'custom' | 'manufacturer' | 'pack' | 'variant';
+  label?: string;
+  isPrimary?: boolean;
+}
+
 export interface BusinessTypeOption {
   id: 'kirana' | 'krishi_seva' | 'garment' | 'medical' | 'wine_shop' | 'restaurant' | 'electronics' | 'mall' | 'general';
   label: string;
@@ -505,15 +513,15 @@ export interface BusinessTypeOption {
 }
 
 export const BUSINESS_TYPES: BusinessTypeOption[] = [
-  { id: "kirana", label: "Kirana & Grocery Provisions (किराणा व सुपरमार्केट)", desc: "Pantry bags, loose & packed grocery foods, weighing scales, and multi-tier rates." },
-  { id: "krishi_seva", label: "Krishi Seva Kendra (कृषी सेवा केंद्र - खत/बियाणे/औषधे)", desc: "Fertilizer, seed & pesticide licenses, farmer names, batch/lot tracking, brand schemes." },
-  { id: "medical", label: "Medical Store & Pharmacy (औषध दुकान / फार्मसी)", desc: "Drug License (D.L.), batch number, expiry alerts, strip-to-tablet loose dispensing, Schedule H1." },
-  { id: "wine_shop", label: "Wine Shop & Liquor Store (वाईन शॉप व लिकर)", desc: "180ml, 375ml, 750ml, Beer bottle sizing, case-to-bottle conversion, excise daily register." },
-  { id: "restaurant", label: "Restaurant, Cafe & F&B (रेस्टॉरंट, कॅफे व फूड)", desc: "Table layouts, dine-in vs takeaway, Kitchen Order Tickets (KOT), veg/non-veg modifiers." },
-  { id: "garment", label: "Garments, Textiles & Footwear (कपडे व पादत्राणे)", desc: "Size, color, brand, article design codes, fashion matrix barcodes." },
-  { id: "electronics", label: "Electronics & Hardware (इलेक्ट्रॉनिक्स व हार्डवेअर)", desc: "Serial & IMEI numbers, warranty tracking, tech components, high-value invoicing." },
-  { id: "mall", label: "Supermarket & Departmental Store (सुपरमार्केट / मॉल)", desc: "High-speed multi-counter barcode scanning, section billing, loose & packed catalogs." },
-  { id: "general", label: "General Retail & Wholesale Trade (सर्वसाधारण व्यापार)", desc: "Flexible point-of-sale, wholesale & retail dual pricing, custom stock units." }
+  { id: "kirana", label: "Kirana & Grocery Provisions", desc: "Pantry items, loose & packed grocery foods, weighing scale integration, and multi-tier pricing." },
+  { id: "krishi_seva", label: "Krishi Seva Kendra (Agri Inputs & Fertilizer)", desc: "Fertilizer, seed & pesticide licenses, farmer details, batch/lot tracking, brand schemes." },
+  { id: "medical", label: "Medical Store & Pharmacy", desc: "Drug License (D.L.), batch number, expiry alerts, strip-to-tablet dispensing, Schedule H1 registers." },
+  { id: "wine_shop", label: "Wine Shop & Liquor Store", desc: "Bottle sizing (180ml, 375ml, 750ml), case-to-bottle conversion, excise daily register." },
+  { id: "restaurant", label: "Restaurant, Cafe & Food Services", desc: "Table layouts, dine-in vs takeaway, Kitchen Order Tickets (KOT), veg/non-veg food modifiers." },
+  { id: "garment", label: "Garments, Textiles & Footwear", desc: "Size, color, brand, article design codes, fashion matrix barcodes." },
+  { id: "electronics", label: "Electronics & Hardware", desc: "Serial & IMEI numbers, warranty tracking, tech components, high-value invoicing." },
+  { id: "mall", label: "Supermarket & Departmental Store", desc: "High-speed multi-counter barcode scanning, section billing, loose & packed catalogs." },
+  { id: "general", label: "General Retail & Wholesale Trade", desc: "Flexible point-of-sale, wholesale & retail dual pricing, custom stock units." }
 ];
 
 export const INDIAN_STATES = [

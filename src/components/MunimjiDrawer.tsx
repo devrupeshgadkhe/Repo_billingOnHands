@@ -291,7 +291,7 @@ const MunimjiProductListCard: React.FC<MunimjiProductListCardProps> = ({
       });
       onCloseDrawer();
     } else {
-      onSendTextQuery(`${item.name} चे १ नग बिल कर रोख`);
+      onSendTextQuery(language === "en" ? `Bill 1 qty of ${item.name} cash` : `${item.name} चे १ नग बिल कर रोख`);
     }
   };
 
@@ -465,7 +465,7 @@ const MunimjiProductListCard: React.FC<MunimjiProductListCardProps> = ({
                           type="button"
                           onClick={() => handleBillItem(item)}
                           className="px-3 py-1.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white font-bold rounded-lg text-[11px] shadow-xs transition-all flex items-center justify-center gap-1 mx-auto"
-                          title="या वस्तूचे बिल बनवा"
+                          title={language === "en" ? "Bill this item" : (language === "hi" ? "इस सामान का बिल बनाएं" : "या वस्तूचे बिल बनवा")}
                         >
                           <Receipt className="w-3.5 h-3.5" />
                           <span>{language === "en" ? "Bill" : (language === "hi" ? "बिल करें" : "बिल करा")}</span>
@@ -520,9 +520,9 @@ export default function MunimjiDrawer({
     });
   };
 
-  // Selected Language (mr | hi | en)
+  // Selected Language (en | hi | mr) - defaults to en
   const [language, setLanguage] = useState<MunimjiLang>(() => {
-    return (localStorage.getItem("munimji_lang") as MunimjiLang) || "mr";
+    return (localStorage.getItem("munimji_lang") as MunimjiLang) || "en";
   });
 
   const t = TRANSLATIONS[language];
@@ -532,7 +532,7 @@ export default function MunimjiDrawer({
     {
       id: "welcome_1",
       sender: "munimji",
-      text: TRANSLATIONS[(localStorage.getItem("munimji_lang") as MunimjiLang) || "mr"].welcomeMsg,
+      text: TRANSLATIONS[(localStorage.getItem("munimji_lang") as MunimjiLang) || "en"].welcomeMsg,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     }
   ]);
@@ -1213,8 +1213,8 @@ export default function MunimjiDrawer({
           id: userMsgId,
           sender: "user",
           text: isLiveCamera
-            ? `📷 [थेट कॅमेऱ्याने बिलाचा फोटो स्कॅन केला]`
-            : `📸 [बिलाचा / यादीचा फोटो अपलोड केला - ${fileInfo.name}]`,
+            ? (language === "en" ? `📷 [Scanned invoice with live camera]` : `📷 [थेट कॅमेऱ्याने बिलाचा फोटो स्कॅन केला]`)
+            : (language === "en" ? `📸 [Uploaded bill / list photo - ${fileInfo.name}]` : `📸 [बिलाचा / यादीचा फोटो अपलोड केला - ${fileInfo.name}]`),
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         }
       ]);
@@ -1232,7 +1232,7 @@ export default function MunimjiDrawer({
         const inv = data.invoice;
         const munimjiMsgId = "munimji_" + Date.now();
         const billDraft = {
-          customerName: inv.supplierName || "रोख ग्राहक",
+          customerName: inv.supplierName || (language === "en" ? "Cash Customer" : "रोख ग्राहक"),
           items: (inv.items || []).map((it: any) => ({
             name: it.name,
             quantity: it.quantity || 1,
@@ -1250,18 +1250,26 @@ export default function MunimjiDrawer({
           {
             id: munimjiMsgId,
             sender: "munimji",
-            text: `मालक, मी बिलाचा फोटो वाचला आहे. ${inv.items?.length || 0} वस्तू आणि एकूण रक्कम ₹${inv.grandTotal} आहे. खालील 'बिल तयार करा' बटनावर क्लिक करा.`,
+            text: language === "en"
+              ? `Sir, I analyzed the bill photo. Found ${inv.items?.length || 0} items with grand total of ₹${inv.grandTotal}. Click 'Generate Bill' below.`
+              : `मालक, मी बिलाचा फोटो वाचला आहे. ${inv.items?.length || 0} वस्तू आणि एकूण रक्कम ₹${inv.grandTotal} आहे. खालील 'बिल तयार करा' बटनावर क्लिक करा.`,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
             cards: [
               {
                 type: "mini_bill",
-                title: `बिल: ${inv.supplierName || "ग्राहक"}`,
+                title: language === "en" ? `Bill: ${inv.supplierName || "Customer"}` : `बिल: ${inv.supplierName || "ग्राहक"}`,
                 data: billDraft
               }
             ]
           }
         ]);
-        playMunimjiVoice(undefined, undefined, `मालक, मी बिलाचा फोटो वाचला आहे. एकूण रक्कम ${inv.grandTotal} रुपये आहे.`);
+        playMunimjiVoice(
+          undefined,
+          undefined,
+          language === "en"
+            ? `Sir, I analyzed the bill. Grand total is ${inv.grandTotal} rupees.`
+            : `मालक, मी बिलाचा फोटो वाचला आहे. एकूण रक्कम ${inv.grandTotal} रुपये आहे.`
+        );
       } else {
         // 2. Try parsing as handwritten items list
         const listRes = await fetch("/api/ai/parse-items-list", {
@@ -1277,12 +1285,14 @@ export default function MunimjiDrawer({
             {
               id: munimjiMsgId,
               sender: "munimji",
-              text: `मालक, मी हस्तलिखित यादीमधून ${listData.items.length} आयटम्स वाचले आहेत. खालील यादी तपासून इन्व्हेंटरीमध्ये ॲड करा.`,
+              text: language === "en"
+                ? `Sir, I extracted ${listData.items.length} items from the handwritten list. Please review and add them to inventory.`
+                : `मालक, मी हस्तलिखित यादीमधून ${listData.items.length} आयटम्स वाचले आहेत. खालील यादी तपासून इन्व्हेंटरीमध्ये ॲड करा.`,
               timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
               cards: [
                 {
                   type: "stock_alert",
-                  title: `हस्तलिखित मालाची यादी (${listData.items.length} Items)`,
+                  title: language === "en" ? `Handwritten Items List (${listData.items.length} Items)` : `हस्तलिखित मालाची यादी (${listData.items.length} Items)`,
                   data: {
                     items: listData.items.map((i: any) => ({
                       name: i.name,
@@ -1294,9 +1304,15 @@ export default function MunimjiDrawer({
               ]
             }
           ]);
-          playMunimjiVoice(undefined, undefined, `मालक, मी हस्तलिखित यादीमधून ${listData.items.length} आयटम्स वाचले आहेत.`);
+          playMunimjiVoice(
+            undefined,
+            undefined,
+            language === "en"
+              ? `Sir, I extracted ${listData.items.length} items from the handwritten list.`
+              : `मालक, मी हस्तलिखित यादीमधून ${listData.items.length} आयटम्स वाचले आहेत.`
+          );
         } else {
-          throw new Error(data.error || "फोटो स्पष्ट वाचता आला नाही. कृपया स्पष्ट फोटो निवडा.");
+          throw new Error(data.error || (language === "en" ? "Could not read the photo clearly. Please select a clearer image." : "फोटो स्पष्ट वाचता आला नाही. कृपया स्पष्ट फोटो निवडा."));
         }
       }
     } catch (err: any) {
@@ -1305,7 +1321,7 @@ export default function MunimjiDrawer({
         {
           id: "err_" + Date.now(),
           sender: "munimji",
-          text: `क्षमस्व मालक, फोटो वाचताना अडचण आली: ${err.message || ""}`,
+          text: (language === "en" ? "Sorry Sir, error analyzing photo: " : "क्षमस्व मालक, फोटो वाचताना अडचण आली: ") + (err.message || ""),
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
         }
       ]);
@@ -1428,7 +1444,7 @@ export default function MunimjiDrawer({
                 className={`px-1.5 py-1 rounded transition-colors ${
                   language === "mr" ? "bg-amber-500 text-white shadow-xs" : "text-amber-100/70 hover:text-white"
                 }`}
-                title="मराठी भाषा निवडा"
+                title="Select Marathi (मराठी)"
               >
                 मराठी
               </button>
@@ -1437,7 +1453,7 @@ export default function MunimjiDrawer({
                 className={`px-1.5 py-1 rounded transition-colors ${
                   language === "hi" ? "bg-amber-500 text-white shadow-xs" : "text-amber-100/70 hover:text-white"
                 }`}
-                title="हिंदी भाषा चुनें"
+                title="Select Hindi (हिंदी)"
               >
                 हिंदी
               </button>
@@ -1473,7 +1489,7 @@ export default function MunimjiDrawer({
               type="button"
               onClick={toggleMaximize}
               className="p-1.5 rounded-lg hover:bg-white/10 text-amber-100 hover:text-white transition-colors"
-              title={isMaximized ? "खिडकी पूर्ववत करा (Restore size)" : "खिडकी मोठी करा (Maximize full screen)"}
+              title={isMaximized ? "Restore window size" : "Maximize full screen"}
             >
               {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
             </button>
@@ -1482,7 +1498,7 @@ export default function MunimjiDrawer({
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition-colors ml-0.5"
-              title="बंद करा (Close)"
+              title="Close"
             >
               <X className="w-5 h-5" />
             </button>
@@ -1689,14 +1705,14 @@ export default function MunimjiDrawer({
 
                           <div className="grid grid-cols-2 gap-2 mb-3">
                             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
-                              <div className="text-[10px] text-emerald-800 font-bold uppercase">{t.retail} (विक्री दर)</div>
+                              <div className="text-[10px] text-emerald-800 font-bold uppercase">{t.retail}</div>
                               <div className="text-base font-extrabold text-emerald-700 mt-0.5">
                                 ₹{card.data?.salePrice ?? card.data?.newSalePrice ?? "0"}
                               </div>
                             </div>
 
                             <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                              <div className="text-[10px] text-amber-800 font-bold uppercase">{t.stock} (उपलब्ध साठा)</div>
+                              <div className="text-[10px] text-amber-800 font-bold uppercase">{t.stock}</div>
                               <div className="text-base font-extrabold text-amber-800 mt-0.5">
                                 {card.data?.stockQuantity ?? card.data?.newStock ?? card.data?.quantityChange ?? "0"} {card.data?.unit || (language === "en" ? "PCS" : "नग")}
                               </div>
@@ -1706,7 +1722,7 @@ export default function MunimjiDrawer({
                           {card.data?.purchasePrice > 0 && (
                             <div className="bg-slate-50 p-2 rounded-lg border border-slate-200 flex items-center justify-between text-xs mb-3">
                               <span className="text-slate-600 font-medium">
-                                {t.costPrice} (खरेदी भाव): <strong className="text-slate-900">₹{card.data?.purchasePrice}</strong>
+                                {t.costPrice} <strong className="text-slate-900">₹{card.data?.purchasePrice}</strong>
                               </span>
                             </div>
                           )}
@@ -1919,7 +1935,7 @@ export default function MunimjiDrawer({
               disabled={isProcessing || isRecording}
               onClick={() => setIsCameraScannerOpen(true)}
               className="p-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition shadow-xs flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-50"
-              title="थेट वेबकॅम / कॅमेराने बिल स्कॅन करा (Live Camera Scan)"
+              title="Live Camera Scan"
             >
               <Camera className="w-4 h-4 text-emerald-700" />
             </button>
@@ -1930,7 +1946,7 @@ export default function MunimjiDrawer({
               disabled={isProcessing || isRecording}
               onClick={() => photoInputRef.current?.click()}
               className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition shadow-xs flex items-center justify-center shrink-0 cursor-pointer disabled:opacity-50"
-              title="गॅलरी / फाईलमधून फोटो निवडा (Upload Photo / PDF)"
+              title="Upload Photo / PDF"
             >
               <Upload className="w-4 h-4 text-slate-700" />
             </button>
@@ -1988,8 +2004,8 @@ export default function MunimjiDrawer({
         isOpen={isCameraScannerOpen}
         onClose={() => setIsCameraScannerOpen(false)}
         onCapture={(file, base64) => processScannedDocument(file, base64, true)}
-        title="मुनीमजी: कॅमेऱ्याने बिल किंवा यादी स्कॅन करा"
-        description="बिलाचा किंवा कच्च्या यादीचा फोटो कॅमेरासमोर धरा आणि कॅप्चर करा. मुनीमजी आपोआप वाचून बिल तयार करतील."
+        title={language === "en" ? "Munimji: Scan Bill or Item List with Camera" : "मुनीमजी: कॅमेऱ्याने बिल किंवा यादी स्कॅन करा"}
+        description={language === "en" ? "Hold invoice or rough list before camera and capture. Munimji will automatically read and extract entries." : "बिलाचा किंवा कच्च्या यादीचा फोटो कॅमेरासमोर धरा आणि कॅप्चर करा. मुनीमजी आपोआप वाचून बिल तयार करतील."}
       />
     </>
   );

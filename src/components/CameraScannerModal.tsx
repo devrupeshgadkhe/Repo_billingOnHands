@@ -31,8 +31,8 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
   isOpen,
   onClose,
   onCapture,
-  title = "थेट कॅमेऱ्याने बिल स्कॅन करा (Live Camera Scan)",
-  description = "बिलाचा किंवा वस्तूंच्या यादीचा स्पष्ट फोटो कॅमेरासमोर धरा आणि कॅप्चर करा."
+  title = "Live Camera Document Scanner",
+  description = "Hold bill, invoice or item list steadily before the camera and capture."
 }) => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
@@ -65,7 +65,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
 
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error("तुमच्या ब्राउझर किंवा डिव्हाइसमध्ये वेबकॅम सपोर्ट उपलब्ध नाही.");
+        throw new Error("Webcam support is not available in your browser or device.");
       }
 
       // Constraints prioritizing 1080p document clarity
@@ -110,13 +110,13 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
       }
     } catch (err: any) {
       console.error("Camera access error:", err);
-      let msg = "कॅमेरा सुरू करताना अडचण आली.";
+      let msg = "Could not start camera.";
       if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
-        msg = "कॅमेरा वापरण्याची परवानगी नाकारली आहे. कृपया कॅमेरा ॲक्सेस अलाऊ (Allow) करा.";
+        msg = "Camera permission was denied. Please allow camera access in your browser or system settings.";
       } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
-        msg = "कोणताही कॅमेरा सापडला नाही. कृपया वेबकॅम जोडलेला असल्याची खात्री करा किंवा फाईल अपलोड पर्याय वापरा.";
+        msg = "No camera found. Please ensure a webcam is connected or use file upload.";
       } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
-        msg = "कॅमेरा दुसऱ्या ॲप्लिकेशनमध्ये वापरला जात आहे. कृपया इतर ॲप्स बंद करून पुन्हा प्रयत्न करा.";
+        msg = "Camera is being used by another application. Please close other apps and try again.";
       } else if (err.message) {
         msg = err.message;
       }
@@ -255,7 +255,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
               onClose();
             }}
             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition cursor-pointer"
-            title="बंद करा (Close)"
+            title="Close"
           >
             <X className="w-5 h-5" />
           </button>
@@ -279,7 +279,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
               />
               <div className="absolute top-3 left-3 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 backdrop-blur-xs">
                 <Check className="w-4 h-4 text-emerald-400" />
-                <span>फोटो कॅप्चर झाला (Snapshot Ready)</span>
+                <span>Snapshot Ready</span>
               </div>
             </div>
           ) : (
@@ -288,7 +288,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
               {isLoadingCamera && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-950/90 gap-3">
                   <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin" />
-                  <span className="text-xs font-bold text-slate-300">कॅमेरा सुरू होत आहे...</span>
+                  <span className="text-xs font-bold text-slate-300">Starting camera...</span>
                 </div>
               )}
 
@@ -298,7 +298,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
                     <VideoOff className="w-6 h-6" />
                   </div>
                   <div className="space-y-1.5">
-                    <h4 className="text-sm font-bold text-rose-300">कॅमेरा उघडता आला नाही</h4>
+                    <h4 className="text-sm font-bold text-rose-300">Could not open camera</h4>
                     <p className="text-xs text-slate-400 leading-relaxed">{cameraError}</p>
                   </div>
                   <div className="flex items-center justify-center gap-2 pt-2">
@@ -308,7 +308,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
-                      <span>पुन्हा प्रयत्न करा</span>
+                      <span>Try Again</span>
                     </button>
                     <button
                       type="button"
@@ -316,7 +316,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
                       className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>फोटो फाईल निवडा</span>
+                      <span>Choose File</span>
                     </button>
                   </div>
                 </div>
@@ -340,7 +340,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
 
                     <div className="flex flex-col items-center gap-1.5 bg-slate-950/60 backdrop-blur-xs border border-slate-700/50 px-3 py-1.5 rounded-full mx-auto text-[11px] text-emerald-300 font-semibold shadow-lg">
                       <ScanLine className="w-4 h-4 text-emerald-400 animate-pulse" />
-                      <span>बिल किंवा पावती चौकटीत सरळ ठेवा</span>
+                      <span>Align document within frame</span>
                     </div>
 
                     <div className="flex justify-between">
@@ -380,11 +380,11 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
                   startCamera(newId);
                 }}
                 className="bg-slate-800 text-slate-200 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-emerald-500 cursor-pointer"
-                title="कॅमेरा बदला (Switch Camera)"
+                title="Switch Camera"
               >
                 {devices.map((device, idx) => (
                   <option key={device.deviceId || idx} value={device.deviceId}>
-                    📷 {device.label || `कॅमेरा ${idx + 1}`}
+                    📷 {device.label || `Camera ${idx + 1}`}
                   </option>
                 ))}
               </select>
@@ -395,10 +395,10 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="px-3 py-1.5 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
-                title="गॅलरी / फाईलमधून फोटो निवडा"
+                title="Upload photo from files"
               >
                 <Upload className="w-3.5 h-3.5 text-slate-400" />
-                <span>फाईलमधून निवडा</span>
+                <span>Browse File</span>
               </button>
             )}
           </div>
@@ -413,7 +413,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
                   className="px-4 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>पुन्हा फोटो घ्या (Retake)</span>
+                  <span>Retake</span>
                 </button>
 
                 <button
@@ -422,7 +422,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-950/40 transition cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4 text-emerald-200" />
-                  <span>हा फोटो वापरा व स्कॅन करा (Use Photo)</span>
+                  <span>Use Photo & Scan</span>
                 </button>
               </>
             ) : (
@@ -433,7 +433,7 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
                 className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-950/40 transition cursor-pointer scale-100 hover:scale-102 active:scale-98"
               >
                 <Camera className="w-4 h-4 text-emerald-200" />
-                <span>फोटो काढा (Capture Bill)</span>
+                <span>Capture Document</span>
               </button>
             )}
           </div>

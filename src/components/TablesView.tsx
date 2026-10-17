@@ -1,17 +1,14 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
- * Restaurant Table Management & KOT View
  */
 
 import React, { useState } from "react";
-import { UtensilsCrossed, Plus, Users, CheckCircle, Clock, Trash2, Edit, Receipt } from "lucide-react";
-import { RestaurantTable, BusinessProfile, Item, Invoice } from "../types.js";
+import { UtensilsCrossed, Plus, Users, Receipt, Edit, Trash2 } from "lucide-react";
+import { RestaurantTable } from "../types.js";
 
 interface TablesViewProps {
   tables: RestaurantTable[];
-  items: Item[];
-  business: BusinessProfile;
   onSaveTable: (table: RestaurantTable) => Promise<void>;
   onDeleteTable: (tableId: string) => Promise<void>;
   onOpenTablePOS: (table: RestaurantTable) => void;
@@ -19,18 +16,17 @@ interface TablesViewProps {
 
 export default function TablesView({
   tables,
-  items,
-  business,
   onSaveTable,
   onDeleteTable,
   onOpenTablePOS
 }: TablesViewProps) {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingTable, setEditingTable] = useState<RestaurantTable | null>(null);
+
   const [tableNumber, setTableNumber] = useState("");
   const [section, setSection] = useState("Main Dining");
   const [capacity, setCapacity] = useState(4);
-  const [status, setStatus] = useState<'available' | 'occupied' | 'reserved'>("available");
+  const [status, setStatus] = useState<'available' | 'occupied' | 'reserved'>('available');
 
   const handleOpenAdd = () => {
     setEditingTable(null);
@@ -46,7 +42,7 @@ export default function TablesView({
     setTableNumber(t.tableNumber);
     setSection(t.section || "Main Dining");
     setCapacity(t.capacity || 4);
-    setStatus(t.status || "available");
+    setStatus(t.status);
     setIsAddModalOpen(true);
   };
 
@@ -55,7 +51,7 @@ export default function TablesView({
     if (!tableNumber.trim()) return;
 
     const newTable: RestaurantTable = {
-      id: editingTable ? editingTable.id : `tbl_${Date.now()}`,
+      id: editingTable?.id || `tbl_${Date.now()}`,
       tableNumber: tableNumber.trim(),
       section: section.trim(),
       capacity: Number(capacity) || 4,
@@ -75,10 +71,10 @@ export default function TablesView({
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <UtensilsCrossed className="w-6 h-6 text-emerald-600" />
-            <span>हॉटेल टेबल मॅनेजमेंट (Restaurant Table Management)</span>
+            <span>Restaurant Table Management</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            डाइन-इन टेबल्स तयार करा, त्यांची स्थिती (Available / Occupied) तपासा आणि KOT ऑर्डर्स व्यवस्थापित करा.
+            Configure dining tables, monitor real-time table status (Available / Occupied), and manage KOT orders.
           </p>
         </div>
         <button
@@ -87,7 +83,7 @@ export default function TablesView({
           className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-5 rounded-xl text-xs flex items-center gap-2 shadow-md transition cursor-pointer"
         >
           <Plus className="w-4 h-4" />
-          <span>नवीन टेबल जोडा (Add Table)</span>
+          <span>Add Table</span>
         </button>
       </div>
 
@@ -96,14 +92,14 @@ export default function TablesView({
         {tables.length === 0 ? (
           <div className="col-span-full py-16 text-center bg-white rounded-2xl border border-dashed border-slate-300">
             <UtensilsCrossed className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-sm font-semibold text-slate-700">कोणतीही टेबल्स जोडलेली नाहीत</p>
-            <p className="text-xs text-slate-400 mt-1 mb-4">हॉटेलच्या डाइन-इन ऑर्डर्ससाठी पहिले टेबल जोडा.</p>
+            <p className="text-sm font-semibold text-slate-700">No tables configured yet</p>
+            <p className="text-xs text-slate-400 mt-1 mb-4">Add your first table to begin taking dine-in orders.</p>
             <button
               type="button"
               onClick={handleOpenAdd}
               className="bg-emerald-600 text-white font-semibold py-2 px-4 rounded-lg text-xs"
             >
-              टेबल तयार करा
+              Create Table
             </button>
           </div>
         ) : (
@@ -139,17 +135,17 @@ export default function TablesView({
 
                   <div className="py-3 space-y-1.5 text-xs text-slate-600">
                     <div className="flex items-center gap-1.5 text-slate-500">
-                      <span>विभाग:</span>
+                      <span>Section:</span>
                       <span className="font-semibold text-slate-800">{t.section || "Main Dining"}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-slate-500">
                       <Users className="w-3.5 h-3.5" />
-                      <span>क्षमता:</span>
+                      <span>Capacity:</span>
                       <span className="font-semibold text-slate-800">{t.capacity || 4} Persons</span>
                     </div>
                     {isOccupied && (
                       <div className="pt-2 border-t border-dashed border-slate-200">
-                        <span className="text-[10px] text-slate-400 uppercase block font-semibold">चालू बिल / ऑर्डर:</span>
+                        <span className="text-[10px] text-slate-400 uppercase block font-semibold">Running Order / Bill:</span>
                         <span className="font-bold font-mono text-emerald-700 text-sm">₹{(t.currentOrderTotal || 0).toFixed(2)}</span>
                         {t.runningItemsSummary && (
                           <p className="text-[11px] text-slate-600 truncate mt-0.5">{t.runningItemsSummary}</p>
@@ -170,14 +166,14 @@ export default function TablesView({
                     }`}
                   >
                     <Receipt className="w-3.5 h-3.5" />
-                    <span>{isOccupied ? "ऑर्डर पहा / बिल" : "ऑर्डर घ्या (Take Order)"}</span>
+                    <span>{isOccupied ? "View Order / Bill" : "Take Order"}</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => handleOpenEdit(t)}
                     className="p-2 border border-slate-200 hover:bg-slate-100 text-slate-600 rounded-xl transition"
-                    title="एडिट"
+                    title="Edit Table"
                   >
                     <Edit className="w-3.5 h-3.5" />
                   </button>
@@ -186,7 +182,7 @@ export default function TablesView({
                     type="button"
                     onClick={() => onDeleteTable(t.id)}
                     className="p-2 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-xl transition"
-                    title="डिलिट"
+                    title="Delete Table"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -202,35 +198,35 @@ export default function TablesView({
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-in fade-in zoom-in duration-200">
             <h3 className="text-lg font-bold text-slate-900">
-              {editingTable ? "टेबल माहिती बदला (Edit Table)" : "नवीन टेबल तयार करा (Create Table)"}
+              {editingTable ? "Edit Table" : "Create Table"}
             </h3>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">टेबल नाव / नंबर (Table Name/No)</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Table Name / Number</label>
                 <input
                   type="text"
                   required
                   value={tableNumber}
                   onChange={(e) => setTableNumber(e.target.value)}
-                  placeholder="उदा. Table 1 किंवा AC-3"
+                  placeholder="e.g. Table 1 or AC-3"
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">सेक्शन / हॉल (Section)</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Section / Hall</label>
                 <input
                   type="text"
                   value={section}
                   onChange={(e) => setSection(e.target.value)}
-                  placeholder="उदा. Main Dining, AC Hall, Family Room"
+                  placeholder="e.g. Main Dining, AC Hall, Family Room"
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">क्षमता (Capacity / Persons)</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Capacity (Persons)</label>
                 <input
                   type="number"
                   min={1}
@@ -242,15 +238,15 @@ export default function TablesView({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">स्थिती (Status)</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">Status</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value as any)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-bold outline-none focus:border-emerald-500 bg-white"
                 >
-                  <option value="available">Available (रिकामे)</option>
-                  <option value="occupied">Occupied (व्यस्त / चालू)</option>
-                  <option value="reserved">Reserved (राखून ठेवलेले)</option>
+                  <option value="available">Available</option>
+                  <option value="occupied">Occupied</option>
+                  <option value="reserved">Reserved</option>
                 </select>
               </div>
 
@@ -260,13 +256,13 @@ export default function TablesView({
                   onClick={() => setIsAddModalOpen(false)}
                   className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100"
                 >
-                  रद्द करा
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md"
                 >
-                  सेव्ह करा
+                  Save Table
                 </button>
               </div>
             </form>

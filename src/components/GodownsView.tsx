@@ -308,7 +308,7 @@ export default function GodownsView({
             <Building className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">मल्टि-गोदाम व स्टॉक ट्रान्सफर (Multi-Godown ERP)</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Multi-Godown ERP & Stock Transfer</h1>
             <p className="text-xs text-slate-500 mt-0.5">
               Multi-warehouse inventory tracking and intra-godown stock transfer delivery vouchers
             </p>
@@ -324,7 +324,7 @@ export default function GodownsView({
               className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>नवीन गोदाम जोडा (Add Godown)</span>
+              <span>Add Godown</span>
             </button>
             <button
               type="button"
@@ -335,7 +335,7 @@ export default function GodownsView({
               className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow transition cursor-pointer"
             >
               <Truck className="w-4 h-4" />
-              <span>स्टॉक ट्रान्सफर करा (Transfer Stock)</span>
+              <span>Transfer Stock</span>
             </button>
           </div>
         )}
@@ -344,9 +344,9 @@ export default function GodownsView({
       {/* Tabs Navigation */}
       <div className="flex flex-wrap bg-slate-100 p-1.5 rounded-xl gap-1 border border-slate-200 shadow-2xs">
         {[
-          { id: 'godowns', label: '🏢 गोदाम यादी व साठा (Godowns & Stock Matrix)', count: godowns.length },
-          { id: 'transfer', label: '🚚 नवीन स्टॉक ट्रान्सफर व्हॉउचर (New Transfer)', count: null },
-          { id: 'history', label: '📋 ट्रान्सफर इतिहास व चलन (Transfer History)', count: stockTransfers.length }
+          { id: 'godowns', label: '🏢 Godowns & Stock Matrix', count: godowns.length },
+          { id: 'transfer', label: '🚚 New Stock Transfer Voucher', count: null },
+          { id: 'history', label: '📋 Transfer History & Pass', count: stockTransfers.length }
         ].map(tab => (
           <button
             key={tab.id}
@@ -383,7 +383,7 @@ export default function GodownsView({
               >
                 {godown.isDefault && (
                   <div className="absolute top-0 right-0 bg-emerald-500 text-white text-[9px] font-bold px-3 py-0.5 rounded-bl-lg uppercase tracking-wider">
-                    Primary Store (मुख्य दुकान)
+                    Primary Store
                   </div>
                 )}
 
@@ -467,7 +467,7 @@ export default function GodownsView({
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden space-y-4 p-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-slate-900">गोदामनिहाय इन्व्हेंटरी साठा (Godown-wise Stock Matrix)</h3>
+                <h3 className="text-sm font-bold text-slate-900">Godown-wise Stock Matrix</h3>
                 <p className="text-xs text-slate-500">Real-time inventory levels across all warehouse storage locations</p>
               </div>
 
@@ -543,7 +543,7 @@ export default function GodownsView({
           <div className="border-b border-slate-200 pb-4">
             <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <Truck className="w-5 h-5 text-emerald-600" />
-              <span>नवीन स्टॉक ट्रान्सफर व्हॉउचर (Create Inter-Godown Stock Movement)</span>
+              <span>Create Inter-Godown Stock Transfer Voucher</span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
               Deduct inventory from source warehouse and transfer into destination storage location
@@ -555,7 +555,7 @@ export default function GodownsView({
             {/* Source Godown */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                माल पाठवणारे गोदाम (Source Godown) *
+                Source Godown *
               </label>
               <select
                 value={sourceGodownId}
@@ -574,14 +574,14 @@ export default function GodownsView({
             {/* Destination Godown */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                प्राप्त गोदाम (Destination Godown) *
+                Destination Godown *
               </label>
               <select
                 value={destGodownId}
                 onChange={(e) => setDestGodownId(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs bg-white outline-none font-bold text-slate-800"
               >
-                <option value="">-- गोदाम निवडा (Select Godown) --</option>
+                <option value="">-- Select Destination Godown --</option>
                 {godowns.filter(g => g.id !== sourceGodownId).map(g => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
@@ -591,7 +591,7 @@ export default function GodownsView({
             {/* Transfer Date */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                तारीख (Transfer Date)
+                Transfer Date
               </label>
               <input
                 type="date"
@@ -604,7 +604,7 @@ export default function GodownsView({
             {/* Vehicle Number */}
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                गाडी क्रमांक (Vehicle No.)
+                Vehicle Number
               </label>
               <input
                 type="text"
@@ -620,7 +620,7 @@ export default function GodownsView({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                ड्रायव्हर / हँडओव्हर व्यक्ती (Driver / Handover Person)
+                Driver / Handover Person
               </label>
               <input
                 type="text"
@@ -632,7 +632,7 @@ export default function GodownsView({
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">
-                शेरा / ट्रान्सफर कारण (Transfer Notes / Reason)
+                Transfer Notes / Reason
               </label>
               <input
                 type="text"
@@ -648,7 +648,7 @@ export default function GodownsView({
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
-                ट्रान्सफर करायचा माल (Items to Transfer)
+                Items to Transfer
               </span>
               <button
                 type="button"
@@ -656,7 +656,7 @@ export default function GodownsView({
                 className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>+ आयटम जोडा (Add Item)</span>
+                <span>+ Add Item</span>
               </button>
             </div>
 
@@ -735,7 +735,7 @@ export default function GodownsView({
                   {transferLines.length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-slate-400 text-xs">
-                        No items added yet. Click <strong>"+ आयटम जोडा (Add Item)"</strong> to begin.
+                        No items added yet. Click <strong>"+ Add Item"</strong> to begin.
                       </td>
                     </tr>
                   )}
@@ -751,7 +751,7 @@ export default function GodownsView({
               onClick={() => setActiveTab('godowns')}
               className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer"
             >
-              रद्द करा (Cancel)
+              Cancel
             </button>
             <button
               type="submit"
@@ -759,7 +759,7 @@ export default function GodownsView({
               className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:bg-emerald-300 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow hover:shadow-md transition cursor-pointer"
             >
               <Truck className="w-4 h-4" />
-              <span>{isSubmitting ? "ट्रान्सफर सेव्ह होत आहे..." : "स्टॉक ट्रान्सफर पूर्ण करा व चलन प्रिंट करा"}</span>
+              <span>{isSubmitting ? "Saving Transfer..." : "Complete Stock Transfer & Print Pass"}</span>
             </button>
           </div>
 
@@ -771,7 +771,7 @@ export default function GodownsView({
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden space-y-4 p-5 animate-fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-bold text-slate-900">स्टॉक ट्रान्सफर इतिहास व चलन नोंदी (Transfer Vouchers History)</h3>
+              <h3 className="text-sm font-bold text-slate-900">Transfer Vouchers History</h3>
               <p className="text-xs text-slate-500">Audit trail of all inter-godown transfers with delivery pass print options</p>
             </div>
           </div>
@@ -874,7 +874,7 @@ export default function GodownsView({
               <div className="flex items-center gap-2">
                 <Building className="w-5 h-5 text-emerald-400" />
                 <h3 className="font-bold text-sm">
-                  {editingGodown ? "गोदाम माहिती बदला (Edit Godown)" : "नवीन गोदाम जोडा (Add New Godown)"}
+                  {editingGodown ? "Edit Godown" : "Add New Godown"}
                 </h3>
               </div>
               <button
@@ -889,7 +889,7 @@ export default function GodownsView({
             <form onSubmit={handleSubmitGodown} className="p-5 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                  गोदामाचे नाव (Godown / Warehouse Name) *
+                  Godown / Warehouse Name *
                 </label>
                 <input
                   type="text"
@@ -903,7 +903,7 @@ export default function GodownsView({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                  पत्ता / लोकेशन (Location Address)
+                  Location Address
                 </label>
                 <input
                   type="text"
@@ -917,7 +917,7 @@ export default function GodownsView({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                    इंचार्ज / मॅनेजर नाव (Manager)
+                    Incharge / Manager Name
                   </label>
                   <input
                     type="text"
@@ -929,7 +929,7 @@ export default function GodownsView({
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                    मोबाईल नंबर (Phone)
+                    Phone / Mobile
                   </label>
                   <input
                     type="text"
@@ -943,7 +943,7 @@ export default function GodownsView({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                  शेरा / टीप (Notes)
+                  Notes / Description
                 </label>
                 <input
                   type="text"
@@ -960,14 +960,14 @@ export default function GodownsView({
                   onClick={() => setIsGodownModalOpen(false)}
                   className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer"
                 >
-                  रद्द करा (Cancel)
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-sm transition cursor-pointer"
                 >
-                  {isSubmitting ? "जतन करत आहे..." : "गोदाम सेव्ह करा (Save)"}
+                  {isSubmitting ? "Saving..." : "Save Godown"}
                 </button>
               </div>
             </form>

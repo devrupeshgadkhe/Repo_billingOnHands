@@ -6,28 +6,26 @@
 import React, { useState, useRef } from "react";
 import {
   Upload,
-  FileSpreadsheet,
   Database,
-  ArrowRight,
+  FileSpreadsheet,
   CheckCircle2,
   AlertCircle,
   X,
   Loader2,
   Package,
   Users,
-  FileText,
-  RotateCcw,
-  Check,
-  HelpCircle,
   Download,
-  FileCheck
+  FileCheck,
+  Check,
+  RotateCcw
 } from "lucide-react";
-import { Item, Party, UNITS, TAX_RATES } from "../types.js";
+import { Item, Party } from "../types.js";
 
 interface DataMigrationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onImportCompleted: () => Promise<void>;
+  onRefreshDb?: () => Promise<void>;
+  onImportCompleted?: () => Promise<void>;
   existingItems?: Item[];
   existingParties?: Party[];
 }
@@ -35,6 +33,7 @@ interface DataMigrationModalProps {
 export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
   isOpen,
   onClose,
+  onRefreshDb,
   onImportCompleted,
   existingItems = [],
   existingParties = []
@@ -56,14 +55,13 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
   const parseCsvText = (csvText: string) => {
     const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
     if (lines.length < 2) {
-      throw new Error("CSV फाईलमध्ये किमान एक हेडर ओळ आणि डेटा ओळी असणे आवश्यक आहे.");
+      throw new Error("CSV file must contain at least a header row and data rows.");
     }
 
     const headers = lines[0].split(",").map((h) => h.trim().replace(/^["']|["']$/g, "").toLowerCase());
     const dataRows: any[] = [];
 
     for (let i = 1; i < lines.length; i++) {
-      // Basic CSV splitter respecting quotes
       const rowRegex = /(?:^|,)(?:"([^"]*)"|([^,]*))/g;
       const values: string[] = [];
       let match;
@@ -92,25 +90,25 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
 
         headers.forEach((h, idx) => {
           const val = values[idx] || "";
-          if (h.includes("name") || h.includes("item") || h.includes("product") || h.includes("वस्तू") || h.includes("माल") || h.includes("description")) {
+          if (h.includes("name") || h.includes("item") || h.includes("product") || h.includes("description")) {
             if (!itemObj.name) itemObj.name = val;
           } else if (h.includes("hsn") || h.includes("sac")) {
             itemObj.hsn = val;
-          } else if (h.includes("purchase") || h.includes("cost") || h.includes("खरेदी") || h.includes("buy")) {
+          } else if (h.includes("purchase") || h.includes("cost") || h.includes("buy")) {
             itemObj.purchasePrice = parseFloat(val) || 0;
-          } else if (h.includes("sale") || h.includes("retail") || h.includes("विक्री") || h.includes("rate") || h.includes("price")) {
+          } else if (h.includes("sale") || h.includes("retail") || h.includes("rate") || h.includes("price")) {
             itemObj.salePrice = parseFloat(val) || 0;
           } else if (h.includes("mrp")) {
             itemObj.mrp = parseFloat(val) || 0;
-          } else if (h.includes("wholesale") || h.includes("घाऊक") || h.includes("trade")) {
+          } else if (h.includes("wholesale") || h.includes("trade")) {
             itemObj.wholesalePrice = parseFloat(val) || 0;
-          } else if (h.includes("stock") || h.includes("qty") || h.includes("quantity") || h.includes("साठा") || h.includes("नग")) {
+          } else if (h.includes("stock") || h.includes("qty") || h.includes("quantity")) {
             itemObj.stockQuantity = parseFloat(val) || 0;
-          } else if (h.includes("unit") || h.includes("युनिट") || h.includes("uom")) {
+          } else if (h.includes("unit") || h.includes("uom")) {
             itemObj.unit = val.toUpperCase() || "PCS";
           } else if (h.includes("gst") || h.includes("tax")) {
             itemObj.gstRate = parseFloat(val) || 0;
-          } else if (h.includes("brand") || h.includes("ब्रँड") || h.includes("company")) {
+          } else if (h.includes("brand") || h.includes("company")) {
             itemObj.brand = val;
           } else if (h.includes("category") || h.includes("group")) {
             itemObj.category = val;
@@ -138,17 +136,17 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
 
         headers.forEach((h, idx) => {
           const val = values[idx] || "";
-          if (h.includes("name") || h.includes("party") || h.includes("customer") || h.includes("supplier") || h.includes("नाव")) {
+          if (h.includes("name") || h.includes("party") || h.includes("customer") || h.includes("supplier")) {
             if (!partyObj.name) partyObj.name = val;
-          } else if (h.includes("type") || h.includes("प्रकार")) {
+          } else if (h.includes("type")) {
             partyObj.type = val.toLowerCase().includes("supp") ? "supplier" : "customer";
-          } else if (h.includes("phone") || h.includes("mobile") || h.includes("contact") || h.includes("फोन")) {
+          } else if (h.includes("phone") || h.includes("mobile") || h.includes("contact")) {
             partyObj.phone = val;
           } else if (h.includes("gstin") || h.includes("gst")) {
             partyObj.gstin = val;
-          } else if (h.includes("address") || h.includes("पत्ता") || h.includes("city")) {
+          } else if (h.includes("address") || h.includes("city")) {
             partyObj.address = val;
-          } else if (h.includes("balance") || h.includes("opening") || h.includes("उधारी") || h.includes("बाकी")) {
+          } else if (h.includes("balance") || h.includes("opening") || h.includes("due")) {
             partyObj.currentBalance = parseFloat(val) || 0;
           }
         });
@@ -187,13 +185,13 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
         }
 
         if (rows.length === 0) {
-          throw new Error("फाईलमध्ये कोणतेही वैध रेकॉर्ड्स आढळले नाहीत.");
+          throw new Error("No valid records found in file.");
         }
 
         setParsedRows(rows);
         setStep("map_preview");
       } catch (err: any) {
-        setErrorMessage(err.message || "फाईल वाचताना अडचण आली.");
+        setErrorMessage(err.message || "Failed to read file.");
       }
     };
     reader.readAsText(file);
@@ -205,21 +203,21 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
     if (importType === "items") {
       csvHeader = "Item Name,Purchase Price,Sale Price,Wholesale Price,Stock Quantity,Unit,GST Rate,HSN,Brand,Category\n";
       csvSample =
-        'महाधन १०:२६:२६ (50kg),1400,1470,1430,50,BAG,5,3105,Mahadhan,Fertilizer\n' +
-        'जीन्स पॅन्ट 32 Size,450,799,600,20,PCS,5,6203,Killer,Garments\n' +
+        'Fertilizer 10:26:26 (50kg),1400,1470,1430,50,BAG,5,3105,Mahadhan,Fertilizer\n' +
+        'Jeans Pants 32 Size,450,799,600,20,PCS,5,6203,Killer,Garments\n' +
         'Parle-G Biscuit 100g,8,10,9,100,PCS,0,1905,Parle,Kirana\n';
     } else {
       csvHeader = "Party Name,Type,Phone,GSTIN,Address,Opening Balance\n";
       csvSample =
-        'रमेश पाटील (शेतकरी),customer,9876543210,,मु.पो. वडगाव,15000\n' +
-        'श्री कृषी ट्रेडर्स,supplier,9822114455,27AAACG1234F1Z5,पुणे मार्केट यार्ड,0\n';
+        'Ramesh Patil,customer,9876543210,,At Post Vadgaon,15000\n' +
+        'Shree Agro Traders,supplier,9822114455,27AAACG1234F1Z5,Pune Market Yard,0\n';
     }
 
     const blob = new Blob([csvHeader + csvSample], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `sample_${importType}_template.csv`);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `sample_${importType}_import_template.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -228,7 +226,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
   const executeImport = async () => {
     const selectedRows = parsedRows.filter((r) => r.selected);
     if (selectedRows.length === 0) {
-      setErrorMessage("कृपया आयात करण्यासाठी किमान १ रेकॉर्ड सिलेक्ट करा.");
+      setErrorMessage("Please select at least 1 record to import.");
       return;
     }
 
@@ -236,17 +234,18 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
     setErrorMessage(null);
 
     try {
-      const payload = importType === "items" ? { items: selectedRows } : { parties: selectedRows };
-
-      const res = await fetch("/api/migration/import-data", {
+      const res = await fetch("/api/migration/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          type: importType,
+          data: selectedRows
+        })
       });
 
       const result = await res.json();
       if (!res.ok) {
-        throw new Error(result.error || "मायग्रेशन आयात अयशस्वी झाली.");
+        throw new Error(result.error || "Migration import failed.");
       }
 
       setImportStats({
@@ -254,10 +253,12 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
         added: result.added || selectedRows.length,
         updated: result.updated || 0
       });
+
+      if (onRefreshDb) await onRefreshDb();
+      if (onImportCompleted) await onImportCompleted();
       setStep("done");
-      await onImportCompleted();
     } catch (err: any) {
-      setErrorMessage(err.message || "डेटा आयात करताना अडचण आली.");
+      setErrorMessage(err.message || "Error importing data.");
     } finally {
       setIsProcessing(false);
     }
@@ -276,8 +277,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               <Database className="w-5 h-5 text-indigo-200" />
             </div>
             <div>
-              <h2 className="text-base font-bold">डेटा मायग्रेशन सिस्टिम (Data Migration & Bulk Import)</h2>
-              <p className="text-[11px] text-indigo-100">Tally, Marg ERP, Vyapar, Busy किंवा Excel मधील डेटा थेट आयात करा</p>
+              <h2 className="text-base font-bold">Data Migration & Bulk Import</h2>
+              <p className="text-[11px] text-indigo-100">Import master data directly from Tally, Marg ERP, Vyapar, Busy, or Excel</p>
             </div>
           </div>
           <button onClick={onClose} className="p-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded-lg transition">
@@ -299,7 +300,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               {/* Type selector */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  १. काय आयात करायचे आहे ते निवडा (Select Import Category):
+                  1. Select Import Category:
                 </label>
                 <div className="grid grid-cols-2 gap-4">
                   <button
@@ -313,8 +314,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                   >
                     <Package className="w-6 h-6 text-indigo-600 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-bold text-sm">इन्व्हेंटरी आयटम यादी (Product Catalog)</h4>
-                      <p className="text-xs text-slate-500 mt-0.5">मालाची नावे, खरेदी/विक्री दर, साठा, युनिट्स, HSN कोड</p>
+                      <h4 className="font-bold text-sm">Product Catalog (Inventory)</h4>
+                      <p className="text-xs text-slate-500 mt-0.5">Item names, purchase & retail prices, stock quantity, units, and HSN codes</p>
                     </div>
                   </button>
 
@@ -329,8 +330,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                   >
                     <Users className="w-6 h-6 text-indigo-600 shrink-0 mt-0.5" />
                     <div>
-                      <h4 className="font-bold text-sm">ग्राहक व सप्लायर यादी (Parties & Dues)</h4>
-                      <p className="text-xs text-slate-500 mt-0.5">ग्राहकांची नावे, फोन नंबर, पत्ते, GSTIN व जुनी उधारी शिल्लक</p>
+                      <h4 className="font-bold text-sm">Customers & Suppliers (Parties)</h4>
+                      <p className="text-xs text-slate-500 mt-0.5">Party names, phone numbers, addresses, GSTIN, and opening balances</p>
                     </div>
                   </button>
                 </div>
@@ -340,7 +341,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    २. CSV / Excel / JSON फाईल निवडा:
+                    2. Select CSV / Excel / JSON File:
                   </label>
                   <button
                     type="button"
@@ -348,7 +349,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                     className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 flex items-center space-x-1"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>नमुना टेम्प्लेट डाऊनलोड करा (Sample CSV)</span>
+                    <span>Download Sample CSV Template</span>
                   </button>
                 </div>
 
@@ -370,8 +371,8 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                     <FileSpreadsheet className="w-7 h-7" />
                   </div>
                   <div>
-                    <p className="font-bold text-slate-800 text-sm">CSV फाईल येथे ड्रॅग करा किंवा क्लिक करा</p>
-                    <p className="text-xs text-slate-500 mt-1">Tally, Marg किंवा Excel मधून Export केलेले CSV थेट सपोर्टेड आहे</p>
+                    <p className="font-bold text-slate-800 text-sm">Drag CSV file here or click to browse</p>
+                    <p className="text-xs text-slate-500 mt-1">Directly supports CSV exported from Tally, Marg, Busy or Excel</p>
                   </div>
                 </div>
               </div>
@@ -384,7 +385,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                 <div className="flex items-center space-x-2">
                   <FileCheck className="w-4 h-4 text-indigo-600" />
                   <span className="font-bold text-xs text-slate-800">
-                    आयात पूर्वदृश्य (Preview - {parsedRows.filter((r) => r.selected).length}/{parsedRows.length} Records)
+                    Import Preview ({parsedRows.filter((r) => r.selected).length}/{parsedRows.length} Records)
                   </span>
                 </div>
                 <button
@@ -396,7 +397,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                   className="text-xs text-slate-500 hover:text-slate-800 flex items-center space-x-1 font-semibold"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>दुसरी फाईल निवडा</span>
+                  <span>Choose Another File</span>
                 </button>
               </div>
 
@@ -417,20 +418,20 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                       </th>
                       {importType === "items" ? (
                         <>
-                          <th className="p-2.5">वस्तूचे नाव (Name)</th>
-                          <th className="p-2.5 text-right">खरेदी दर</th>
-                          <th className="p-2.5 text-right">विक्री दर</th>
-                          <th className="p-2.5 text-center">साठा (Qty)</th>
-                          <th className="p-2.5 text-center">युनिट</th>
+                          <th className="p-2.5">Item Name</th>
+                          <th className="p-2.5 text-right">Purchase Price</th>
+                          <th className="p-2.5 text-right">Sale Price</th>
+                          <th className="p-2.5 text-center">Stock Qty</th>
+                          <th className="p-2.5 text-center">Unit</th>
                           <th className="p-2.5 text-center">HSN</th>
                         </>
                       ) : (
                         <>
-                          <th className="p-2.5">पार्टीचे नाव (Party Name)</th>
-                          <th className="p-2.5 text-center">प्रकार (Type)</th>
-                          <th className="p-2.5">फोन नंबर</th>
+                          <th className="p-2.5">Party Name</th>
+                          <th className="p-2.5 text-center">Type</th>
+                          <th className="p-2.5">Phone</th>
                           <th className="p-2.5">GSTIN</th>
-                          <th className="p-2.5 text-right">उधारी शिल्लक (Balance)</th>
+                          <th className="p-2.5 text-right">Opening Balance</th>
                         </>
                       )}
                     </tr>
@@ -488,9 +489,9 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
                 <Check className="w-8 h-8 stroke-[3]" />
               </div>
               <div>
-                <h3 className="text-xl font-bold text-slate-900">डेटा यशस्वीरीत्या आयात झाला!</h3>
+                <h3 className="text-xl font-bold text-slate-900">Data Imported Successfully!</h3>
                 <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                  एकूण <strong>{importStats.total}</strong> रेकॉर्ड्स तुमच्या डेटाबेसमध्ये यशस्वीरीत्या समाविष्ट करण्यात आले आहेत.
+                  A total of <strong>{importStats.total}</strong> records have been merged into your live database.
                 </p>
               </div>
             </div>
@@ -504,7 +505,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-semibold transition cursor-pointer"
           >
-            {step === "done" ? "बंद करा (Close)" : "रद्द करा (Cancel)"}
+            {step === "done" ? "Close" : "Cancel"}
           </button>
 
           {step === "map_preview" && (
@@ -517,12 +518,12 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               {isProcessing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>आयात करत आहे...</span>
+                  <span>Importing Data...</span>
                 </>
               ) : (
                 <>
                   <Upload className="w-4 h-4" />
-                  <span>डेटा आयात करा ({parsedRows.filter((r) => r.selected).length} Records)</span>
+                  <span>Import Data ({parsedRows.filter((r) => r.selected).length} Records)</span>
                 </>
               )}
             </button>
@@ -534,7 +535,7 @@ export const DataMigrationModal: React.FC<DataMigrationModalProps> = ({
               onClick={onClose}
               className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-xl text-xs uppercase shadow transition cursor-pointer"
             >
-              पूर्ण झाले (Done)
+              Done
             </button>
           )}
         </div>

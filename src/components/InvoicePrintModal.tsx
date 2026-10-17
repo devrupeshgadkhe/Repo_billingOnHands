@@ -448,7 +448,7 @@ export default function InvoicePrintModal({
                   {/* Invoice Meta */}
                   <div className="space-y-0.5 text-[10px]">
                     <div className="flex justify-between">
-                      <span>{invoice.type.includes("return") ? (invoice.type === "sale_return" ? "Credit Note:" : "Debit Note:") : isMarathi ? "बिल क्र:" : "Bill No:"} <strong>#{invoice.invoiceNumber}</strong></span>
+                      <span>{invoice.type.includes("return") ? (invoice.type === "sale_return" ? "Credit Note:" : "Debit Note:") : "Bill No:"} <strong>#{invoice.invoiceNumber}</strong></span>
                       <span>{invoice.date}</span>
                     </div>
                     {invoice.originalInvoiceNumber && (
@@ -459,7 +459,7 @@ export default function InvoicePrintModal({
                     )}
                     {th.showPaymentMode && (
                       <div className="flex justify-between">
-                        <span>{invoice.type.includes("return") ? "Settlement:" : isMarathi ? "पेमेंट:" : "Payment:"} <strong>{getPaymentModeLabel(invoice.paymentType, invoice.type)}</strong></span>
+                        <span>{invoice.type.includes("return") ? "Settlement:" : "Payment:"} <strong>{getPaymentModeLabel(invoice.paymentType, invoice.type)}</strong></span>
                       </div>
                     )}
                   </div>
@@ -469,7 +469,7 @@ export default function InvoicePrintModal({
                     <>
                       <div className="border-t border-dashed border-slate-300 my-1.5"></div>
                       <div className="space-y-0.5 text-[10px]">
-                        <p className="text-[9px] uppercase font-bold text-slate-500">{isMarathi ? "ग्राहक तपशील:" : "Customer Details:"}</p>
+                        <p className="text-[9px] uppercase font-bold text-slate-500">Customer Details:</p>
                         <p className="font-bold text-slate-900">{cleanPartyName}</p>
                         {th.showCustomerGstin && invoice.partyGstin && <p className="text-[9.5px]">GSTIN: {invoice.partyGstin}</p>}
                         {th.showCustomerPhone && party?.phone && <p className="text-[9.5px]">Mob: {party.phone}</p>}
@@ -482,8 +482,8 @@ export default function InvoicePrintModal({
                   {/* Items List */}
                   <div className="space-y-1.5">
                     <div className="flex justify-between font-bold text-[10px] uppercase text-slate-700 pb-0.5 border-b border-slate-300">
-                      <span>{isMarathi ? "तपशील / वस्तू" : "Item & Qty"}</span>
-                      <span>{isMarathi ? "रक्कम" : "Amount"}</span>
+                      <span>Item &amp; Qty</span>
+                      <span>Amount</span>
                     </div>
 
                     {invoice.items.map((item, idx) => (
@@ -559,7 +559,7 @@ export default function InvoicePrintModal({
 
                     <div className="border-t border-dashed border-slate-400 my-1"></div>
                     <div className="flex justify-between font-black text-xs border-y-2 border-black py-1 my-1 bg-white">
-                      <span>{isMarathi ? "एकूण रक्कम (TOTAL):" : "TOTAL AMOUNT:"}</span>
+                      <span>TOTAL AMOUNT:</span>
                       <span className="text-sm">₹{invoice.totalAmount.toFixed(2)}</span>
                     </div>
 

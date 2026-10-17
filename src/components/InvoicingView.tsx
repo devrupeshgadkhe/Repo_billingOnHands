@@ -47,6 +47,7 @@ import {
 import { InvoiceUploadModal, ParsedInvoiceData } from "./InvoiceUploadModal.js";
 import EWayBillModal from "./EWayBillModal.js";
 import ThermalDesignerModal from "./ThermalDesignerModal.js";
+import { matchItemByBarcode, getItemAllBarcodes } from "../utils/barcodeUtils.js";
 
 interface InvoicingViewProps {
   key?: React.Key;
@@ -442,7 +443,7 @@ export default function InvoicingView({
     });
 
     playPOSSound("success");
-    setScanNotification(`सप्लायर बिल #${parsedData.invoiceNumber} (${parsedData.supplierName || 'सप्लायर'}) मधील ${parsedData.items.length} वस्तू यशस्वीरीत्या लोड झाल्या. सर्व तपशील तपासून सेव्ह करा.`);
+    setScanNotification(`Supplier Bill #${parsedData.invoiceNumber} (${parsedData.supplierName || 'Supplier'}) with ${parsedData.items.length} items loaded successfully. Please review and save.`);
     setTimeout(() => setScanNotification(""), 8000);
   };
 
@@ -872,7 +873,8 @@ export default function InvoicingView({
     
     const queryWords = query.toLowerCase().split(/\s+/).filter(Boolean);
     return (items || []).filter(item => {
-      const hasDirectBarcode = Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase() === query.toLowerCase());
+      const allBarcodes = getItemAllBarcodes(item);
+      const hasDirectBarcode = allBarcodes.some(b => (b || "").toLowerCase() === query.toLowerCase());
       if (hasDirectBarcode) return true;
 
       const nameLower = (item.name || "").toLowerCase();
@@ -881,7 +883,7 @@ export default function InvoicingView({
       return queryWords.every(word =>
         nameLower.includes(word) ||
         hsnLower.includes(word) ||
-        (Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase().includes(word)))
+        allBarcodes.some(b => (b || "").toLowerCase().includes(word))
       );
     });
   }, [items, parsedQuickTerminal]);
@@ -938,7 +940,8 @@ export default function InvoicingView({
         const q = catalogSearch.toLowerCase();
         const matchesName = (item.name || "").toLowerCase().includes(q);
         const matchesHsn = (item.hsn || "").toLowerCase().includes(q);
-        const matchesBarcode = Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase().includes(q));
+        const allBarcodes = getItemAllBarcodes(item);
+        const matchesBarcode = allBarcodes.some(b => (b || "").toLowerCase().includes(q));
         if (!matchesName && !matchesHsn && !matchesBarcode) return false;
       }
 
@@ -1101,14 +1104,14 @@ export default function InvoicingView({
       if (paymentType === "cash" || paymentType === "bank") {
         effectivePartyId = "walkin_customer";
       } else {
-        setErrorText("उधारी बिलासाठी कृपया ग्राहकाचे खाते निवडा किंवा तयार करा. (Please select customer for credit sale)");
+        setErrorText("Please select or create a customer account for credit (Udhaari) sales.");
         return;
       }
     }
 
     const validLines = computedInvoiceDetails.lines;
     if (validLines.length === 0) {
-      setErrorText("कृपया बिलामध्ये किमान एक वस्तू ॲड करा. (Please add at least one item to the cart)");
+      setErrorText("Please add at least one item to the cart.");
       return;
     }
 
@@ -1118,7 +1121,7 @@ export default function InvoicingView({
     let resolvedPartyId = effectivePartyId;
 
     if (effectivePartyId === "walkin_customer") {
-      const existingCash = (relevantParties || []).find(p => (p.name || "").toLowerCase().includes("cash") || (p.name || "").toLowerCase().includes("walk-in") || (p.name || "").toLowerCase().includes("रोख"));
+      const existingCash = (relevantParties || []).find(p => (p.name || "").toLowerCase().includes("cash") || (p.name || "").toLowerCase().includes("walk-in") || (p.name || "").toLowerCase().includes("counter"));
       if (existingCash) {
         resolvedPartyId = existingCash.id;
         resolvedPartyName = existingCash.name;
@@ -1295,7 +1298,7 @@ export default function InvoicingView({
                     ? "bg-emerald-600 text-white shadow-xs font-bold"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
-                title="GST Tax Invoice (CGST/SGST कर लागू होईल)"
+                title="GST Tax Invoice (CGST/SGST taxes applied)"
               >
                 <span>GST Tax Bill</span>
               </button>
@@ -1307,9 +1310,9 @@ export default function InvoicingView({
                     ? "bg-amber-600 text-white shadow-xs font-bold"
                     : "text-slate-600 hover:text-slate-900"
                 }`}
-                title="Non-GST (साधी पावती / 0% कर - सर्व वस्तू ०% कर आकारल्या जातील)"
+                title="Non-GST (Regular Receipt / 0% Tax - all line items billed at zero tax)"
               >
-                <span>Non-GST (0% कर)</span>
+                <span>Non-GST (0% Tax)</span>
               </button>
             </div>
           )}
@@ -1328,7 +1331,7 @@ export default function InvoicingView({
               type="button"
               onClick={() => setIsScanModalOpen(true)}
               className="flex items-center space-x-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-xs px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border border-emerald-500/40"
-              title={type === "purchase" ? "सप्लायर बिल स्कॅन करा" : "बिलाचा / पावतीचा फोटो स्कॅन करा"}
+              title={type === "purchase" ? "Scan Supplier Purchase Invoice" : "Scan Bill or Receipt Photo"}
             >
               <ScanLine className="w-3.5 h-3.5" />
               <span>Scan Bill</span>
@@ -1668,10 +1671,10 @@ export default function InvoicingView({
                       handleAddFromTerminal(terminalMatches[quickHighlightedIndex], parsedQuickTerminal.qty);
                     } else if (quickQuery.trim()) {
                       const trimmed = quickQuery.trim();
-                      const matchByBarcode = items.find(it => it.barcodes && it.barcodes.some(b => b.toLowerCase() === trimmed.toLowerCase()));
-                      if (matchByBarcode) {
+                      const match = matchItemByBarcode(trimmed, items);
+                      if (match) {
                         e.preventDefault();
-                        handleAddFromTerminal(matchByBarcode, 1);
+                        handleAddFromTerminal(match, parsedQuickTerminal.qty || 1);
                       }
                     }
                   } else if (e.key === "Escape") {
@@ -1707,7 +1710,7 @@ export default function InvoicingView({
                         <div className="font-sans">
                           <p className="font-semibold text-slate-900">{item.name}</p>
                           <p className="text-[10px] text-slate-400 font-mono">
-                            HSN: {item.hsn} • Barcode: {item.barcodes?.join(", ") || "-"}
+                            HSN: {item.hsn} • Barcode: {getItemAllBarcodes(item).join(", ") || "-"}
                           </p>
                         </div>
                         <div className="text-right shrink-0 font-mono">
@@ -2497,7 +2500,7 @@ export default function InvoicingView({
                   className="py-2.5 px-2 bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 font-bold rounded-xl text-xs transition flex items-center justify-center space-x-1 cursor-pointer shadow-2xs"
                 >
                   <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                  <span>ई-वे / E-Inv</span>
+                  <span>E-Way / E-Inv</span>
                 </button>
 
                 {/* Custom Thermal Designer Button */}
@@ -2508,7 +2511,7 @@ export default function InvoicingView({
                   title="Customize 58mm/80mm Thermal Receipt Layout & QR"
                 >
                   <Sliders className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                  <span>थर्मल डिझाइन</span>
+                  <span>Thermal Designer</span>
                 </button>
               </div>
             </div>

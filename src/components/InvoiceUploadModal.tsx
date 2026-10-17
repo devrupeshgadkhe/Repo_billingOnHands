@@ -142,12 +142,12 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
     setErrorMessage(null);
     const validMimes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
     if (!validMimes.includes(file.type)) {
-      setErrorMessage("कृपया वैध फॉरमॅट निवडा: JPG, PNG, WEBP किंवा PDF डॉक्युमेंट.");
+      setErrorMessage("Please select a valid format: JPG, PNG, WEBP or PDF document.");
       return;
     }
 
     if (file.size > 25 * 1024 * 1024) {
-      setErrorMessage("फाईलचा आकार खूप मोठा आहे (जास्तीत जास्त २५ MB).");
+      setErrorMessage("File size is too large (Maximum 25 MB).");
       return;
     }
 
@@ -184,7 +184,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
   const executeDirectParse = async (base64Data: string, mimeType: string, fileName: string) => {
     setIsProcessing(true);
     setErrorMessage(null);
-    setProcessingStep("बिलाचे वाचन व तपशील पृथक्करण सुरू आहे...");
+    setProcessingStep("Reading invoice and extracting details...");
 
     try {
       const response = await fetch("/api/ai/parse-invoice", {
@@ -200,7 +200,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
       const result = await response.json();
 
       if (response.ok && result.invoice) {
-        setProcessingStep("तपशील लोड झाले. पडताळणी स्क्रीन उघडत आहे...");
+        setProcessingStep("Details extracted. Opening review screen...");
         // Sanitize invoice numbers and fields to guarantee no undefined
         const inv = result.invoice;
         inv.items = Array.isArray(inv.items) ? inv.items.map((it: any) => {
@@ -242,9 +242,9 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
         onQuotaExceeded?.();
       }
 
-      setErrorMessage(result.error || "बिलाचे वाचन करताना अडचण आली. कृपया बिलाचा स्पष्ट व प्रकाश असलेला फोटो निवडा.");
+      setErrorMessage(result.error || "Failed to read invoice. Please provide a clear, well-lit photo of the bill.");
     } catch (err: any) {
-      setErrorMessage(err?.message || "सर्व्हरशी संपर्क होऊ शकला नाही. कृपया पुन्हा प्रयत्न करा.");
+      setErrorMessage(err?.message || "Could not connect to server. Please try again.");
     } finally {
       setIsProcessing(false);
       setProcessingStep("");
@@ -253,13 +253,13 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
 
   const handleExtract = async () => {
     if (!selectedFile) {
-      setErrorMessage("कृपया आधी बिलाचा फोटो किंवा PDF निवडा.");
+      setErrorMessage("Please select an invoice photo or PDF first.");
       return;
     }
 
     setIsProcessing(true);
     setErrorMessage(null);
-    setProcessingStep("फाईल तयार करत आहे...");
+    setProcessingStep("Preparing document...");
 
     try {
       const base64Data = await new Promise<string>((resolve, reject) => {
@@ -275,7 +275,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
 
       await executeDirectParse(base64Data, selectedFile.type, selectedFile.name);
     } catch (err: any) {
-      setErrorMessage(err?.message || "सर्व्हरशी संपर्क होऊ शकला नाही. कृपया पुन्हा प्रयत्न करा.");
+      setErrorMessage(err?.message || "Could not connect to server. Please try again.");
       setIsProcessing(false);
       setProcessingStep("");
     }
@@ -355,12 +355,12 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-slate-900 text-base">
-                {modalStep === "review" ? "सप्लायर बिल तपशील पडताळणी" : "सप्लायर बिल स्कॅन (Scan Bill)"}
+                {modalStep === "review" ? "Review Supplier Bill Details" : "Scan Supplier Invoice"}
               </h3>
               <p className="text-xs text-slate-500">
                 {modalStep === "review"
-                  ? "तपशील तपासून घ्या. नवीन सप्लायर व नवीन उत्पादने आपोआप सिस्टीममध्ये जोडली जातील."
-                  : "सप्लायर बिलाचा फोटो किंवा PDF निवडा; सर्व तपशील व वस्तू आपोआप वाचल्या जातील."}
+                  ? "Verify extracted details. New suppliers and products will automatically be created in system."
+                  : "Upload a photo or PDF of the supplier bill; items and financial totals will be automatically extracted."}
               </p>
             </div>
           </div>
@@ -400,8 +400,8 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                         <Camera className="w-6 h-6" />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-emerald-950">थेट वेबकॅम / कॅमेराने स्कॅन करा</p>
-                        <p className="text-[11px] text-emerald-800/80 mt-0.5">कॅमेरासमोर बिल धरा व 1-क्लिकमध्ये स्कॅन करा</p>
+                        <p className="text-sm font-bold text-emerald-950">Scan Live with Webcam / Camera</p>
+                        <p className="text-[11px] text-emerald-800/80 mt-0.5">Hold bill before camera and capture in 1-click</p>
                       </div>
                       <span className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold rounded-full shadow-xs">
                         📷 Live Camera Scan
@@ -424,8 +424,8 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                         <Upload className="w-6 h-6 text-slate-700" />
                       </div>
                       <div>
-                        <p className="text-sm font-bold text-slate-800">फाईल / PDF अपलोड करा</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">JPG, PNG, WEBP किंवा सप्लायर PDF बिल</p>
+                        <p className="text-sm font-bold text-slate-800">Upload File / PDF</p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">JPG, PNG, WEBP or Supplier PDF Invoice</p>
                       </div>
                       <span className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-full">
                         📁 Browse / Drop File
@@ -451,7 +451,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                       <FileCheck className="w-4 h-4 text-emerald-600" />
-                      <span>निवडलेली फाईल:</span>
+                      <span>Selected File:</span>
                     </span>
                     <button
                       type="button"
@@ -459,7 +459,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                       disabled={isProcessing}
                       className="text-xs text-slate-500 hover:text-rose-600 font-semibold cursor-pointer transition disabled:opacity-50"
                     >
-                      बदला / खोडा
+                      Change File
                     </button>
                   </div>
 
@@ -482,7 +482,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                         {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • {selectedFile.type || "Document"}
                       </p>
                       <span className="inline-flex items-center text-[10px] text-emerald-700 font-semibold mt-1">
-                        <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> स्कॅनिंगसाठी तयार
+                        <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> Ready to Scan
                       </span>
                     </div>
                   </div>
@@ -497,7 +497,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                         <div className="bg-emerald-600 h-1.5 rounded-full animate-pulse w-3/4"></div>
                       </div>
                       <p className="text-[10px] text-emerald-700">
-                        बिलावरील नाव, GST नंबर, वस्तू, दर आणि टॅक्स अचूकपणे वाचले जात आहेत...
+                        Extracting supplier details, GST number, line items, rates and tax...
                       </p>
                     </div>
                   )}
@@ -506,13 +506,13 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
 
               {/* Feature hints */}
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
-                <p className="font-semibold text-slate-800">💡 वैशिष्ट्ये:</p>
+                <p className="font-semibold text-slate-800">💡 Features:</p>
                 <p>
-                  • स्कॅन झाल्यानंतर थेट बिलात भरण्यापूर्वी तुम्हाला <strong>तपासणी व पडताळणी स्क्रीन</strong> दिसेल.
+                  • A <strong>Verification & Review Screen</strong> opens before items are added to invoice.
                   <br />
-                  • <strong>नवीन सप्लायर:</strong> सिस्टीममध्ये आधीपासून नसल्यास GSTIN व संपर्कासह आपोआप जोडला जाईल.
+                  • <strong>New Supplier:</strong> Automatically created with GSTIN and contact details if not found.
                   <br />
-                  • <strong>नवीन उत्पादने:</strong> इन्व्हेंटरीमध्ये आपोआप नोंदवली जातील.
+                  • <strong>New Products:</strong> Automatically registered into your inventory with correct purchase price.
                 </p>
               </div>
             </>
@@ -525,24 +525,24 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <Building2 className="w-4 h-4 text-emerald-600" />
-                      <span>सप्लायर माहिती (Supplier Details):</span>
+                      <span>Supplier Details:</span>
                     </span>
                     {matchedSupplier ? (
                       <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
                         <Check className="w-3 h-3 text-emerald-700" />
-                        <span>नोंदणीकृत सप्लायर</span>
+                        <span>Registered Supplier</span>
                       </span>
                     ) : (
                       <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-300 flex items-center gap-1">
                         <Plus className="w-3 h-3 text-indigo-700" />
-                        <span>नवीन सप्लायर (आपोआप सेव्ह होईल)</span>
+                        <span>New Supplier (Auto-registered)</span>
                       </span>
                     )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs">
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">नाव (Supplier Name)</label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Supplier Name</label>
                       <input
                         type="text"
                         value={reviewedData.supplierName || ""}
@@ -551,41 +551,41 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">GSTIN (जीएसटी नंबर)</label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">GSTIN</label>
                       <input
                         type="text"
                         value={reviewedData.supplierGstin || ""}
-                        placeholder="GSTIN उपलब्ध नाही"
+                        placeholder="GSTIN Not Available"
                         onChange={(e) => setReviewedData({ ...reviewedData, supplierGstin: e.target.value.toUpperCase() })}
                         className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-mono font-medium focus:ring-1 focus:ring-emerald-500"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">फोन नंबर (Phone)</label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Phone Number</label>
                       <input
                         type="text"
                         value={reviewedData.supplierPhone || ""}
-                        placeholder="उदा. 9876543210"
+                        placeholder="e.g. 9876543210"
                         onChange={(e) => setReviewedData({ ...reviewedData, supplierPhone: e.target.value })}
                         className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-1 focus:ring-emerald-500"
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">पत्ता (Address)</label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Address</label>
                       <input
                         type="text"
                         value={reviewedData.supplierAddress || ""}
-                        placeholder="सप्लायर पत्ता"
+                        placeholder="Supplier Address"
                         onChange={(e) => setReviewedData({ ...reviewedData, supplierAddress: e.target.value })}
                         className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-1 focus:ring-emerald-500"
                       />
                     </div>
                     <div>
-                      <label className="text-[10px] font-bold text-slate-500 uppercase">राज्य (State)</label>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">State</label>
                       <input
                         type="text"
                         value={reviewedData.supplierState || ""}
-                        placeholder="उदा. Maharashtra"
+                        placeholder="e.g. Maharashtra"
                         onChange={(e) => setReviewedData({ ...reviewedData, supplierState: e.target.value })}
                         className="w-full mt-0.5 px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium focus:ring-1 focus:ring-emerald-500"
                       />
@@ -598,7 +598,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
                       <Hash className="w-3 h-3 text-slate-400" />
-                      <span>बिल क्रमांक (Bill No)</span>
+                      <span>Invoice / Bill No</span>
                     </label>
                     <input
                       type="text"
@@ -610,7 +610,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   <div>
                     <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
                       <Calendar className="w-3 h-3 text-slate-400" />
-                      <span>बिल तारीख (Date)</span>
+                      <span>Date</span>
                     </label>
                     <input
                       type="date"
@@ -620,11 +620,11 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                     />
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase block">करपात्र रक्कम (Taxable)</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase block">Taxable Amount</span>
                     <span className="font-bold text-slate-800 text-sm block mt-1">₹{formatNum(reviewedData.subtotal)}</span>
                   </div>
                   <div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase block">एकूण रक्कम (Grand Total)</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase block">Grand Total</span>
                     <span className="font-extrabold text-emerald-700 text-base block mt-0.5">₹{formatNum(reviewedData.grandTotal)}</span>
                   </div>
                 </div>
@@ -634,10 +634,10 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   <div className="bg-slate-100/90 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                       <Package className="w-4 h-4 text-emerald-600" />
-                      <span>वस्तूंची यादी ({reviewedData.items?.length || 0} आयटम्स):</span>
+                      <span>Item List ({reviewedData.items?.length || 0} Items):</span>
                     </span>
                     <span className="text-[11px] text-slate-500 font-medium">
-                      दर व संख्या तपासून आवश्यक बदल करू शकता
+                      You can adjust rate, quantity and tax before confirming
                     </span>
                   </div>
 
@@ -645,13 +645,13 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                     <table className="w-full text-left text-xs border-collapse">
                       <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 text-[10px] uppercase font-bold sticky top-0">
                         <tr>
-                          <th className="py-2 px-3">उत्पादन नाव</th>
+                          <th className="py-2 px-3">Item Name</th>
                           <th className="py-2 px-2">HSN</th>
-                          <th className="py-2 px-2 w-20">संख्या (Qty)</th>
-                          <th className="py-2 px-2 w-24">खरेदी दर (Rate)</th>
+                          <th className="py-2 px-2 w-20">Quantity</th>
+                          <th className="py-2 px-2 w-24">Purchase Rate</th>
                           <th className="py-2 px-2 w-20">GST %</th>
-                          <th className="py-2 px-3 text-right">एकूण (Total)</th>
-                          <th className="py-2 px-3 text-center">स्थिती (Status)</th>
+                          <th className="py-2 px-3 text-right">Total</th>
+                          <th className="py-2 px-3 text-center">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -711,11 +711,11 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                             <td className="py-2 px-3 text-center">
                               {exists ? (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                  नोंदणीकृत
+                                  Existing
                                 </span>
                               ) : (
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                                  + नवीन
+                                  + New Item
                                 </span>
                               )}
                             </td>
@@ -740,7 +740,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                 className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                <span>पुन्हा स्कॅन करा</span>
+                <span>Scan Again</span>
               </button>
 
               <div className="flex items-center space-x-2">
@@ -749,7 +749,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   onClick={onClose}
                   className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer"
                 >
-                  रद्द करा
+                  Cancel
                 </button>
                 <button
                   type="button"
@@ -757,7 +757,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-bold rounded-xl shadow-sm transition flex items-center space-x-1.5 cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
-                  <span>तपशील कन्फर्म करा आणि बिलात भरा</span>
+                  <span>Confirm Details & Load into Bill</span>
                 </button>
               </div>
             </>
@@ -771,7 +771,7 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   disabled={isProcessing}
                   className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer disabled:opacity-50"
                 >
-                  रद्द करा
+                  Cancel
                 </button>
                 <button
                   type="button"
@@ -782,12 +782,12 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
                   {isProcessing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>स्कॅन होत आहे...</span>
+                      <span>Scanning...</span>
                     </>
                   ) : (
                     <>
                       <ScanLine className="w-4 h-4" />
-                      <span>स्कॅन करा (Scan Bill)</span>
+                      <span>Scan Bill</span>
                     </>
                   )}
                 </button>
@@ -802,8 +802,8 @@ export const InvoiceUploadModal: React.FC<InvoiceUploadModalProps> = ({
         isOpen={isCameraModalOpen}
         onClose={() => setIsCameraModalOpen(false)}
         onCapture={handleCameraCapture}
-        title="सप्लायर बिल थेट कॅमेऱ्याने स्कॅन करा"
-        description="सप्लायर बिलाचा स्पष्ट फोटो कॅमेरासमोर धरा आणि कॅप्चर करा."
+        title="Live Camera Supplier Bill Scanner"
+        description="Hold supplier bill steadily before camera and capture."
       />
     </div>
   );

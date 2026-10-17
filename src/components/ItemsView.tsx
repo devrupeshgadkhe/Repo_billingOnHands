@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo } from "react";
-import { Item, TAX_RATES, UNITS } from "../types.js";
+import { Item, TAX_RATES, UNITS, BusinessProfile, BarcodeEntry } from "../types.js";
 import { useDialog } from "../context/DialogContext.js";
 import {
   Search,
@@ -23,10 +23,18 @@ import {
   Clock,
   AlertCircle,
   ShieldAlert,
-  CalendarOff
+  CalendarOff,
+  Printer,
+  Barcode,
+  Check,
+  X,
+  Layers,
+  Star
 } from "lucide-react";
 import ItemsScanModal from "./ItemsScanModal.js";
 import DataMigrationModal from "./DataMigrationModal.js";
+import BarcodePrintModal from "./BarcodePrintModal.js";
+import { BarcodeSvg, generateCustomBarcode, checkDuplicateBarcode } from "../utils/barcodeUtils.js";
 
 export function getExpiryStatus(expiryDate?: string): {
   status: 'none' | 'valid' | 'expiring_soon' | 'expired';
@@ -47,11 +55,11 @@ export function getExpiryStatus(expiryDate?: string): {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     
     if (diffDays < 0) {
-      return { status: 'expired', daysRemaining: diffDays, label: `मुदत संपली (${Math.abs(diffDays)} दिवस आधी)` };
+      return { status: 'expired', daysRemaining: diffDays, label: `Expired (${Math.abs(diffDays)}d ago)` };
     } else if (diffDays <= 45) {
-      return { status: 'expiring_soon', daysRemaining: diffDays, label: `${diffDays} दिवसांत संपेल` };
+      return { status: 'expiring_soon', daysRemaining: diffDays, label: `Expires in ${diffDays}d` };
     } else {
-      return { status: 'valid', daysRemaining: diffDays, label: `${diffDays} दिवस वैध` };
+      return { status: 'valid', daysRemaining: diffDays, label: `Valid for ${diffDays}d` };
     }
   } catch {
     return { status: 'none', daysRemaining: null, label: '' };
@@ -64,6 +72,7 @@ interface ItemsViewProps {
   onDeleteItem: (id: string) => Promise<void>;
   onRefreshDb?: () => Promise<void>;
   permissions?: any;
+  business?: BusinessProfile;
 }
 
 export default function ItemsView({
@@ -71,11 +80,12 @@ export default function ItemsView({
   onSaveItem,
   onDeleteItem,
   onRefreshDb,
-  permissions
+  permissions,
+  business
 }: ItemsViewProps) {
   
   const perms = permissions || { view: true, create: true, update: true, delete: true };
-  const { showConfirm } = useDialog();
+  const { showConfirm, showAlert } = useDialog();
 
   // State managers
   const [searchQuery, setSearchQuery] = useState("");
@@ -84,7 +94,16 @@ export default function ItemsView({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isScanModalOpen, setIsScanModalOpen] = useState(false);
   const [isMigrationModalOpen, setIsMigrationModalOpen] = useState(false);
-  const [barcodeInputText, setBarcodeInputText] = useState("");
+  
+  // Barcode Management States in Modal
+  const [barcodeEntries, setBarcodeEntries] = useState<BarcodeEntry[]>([]);
+  const [newBarcodeInput, setNewBarcodeInput] = useState("");
+  const [newBarcodeType, setNewBarcodeType] = useState<'custom' | 'manufacturer' | 'pack' | 'variant'>('custom');
+  const [barcodeWarning, setBarcodeWarning] = useState<string | null>(null);
+
+  // Barcode Label Print Modal
+  const [isBarcodePrintModalOpen, setIsBarcodePrintModalOpen] = useState(false);
+  const [selectedItemForPrint, setSelectedItemForPrint] = useState<Item | null>(null);
 
   // Form State
   const [formData, setFormData] = useState<Omit<Item, "id">>({
@@ -109,43 +128,57 @@ export default function ItemsView({
     barcodes: []
   });
 
-  // Calculate Metrics
-  const lowStockCount = useMemo(() => (items || []).filter(i => (i.stockQuantity || 0) <= (i.minStockAlert || 0)).length, [items]);
-  const expiringSoonCount = useMemo(() => (items || []).filter(i => getExpiryStatus(i.expiryDate).status === 'expiring_soon').length, [items]);
-  const expiredCount = useMemo(() => (items || []).filter(i => getExpiryStatus(i.expiryDate).status === 'expired').length, [items]);
+  // Calculate quick metrics
+  const { lowStockCount, expiringSoonCount, expiredCount } = useMemo(() => {
+    let low = 0;
+    let expSoon = 0;
+    let exp = 0;
 
-  // Filter items based on search and active tab
+    items.forEach(it => {
+      if ((it.stockQuantity || 0) <= (it.minStockAlert || 0)) {
+        low++;
+      }
+      const expStatus = getExpiryStatus(it.expiryDate);
+      if (expStatus.status === 'expired') {
+        exp++;
+      } else if (expStatus.status === 'expiring_soon') {
+        expSoon++;
+      }
+    });
+
+    return { lowStockCount: low, expiringSoonCount: expSoon, expiredCount: exp };
+  }, [items]);
+
+  // Filter items based on active tab and search query
   const filteredItems = useMemo(() => {
-    const lowerQuery = (searchQuery || "").toLowerCase();
-    return (items || []).filter(item => {
-      if (!item) return false;
-      const matchesSearch =
-        (item.name || "").toLowerCase().includes(lowerQuery) ||
-        (item.hsn || "").toLowerCase().includes(lowerQuery) ||
-        (item.brand && item.brand.toLowerCase().includes(lowerQuery)) ||
-        (item.category && item.category.toLowerCase().includes(lowerQuery)) ||
-        (item.batchNumber && item.batchNumber.toLowerCase().includes(lowerQuery)) ||
-        (Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase().includes(lowerQuery)));
+    const q = searchQuery.toLowerCase().trim();
+    
+    return items.filter(item => {
+      // 1. Tab condition
+      if (filterTab === 'low_stock' && (item.stockQuantity || 0) > (item.minStockAlert || 0)) {
+        return false;
+      }
+      if (filterTab === 'expiring_soon' && getExpiryStatus(item.expiryDate).status !== 'expiring_soon') {
+        return false;
+      }
+      if (filterTab === 'expired' && getExpiryStatus(item.expiryDate).status !== 'expired') {
+        return false;
+      }
+
+      // 2. Search query condition
+      if (!q) return true;
+      const matchName = item.name.toLowerCase().includes(q);
+      const matchHsn = (item.hsn || "").toLowerCase().includes(q);
+      const matchBrand = (item.brand || "").toLowerCase().includes(q);
+      const matchBatch = (item.batchNumber || "").toLowerCase().includes(q);
+      const matchBarcode = Array.isArray(item.barcodes) && item.barcodes.some(b => (b || "").toLowerCase().includes(q));
       
-      if (!matchesSearch) return false;
-
-      if (filterTab === 'low_stock') {
-        return (item.stockQuantity || 0) <= (item.minStockAlert || 0);
-      }
-      if (filterTab === 'expiring_soon') {
-        return getExpiryStatus(item.expiryDate).status === 'expiring_soon';
-      }
-      if (filterTab === 'expired') {
-        return getExpiryStatus(item.expiryDate).status === 'expired';
-      }
-
-      return true;
+      return matchName || matchHsn || matchBrand || matchBatch || matchBarcode;
     });
   }, [items, searchQuery, filterTab]);
 
   const openAddModal = () => {
     setEditingItem(null);
-    setBarcodeInputText("");
     setFormData({
       name: "",
       hsn: "",
@@ -167,18 +200,39 @@ export default function ItemsView({
       mfgDate: "",
       barcodes: []
     });
+    setBarcodeEntries([]);
+    setNewBarcodeInput("");
+    setBarcodeWarning(null);
     setIsModalOpen(true);
   };
 
   const openEditModal = (item: Item) => {
     setEditingItem(item);
-    setBarcodeInputText(item.barcodes ? item.barcodes.join(", ") : "");
+    
+    // Initialize barcodes entries
+    const existingEntries: BarcodeEntry[] = [];
+    if (Array.isArray(item.barcodeEntries) && item.barcodeEntries.length > 0) {
+      existingEntries.push(...item.barcodeEntries);
+    } else if (Array.isArray(item.barcodes)) {
+      item.barcodes.forEach((b, idx) => {
+        existingEntries.push({
+          code: b,
+          type: idx === 0 ? "custom" : "manufacturer",
+          isPrimary: idx === 0
+        });
+      });
+    }
+
+    setBarcodeEntries(existingEntries);
+    setNewBarcodeInput("");
+    setBarcodeWarning(null);
+
     setFormData({
       name: item.name,
       hsn: item.hsn,
       purchasePrice: item.purchasePrice,
       salePrice: item.salePrice,
-      mrp: item.mrp || item.salePrice,
+      mrp: item.mrp || 0,
       wholesalePrice: item.wholesalePrice || 0,
       minWholesaleQty: item.minWholesaleQty || 5,
       boxPackingRatio: item.boxPackingRatio || 0,
@@ -207,18 +261,77 @@ export default function ItemsView({
     }));
   };
 
+  // Add barcode to list
+  const handleAddBarcode = (codeToAdd?: string) => {
+    const code = (codeToAdd || newBarcodeInput).trim();
+    if (!code) return;
+
+    // Check duplicate in current item
+    if (barcodeEntries.some(b => b.code.toUpperCase() === code.toUpperCase())) {
+      setBarcodeWarning(`Barcode "${code}" is already linked to this item.`);
+      return;
+    }
+
+    // Check duplicate in other database items
+    const dupCheck = checkDuplicateBarcode(code, items, editingItem?.id);
+    if (dupCheck.isDuplicate && dupCheck.matchedItem) {
+      setBarcodeWarning(`Warning: Barcode "${code}" is already assigned to "${dupCheck.matchedItem.name}".`);
+    } else {
+      setBarcodeWarning(null);
+    }
+
+    const isFirst = barcodeEntries.length === 0;
+    const newEntry: BarcodeEntry = {
+      code,
+      type: newBarcodeType,
+      isPrimary: isFirst
+    };
+
+    setBarcodeEntries(prev => [...prev, newEntry]);
+    setNewBarcodeInput("");
+  };
+
+  // Auto-generate custom barcode
+  const handleGenerateCustomBarcode = () => {
+    const prefix = business?.name 
+      ? business.name.replace(/[^A-Za-z0-9]/g, "").slice(0, 3).toUpperCase() 
+      : "BOH";
+    const generated = generateCustomBarcode(prefix, items);
+    handleAddBarcode(generated);
+  };
+
+  const handleRemoveBarcode = (index: number) => {
+    setBarcodeEntries(prev => {
+      const updated = prev.filter((_, idx) => idx !== index);
+      // Ensure at least one primary if items remain
+      if (updated.length > 0 && !updated.some(b => b.isPrimary)) {
+        updated[0].isPrimary = true;
+      }
+      return updated;
+    });
+    setBarcodeWarning(null);
+  };
+
+  const handleSetPrimaryBarcode = (index: number) => {
+    setBarcodeEntries(prev => prev.map((entry, idx) => ({
+      ...entry,
+      isPrimary: idx === index
+    })));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
 
-    const parsedBarcodes = barcodeInputText
-      .split(",")
-      .map(b => b.trim())
-      .filter(Boolean);
+    // Normalize barcodes list
+    const primaryCodes = barcodeEntries.filter(b => b.isPrimary).map(b => b.code);
+    const otherCodes = barcodeEntries.filter(b => !b.isPrimary).map(b => b.code);
+    const finalBarcodes = Array.from(new Set([...primaryCodes, ...otherCodes]));
 
     const payload: Item = {
       ...formData,
-      barcodes: parsedBarcodes,
+      barcodes: finalBarcodes,
+      barcodeEntries: barcodeEntries,
       id: editingItem ? editingItem.id : ""
     };
 
@@ -249,49 +362,50 @@ export default function ItemsView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(itemsToSave)
       });
-      if (res.ok) {
-        if (onRefreshDb) await onRefreshDb();
-      } else {
-        for (const it of itemsToSave) {
-          await onSaveItem(it);
-        }
-        if (onRefreshDb) await onRefreshDb();
-      }
-    } catch {
-      for (const it of scannedList) {
-        await onSaveItem({
-          ...it,
-          id: "item_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6)
-        });
-      }
+      if (!res.ok) throw new Error("Failed to save scanned items");
       if (onRefreshDb) await onRefreshDb();
+    } catch (err: any) {
+      console.error(err);
+      await showAlert({
+        title: "Import Error",
+        message: err.message || "Failed to batch import scanned items",
+        variant: "danger"
+      });
     }
   };
 
+  const handleOpenPrintModal = (item: Item) => {
+    setSelectedItemForPrint(item);
+    setIsBarcodePrintModalOpen(true);
+  };
+
   return (
-    <div id="v-items-container" className="space-y-6">
-      
-      {/* Title block */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100">
+    <div className="space-y-6">
+      {/* Top action deck */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Inventory & Batch Management</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            स्टॉक यादी, बॅच नंबर (Batch No.), एक्सपायरी तारीख (Expiry Tracking) आणि किमान साठा अलर्ट्स
+          <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+            <Boxes className="w-6 h-6 text-emerald-600" />
+            Products & Inventory Catalog
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Manage multi-tier pricing, custom barcodes, stock levels, and batch expiry dates
           </p>
         </div>
-        
-        <div className="flex flex-wrap items-center gap-2.5">
+
+        <div className="flex items-center space-x-2.5 w-full sm:w-auto">
           {perms.create && (
             <>
-              {/* AI Handwritten / Printed Scan Button */}
+              {/* AI Handwritten / Photo Scanner */}
               <button
-                id="scan-items-list-btn"
+                id="ai-items-scanner-btn"
                 type="button"
                 onClick={() => setIsScanModalOpen(true)}
                 className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 select-none px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition cursor-pointer"
+                title="Scan handwritten invoices or printed product lists using AI"
               >
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
-                <span>AI हँडरिटन लिस्ट स्कॅन (Scan List)</span>
+                <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                <span>AI Invoice / List Scan</span>
               </button>
 
               {/* Data Migration Import Button */}
@@ -300,9 +414,10 @@ export default function ItemsView({
                 type="button"
                 onClick={() => setIsMigrationModalOpen(true)}
                 className="bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 select-none px-3.5 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-xs transition cursor-pointer"
+                title="Import catalog from Excel or CSV file"
               >
                 <Database className="w-3.5 h-3.5 text-indigo-600" />
-                <span>डेटा मायग्रेशन (Import CSV)</span>
+                <span>Import CSV / Excel</span>
               </button>
 
               {/* Manual Add Product */}
@@ -313,7 +428,7 @@ export default function ItemsView({
                 className="bg-emerald-600 hover:bg-emerald-700 text-white select-none px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-1.5 shadow-md hover:shadow-lg transition cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>नवीन वस्तू जोडा (Add Product)</span>
+                <span>Add New Product</span>
               </button>
             </>
           )}
@@ -333,13 +448,13 @@ export default function ItemsView({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-600">एकूण उत्पादने (Total)</span>
+            <span className="text-xs font-semibold text-slate-600">Total Products</span>
             <Boxes className={`w-4 h-4 ${filterTab === 'all' ? 'text-emerald-600' : 'text-slate-400'}`} />
           </div>
           <div className="mt-2 text-2xl font-black text-slate-900 font-mono">
             {items.length}
           </div>
-          <span className="text-[10px] text-slate-400 font-medium">सर्व कॅटलॉग स्टॉक</span>
+          <span className="text-[10px] text-slate-400 font-medium">All Catalog Inventory</span>
         </button>
 
         {/* Low Stock */}
@@ -353,13 +468,13 @@ export default function ItemsView({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-amber-800">कमी साठा (Low Stock)</span>
+            <span className="text-xs font-semibold text-amber-800">Low Stock Alert</span>
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
           <div className="mt-2 text-2xl font-black text-amber-900 font-mono">
             {lowStockCount}
           </div>
-          <span className="text-[10px] text-amber-700/80 font-medium">पुन्हा ऑर्डर करणे आवश्यक</span>
+          <span className="text-[10px] text-amber-700/80 font-medium">Needs Reordering</span>
         </button>
 
         {/* Expiring Soon */}
@@ -373,13 +488,13 @@ export default function ItemsView({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-orange-800">लवकर संपणारा (Expiring Soon)</span>
+            <span className="text-xs font-semibold text-orange-800">Expiring Soon</span>
             <Clock className="w-4 h-4 text-orange-500" />
           </div>
           <div className="mt-2 text-2xl font-black text-orange-900 font-mono">
             {expiringSoonCount}
           </div>
-          <span className="text-[10px] text-orange-700/80 font-medium">पुढील ४५ दिवसांत मुदत</span>
+          <span className="text-[10px] text-orange-700/80 font-medium">Within 45 Days</span>
         </button>
 
         {/* Expired Stock */}
@@ -393,13 +508,13 @@ export default function ItemsView({
           }`}
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-rose-800">मुदत संपलेला (Expired)</span>
+            <span className="text-xs font-semibold text-rose-800">Expired Stock</span>
             <CalendarOff className="w-4 h-4 text-rose-500" />
           </div>
           <div className="mt-2 text-2xl font-black text-rose-900 font-mono">
             {expiredCount}
           </div>
-          <span className="text-[10px] text-rose-700/80 font-medium">विक्री थांबवा / कंपनीला परत</span>
+          <span className="text-[10px] text-rose-700/80 font-medium">Quarantine / Return</span>
         </button>
       </div>
 
@@ -427,7 +542,7 @@ export default function ItemsView({
               filterTab === 'all' ? 'bg-white text-slate-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            सर्व ({items.length})
+            All ({items.length})
           </button>
           <button
             type="button"
@@ -436,7 +551,7 @@ export default function ItemsView({
               filterTab === 'low_stock' ? 'bg-amber-500 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            कमी साठा ({lowStockCount})
+            Low Stock ({lowStockCount})
           </button>
           <button
             type="button"
@@ -445,7 +560,7 @@ export default function ItemsView({
               filterTab === 'expiring_soon' ? 'bg-orange-500 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            एक्सपायरी अलर्ट ({expiringSoonCount})
+            Expiring Soon ({expiringSoonCount})
           </button>
           <button
             type="button"
@@ -454,7 +569,7 @@ export default function ItemsView({
               filterTab === 'expired' ? 'bg-rose-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
-            मुदत संपलेले ({expiredCount})
+            Expired ({expiredCount})
           </button>
         </div>
       </div>
@@ -464,203 +579,233 @@ export default function ItemsView({
         {filteredItems.length === 0 ? (
           <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center">
             <Boxes className="w-16 h-16 text-slate-200 mb-2" />
-            <p className="text-sm font-bold text-slate-700">कोणतीही वस्तू सापडली नाही (No Item Found)</p>
-            <p className="text-xs text-slate-400 mt-1 max-w-xs">फिल्टर बदलून पहा किंवा सर्च बारमध्ये नवीन नाव टाईप करा.</p>
+            <p className="text-sm font-bold text-slate-700">No Items Found</p>
+            <p className="text-xs text-slate-400 mt-1 max-w-xs">Try adjusting your filters or search by a different name, HSN or barcode.</p>
           </div>
         ) : (
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-slate-500">
-                <th className="py-3 px-4">Product / Item Code</th>
-                <th className="py-3 px-3 text-center">Batch & Expiry</th>
-                <th className="py-3 px-3 text-center">HSN / Brand</th>
-                <th className="py-3 px-3 text-right">Purchase (खरेदी)</th>
-                <th className="py-3 px-3 text-right">Retail (किरकोळ)</th>
-                <th className="py-3 px-3 text-right">Wholesale (घाऊक)</th>
-                <th className="py-3 px-3 text-center">Tax Rate</th>
-                <th className="py-3 px-4 text-center">Stock (साठा)</th>
-                <th className="py-3 px-4 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredItems.map(item => {
-                const isShortage = (item.stockQuantity || 0) <= (item.minStockAlert || 0);
-                const exp = getExpiryStatus(item.expiryDate);
-                return (
-                  <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
-                    {/* Item Name */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
-                          <Tag className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <p id={`item-row-${item.id}-name`} className="font-bold text-slate-800 text-sm">{item.name}</p>
-                          <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                            <span className="text-[10px] text-slate-400">Unit: <span className="font-mono font-semibold">{item.unit}</span></span>
-                            {item.boxPackingRatio && item.boxPackingRatio > 0 && (
-                              <span className="text-[9px] text-blue-700 font-bold bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">
-                                1 {item.boxUnit || "BOX"} = {item.boxPackingRatio} {item.unit}
-                              </span>
-                            )}
-                            {item.brand && (
-                              <span className="text-[9px] text-purple-700 font-bold bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded">
-                                {item.brand}
-                              </span>
-                            )}
-                            {item.barcodes && item.barcodes.length > 0 && (
-                              <span className="text-[9px] text-emerald-700 font-bold bg-emerald-50 border border-emerald-100 px-1.5 py-0.2 px-1 rounded font-mono">
-                                Barcodes: {item.barcodes.join(", ")}
-                              </span>
-                            )}
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 font-bold uppercase text-slate-500">
+                  <th className="py-3 px-4">Product / Item Code</th>
+                  <th className="py-3 px-3 text-center">Batch & Expiry</th>
+                  <th className="py-3 px-3 text-center">HSN / Brand</th>
+                  <th className="py-3 px-3 text-right">Purchase Price</th>
+                  <th className="py-3 px-3 text-right">Retail Price</th>
+                  <th className="py-3 px-3 text-right">Wholesale Price</th>
+                  <th className="py-3 px-3 text-center">Tax Rate</th>
+                  <th className="py-3 px-4 text-center">Stock</th>
+                  <th className="py-3 px-4 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.map(item => {
+                  const isShortage = (item.stockQuantity || 0) <= (item.minStockAlert || 0);
+                  const exp = getExpiryStatus(item.expiryDate);
+                  return (
+                    <tr key={item.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                      {/* Item Name */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600">
+                            <Tag className="w-4 h-4" />
                           </div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Batch & Expiry Column */}
-                    <td className="py-3.5 px-3 text-center">
-                      {item.batchNumber || item.expiryDate ? (
-                        <div className="space-y-1">
-                          {item.batchNumber && (
-                            <span className="inline-block font-mono text-[10px] font-bold bg-slate-100 border border-slate-200 text-slate-700 px-2 py-0.5 rounded">
-                              बॅच: {item.batchNumber}
-                            </span>
-                          )}
-                          {item.expiryDate && (
-                            <div>
-                              {exp.status === 'expired' ? (
-                                <span className="inline-flex items-center gap-1 font-bold text-[9px] bg-rose-100 border border-rose-300 text-rose-800 px-1.5 py-0.5 rounded-full">
-                                  <AlertCircle className="w-3 h-3 text-rose-600" />
-                                  {exp.label}
-                                </span>
-                              ) : exp.status === 'expiring_soon' ? (
-                                <span className="inline-flex items-center gap-1 font-bold text-[9px] bg-orange-100 border border-orange-300 text-orange-800 px-1.5 py-0.5 rounded-full">
-                                  <Clock className="w-3 h-3 text-orange-600" />
-                                  Exp: {item.expiryDate} ({exp.daysRemaining}d)
-                                </span>
-                              ) : (
-                                <span className="inline-block text-[10px] text-slate-500 font-mono">
-                                  Exp: {item.expiryDate}
+                          <div>
+                            <p id={`item-row-${item.id}-name`} className="font-bold text-slate-800 text-sm">{item.name}</p>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              <span className="text-[10px] text-slate-400">Unit: <span className="font-mono font-semibold">{item.unit}</span></span>
+                              {item.boxPackingRatio && item.boxPackingRatio > 0 && (
+                                <span className="text-[9px] text-blue-700 font-bold bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">
+                                  1 {item.boxUnit || "BOX"} = {item.boxPackingRatio} {item.unit}
                                 </span>
                               )}
+                              {item.brand && (
+                                <span className="text-[9px] text-purple-700 font-bold bg-purple-50 border border-purple-100 px-1.5 py-0.5 rounded">
+                                  {item.brand}
+                                </span>
+                              )}
+                              {item.barcodes && item.barcodes.length > 0 && (
+                                <div className="flex items-center gap-1 flex-wrap">
+                                  {item.barcodes.map((bc, bIdx) => (
+                                    <span key={bIdx} className="text-[9px] text-emerald-800 font-mono font-bold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                      <Barcode className="w-2.5 h-2.5 text-emerald-600" />
+                                      {bc}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Batch & Expiry Column */}
+                      <td className="py-3.5 px-3 text-center">
+                        {item.batchNumber || item.expiryDate ? (
+                          <div className="space-y-1">
+                            {item.batchNumber && (
+                              <span className="inline-block font-mono text-[10px] font-bold bg-slate-100 border border-slate-200 text-slate-700 px-2 py-0.5 rounded">
+                                Batch: {item.batchNumber}
+                              </span>
+                            )}
+                            {item.expiryDate && (
+                              <div>
+                                {exp.status === 'expired' ? (
+                                  <span className="inline-flex items-center gap-1 font-bold text-[9px] bg-rose-100 border border-rose-300 text-rose-800 px-1.5 py-0.5 rounded-full">
+                                    <AlertCircle className="w-3 h-3 text-rose-600" />
+                                    {exp.label}
+                                  </span>
+                                ) : exp.status === 'expiring_soon' ? (
+                                  <span className="inline-flex items-center gap-1 font-bold text-[9px] bg-orange-100 border border-orange-300 text-orange-800 px-1.5 py-0.5 rounded-full">
+                                    <Clock className="w-3 h-3 text-orange-600" />
+                                    Exp: {item.expiryDate} ({exp.daysRemaining}d)
+                                  </span>
+                                ) : (
+                                  <span className="inline-block text-[10px] text-slate-500 font-mono">
+                                    Exp: {item.expiryDate}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-300 text-[11px]">-</span>
+                        )}
+                      </td>
+
+                      {/* HSN & Brand */}
+                      <td className="py-3.5 px-3 text-center">
+                        <div className="font-mono text-slate-700 font-bold">{item.hsn || "-"}</div>
+                        {item.category && <div className="text-[10px] text-slate-400">{item.category}</div>}
+                      </td>
+
+                      {/* Purchase Price */}
+                      <td className="py-3.5 px-3 text-right font-mono text-slate-700">₹{(item.purchasePrice).toFixed(2)}</td>
+
+                      {/* Retail Selling price */}
+                      <td className="py-3.5 px-3 text-right font-mono text-slate-900 font-semibold">
+                        ₹{(item.salePrice).toFixed(2)}
+                        {item.mrp && item.mrp > item.salePrice ? (
+                          <div className="text-[10px] text-slate-400 line-through">MRP: ₹{item.mrp}</div>
+                        ) : null}
+                      </td>
+
+                      {/* Wholesale price */}
+                      <td className="py-3.5 px-3 text-right font-mono">
+                        {item.wholesalePrice && item.wholesalePrice > 0 ? (
+                          <div>
+                            <span className="text-blue-700 font-bold">₹{item.wholesalePrice.toFixed(2)}</span>
+                            <div className="text-[9px] text-slate-400 font-sans">MOQ: {item.minWholesaleQty || 5} {item.unit}</div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-[11px]">-</span>
+                        )}
+                      </td>
+
+                      {/* GST Rate */}
+                      <td className="py-3.5 px-3 text-center">
+                        <span className="font-bold bg-slate-100 text-slate-700 text-[10px] py-1 px-2 rounded-full">
+                          {item.gstRate}% GST
+                        </span>
+                      </td>
+
+                      {/* Stock quantity */}
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex flex-col items-center justify-center">
+                          <span id={`item-row-${item.id}-quantity`} className={`font-mono text-sm font-black px-2 py-0.5 rounded-lg ${
+                            isShortage
+                              ? "bg-rose-50 text-rose-600 border border-rose-100"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+                          }`}>
+                            {item.stockQuantity} {item.unit}
+                          </span>
+                          {isShortage && (
+                            <span className="text-[9px] text-rose-500 font-bold mt-1 flex items-center space-x-0.5">
+                              <AlertTriangle className="w-3 h-3 text-rose-500" />
+                              <span>Shortage (≤{item.minStockAlert})</span>
+                            </span>
                           )}
                         </div>
-                      ) : (
-                        <span className="text-slate-300 text-[11px]">-</span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* HSN & Brand */}
-                    <td className="py-3.5 px-3 text-center">
-                      <div className="font-mono text-slate-700 font-bold">{item.hsn || "-"}</div>
-                      {item.category && <div className="text-[10px] text-slate-400">{item.category}</div>}
-                    </td>
+                      {/* Action buttons */}
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center space-x-1">
+                          {/* Print Barcode Label Button */}
+                          <button
+                            id={`print-barcode-${item.id}-btn`}
+                            onClick={() => handleOpenPrintModal(item)}
+                            className="p-1.5 px-2 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition"
+                            title="Print Barcode Labels / Stickers"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
 
-                    {/* Purchase Price */}
-                    <td className="py-3.5 px-3 text-right font-mono text-slate-700">₹{(item.purchasePrice).toFixed(2)}</td>
-
-                    {/* Retail Selling price */}
-                    <td className="py-3.5 px-3 text-right font-mono text-slate-900 font-semibold">
-                      ₹{(item.salePrice).toFixed(2)}
-                      {item.mrp && item.mrp > item.salePrice ? (
-                        <div className="text-[10px] text-slate-400 line-through">MRP: ₹{item.mrp}</div>
-                      ) : null}
-                    </td>
-
-                    {/* Wholesale price */}
-                    <td className="py-3.5 px-3 text-right font-mono">
-                      {item.wholesalePrice && item.wholesalePrice > 0 ? (
-                        <div>
-                          <span className="text-blue-700 font-bold">₹{item.wholesalePrice.toFixed(2)}</span>
-                          <div className="text-[9px] text-slate-400 font-sans">MOQ: {item.minWholesaleQty || 5} {item.unit}</div>
+                          {perms.update && (
+                            <button
+                              id={`edit-item-${item.id}-btn`}
+                              onClick={() => openEditModal(item)}
+                              className="p-1.5 px-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                              title="Edit Item"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+                          {perms.delete && (
+                            <button
+                              id={`delete-item-${item.id}-btn`}
+                              onClick={() => handleDelete(item.id, item.name)}
+                              className="p-1.5 px-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                              title="Delete Item"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
-                      ) : (
-                        <span className="text-slate-400 text-[11px]">-</span>
-                      )}
-                    </td>
+                      </td>
 
-                    {/* GST Rate */}
-                    <td className="py-3.5 px-3 text-center">
-                      <span className="font-bold bg-slate-100 text-slate-700 text-[10px] py-1 px-2 rounded-full">
-                        {item.gstRate}% GST
-                      </span>
-                    </td>
-
-                    {/* Stock quantity */}
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex flex-col items-center justify-center">
-                        <span id={`item-row-${item.id}-quantity`} className={`font-mono text-sm font-black px-2 py-0.5 rounded-lg ${
-                          isShortage
-                            ? "bg-rose-50 text-rose-600 border border-rose-100"
-                            : "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                        }`}>
-                          {item.stockQuantity} {item.unit}
-                        </span>
-                        {isShortage && (
-                          <span className="text-[9px] text-rose-500 font-bold mt-1 flex items-center space-x-0.5">
-                            <AlertTriangle className="w-3 h-3 text-rose-500" />
-                            <span>Shortage (≤{item.minStockAlert})</span>
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Action buttons */}
-                    <td className="py-3.5 px-4 text-center">
-                      <div className="flex items-center justify-center space-x-1">
-                        {perms.update && (
-                          <button
-                            id={`edit-item-${item.id}-btn`}
-                            onClick={() => openEditModal(item)}
-                            className="p-1 px-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded transition"
-                            title="Edit Item"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        {perms.delete && (
-                          <button
-                            id={`delete-item-${item.id}-btn`}
-                            onClick={() => handleDelete(item.id, item.name)}
-                            className="p-1 px-2 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded transition"
-                            title="Delete Item"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       {/* Item Modal Popup Form: Drawer sliding effect */}
       {isModalOpen && (
         <div id="item-modal-container" className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-40 flex items-center justify-end">
-          <div id="item-modal-drawer" className="bg-white w-full max-w-lg h-screen flex flex-col shadow-2xl p-6 overflow-y-auto">
+          <div id="item-modal-drawer" className="bg-white w-full max-w-xl h-screen flex flex-col shadow-2xl p-6 overflow-y-auto">
             
             {/* Modal header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-6">
               <div className="flex items-center space-x-2">
                 <Boxes className="w-5 h-5 text-emerald-600" />
-                <h3 className="font-bold text-slate-905 font-sans text-base">
-                  {editingItem ? "Edit Inventory Item" : "New Inventory record"}
+                <h3 className="font-bold text-slate-900 font-sans text-base">
+                  {editingItem ? "Edit Inventory Item" : "New Inventory Record"}
                 </h3>
               </div>
-              <button
-                id="close-item-modal-btn"
-                onClick={() => setIsModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-semibold select-none bg-slate-100 rounded px-2 py-1"
-              >
-                Close
-              </button>
+              
+              <div className="flex items-center space-x-2">
+                {editingItem && (
+                  <button
+                    type="button"
+                    onClick={() => handleOpenPrintModal({ ...formData, id: editingItem.id } as Item)}
+                    className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold transition"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Print Labels</span>
+                  </button>
+                )}
+                <button
+                  id="close-item-modal-btn"
+                  onClick={() => setIsModalOpen(false)}
+                  className="text-slate-400 hover:text-slate-600 text-sm font-semibold select-none bg-slate-100 rounded-lg px-2.5 py-1"
+                >
+                  Close
+                </button>
+              </div>
             </div>
 
             {/* Form */}
@@ -668,7 +813,7 @@ export default function ItemsView({
               <div className="space-y-4">
                 {/* Product Name */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 label-required">Item / Catalog Name *</label>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 label-required">Product Name *</label>
                   <input
                     id="modal-item-name"
                     type="text"
@@ -676,7 +821,7 @@ export default function ItemsView({
                     required
                     value={formData.name}
                     onChange={handleInputChange}
-                    placeholder="e.g. महाधन 10:26:26 (50kg Bag) / Denim Stretch Blue Jeans"
+                    placeholder="e.g. Denim Stretch Jeans / Basmati Rice 25kg / LED Bulb 9W"
                     className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-bold"
                   />
                 </div>
@@ -684,40 +829,167 @@ export default function ItemsView({
                 {/* Brand & Category side-by-side */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Brand / Company (ब्रँड)</label>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Brand / Company</label>
                     <input
                       type="text"
                       name="brand"
                       value={formData.brand}
                       onChange={handleInputChange}
-                      placeholder="e.g. Mahadhan / Bayer / Raymond"
+                      placeholder="e.g. Philips / Raymond / Nestle"
                       className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Category (कॅटेगरी)</label>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Category</label>
                     <input
                       type="text"
                       name="category"
                       value={formData.category}
                       onChange={handleInputChange}
-                      placeholder="e.g. Fertilizers / Apparel / Seeds"
+                      placeholder="e.g. Electronics / Apparel / Grocery"
                       className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none"
                     />
                   </div>
                 </div>
 
-                {/* Multiple Barcodes */}
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5 font-medium">Product Barcodes (Comma-separated)</label>
-                  <input
-                    id="modal-item-barcodes"
-                    type="text"
-                    value={barcodeInputText}
-                    onChange={(e) => setBarcodeInputText(e.target.value)}
-                    placeholder="e.g. 5013, 8901235432, APEX-170"
-                    className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-mono"
-                  />
+                {/* MULTIPLE BARCODES SECTION */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1.5">
+                      <Barcode className="w-4 h-4 text-emerald-600" />
+                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wide">
+                        Product Barcodes ({barcodeEntries.length})
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleGenerateCustomBarcode}
+                      className="inline-flex items-center space-x-1.5 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold shadow-xs transition active:scale-95 cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>Generate Custom Barcode</span>
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    Link multiple barcodes (e.g. Store Custom, Manufacturer EAN, Outer Box or Size/Variant). Any linked barcode can be scanned at POS checkout.
+                  </p>
+
+                  {/* Add / Scan New Barcode Input Group */}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={newBarcodeType}
+                      onChange={(e) => setNewBarcodeType(e.target.value as any)}
+                      className="px-2.5 py-2 border border-slate-200 rounded-lg text-xs bg-white text-slate-700 font-medium outline-none focus:border-emerald-500 shrink-0"
+                    >
+                      <option value="custom">Store Custom</option>
+                      <option value="manufacturer">Manufacturer EAN</option>
+                      <option value="pack">Outer Box / Pack</option>
+                      <option value="variant">Size / Variant</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      value={newBarcodeInput}
+                      onChange={(e) => setNewBarcodeInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          handleAddBarcode();
+                        }
+                      }}
+                      placeholder="Scan with barcode gun or type barcode..."
+                      className="flex-1 px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs font-mono outline-none bg-white"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => handleAddBarcode()}
+                      className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold shrink-0 transition"
+                    >
+                      + Add
+                    </button>
+                  </div>
+
+                  {/* Warning on Duplicate Barcode */}
+                  {barcodeWarning && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <span>{barcodeWarning}</span>
+                    </div>
+                  )}
+
+                  {/* Linked Barcodes List */}
+                  {barcodeEntries.length > 0 ? (
+                    <div className="space-y-2 pt-1 max-h-48 overflow-y-auto">
+                      {barcodeEntries.map((entry, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2.5 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-3 shadow-2xs hover:border-slate-300 transition"
+                        >
+                          <div className="flex items-center space-x-3 min-w-0">
+                            {/* Barcode mini preview */}
+                            <div className="bg-slate-50 border border-slate-100 rounded p-1 w-24 shrink-0 flex items-center justify-center">
+                              <BarcodeSvg
+                                value={entry.code}
+                                width={85}
+                                height={24}
+                                fontSize={8}
+                                showText={false}
+                              />
+                            </div>
+
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-xs font-bold text-slate-800 truncate">
+                                  {entry.code}
+                                </span>
+                                {entry.isPrimary && (
+                                  <span className="text-[9px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-200 px-1.5 py-0.2 rounded-full uppercase">
+                                    Primary
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[10px] text-slate-400 capitalize">
+                                  {entry.type === "custom" && "🏷️ Store Custom"}
+                                  {entry.type === "manufacturer" && "🏭 Manufacturer EAN"}
+                                  {entry.type === "pack" && "📦 Outer Pack"}
+                                  {entry.type === "variant" && "🎨 Size/Variant"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center space-x-1.5 shrink-0">
+                            {!entry.isPrimary && (
+                              <button
+                                type="button"
+                                onClick={() => handleSetPrimaryBarcode(idx)}
+                                className="px-2 py-1 text-[10px] font-bold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded border border-slate-200 transition"
+                                title="Set as primary barcode"
+                              >
+                                Set Primary
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveBarcode(idx)}
+                              className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                              title="Remove Barcode"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-3 text-center text-slate-400 border border-dashed border-slate-200 rounded-xl text-xs">
+                      No barcodes linked yet. Click "Generate Custom Barcode" or scan with a barcode gun.
+                    </div>
+                  )}
                 </div>
 
                 {/* HSN Code & Unit side-by-side */}
@@ -731,7 +1003,7 @@ export default function ItemsView({
                       maxLength={8}
                       value={formData.hsn}
                       onChange={handleInputChange}
-                      placeholder="e.g. 3105"
+                      placeholder="e.g. 6203 / 1006"
                       className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs outline-none font-mono"
                     />
                   </div>
@@ -754,12 +1026,12 @@ export default function ItemsView({
                 {/* Multi-Tier Pricing Card */}
                 <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                   <span className="text-[11px] font-black text-slate-700 uppercase tracking-wider block">
-                    💰 मल्टि-टियर दर (Multi-Tier Pricing)
+                    💰 Multi-Tier Pricing Structure
                   </span>
 
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Purchase (खरेदी)</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Purchase Price</label>
                       <input
                         type="number"
                         name="purchasePrice"
@@ -771,7 +1043,7 @@ export default function ItemsView({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">MRP (छापील)</label>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Printed MRP</label>
                       <input
                         type="number"
                         name="mrp"
@@ -783,7 +1055,7 @@ export default function ItemsView({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Retail Sale (किरकोळ) *</label>
+                      <label className="block text-[10px] font-bold text-emerald-800 uppercase mb-1">Retail Sale Price *</label>
                       <input
                         type="number"
                         name="salePrice"
@@ -799,7 +1071,7 @@ export default function ItemsView({
 
                   <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200/80">
                     <div>
-                      <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Wholesale Rate (घाऊक दर)</label>
+                      <label className="block text-[10px] font-bold text-blue-800 uppercase mb-1">Wholesale Rate</label>
                       <input
                         type="number"
                         name="wholesalePrice"
@@ -818,7 +1090,7 @@ export default function ItemsView({
                         min="1"
                         value={formData.minWholesaleQty || ""}
                         onChange={handleInputChange}
-                        placeholder="5 नग"
+                        placeholder="e.g. 5"
                         className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-mono"
                       />
                     </div>
@@ -828,29 +1100,29 @@ export default function ItemsView({
                 {/* Box Packing Ratio Conversion */}
                 <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-xl grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-blue-900 uppercase mb-1">1 पेटी / बॉक्समध्ये नग (Packing Ratio)</label>
+                    <label className="block text-[10px] font-bold text-blue-900 uppercase mb-1">Units per Box / Carton</label>
                     <input
                       type="number"
                       name="boxPackingRatio"
                       min="0"
                       value={formData.boxPackingRatio || ""}
                       onChange={handleInputChange}
-                      placeholder="उदा. 24 नग"
+                      placeholder="e.g. 24"
                       className="w-full px-2.5 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-mono font-bold"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-blue-900 uppercase mb-1">बॉक्सचे नाव (Packaging Unit)</label>
+                    <label className="block text-[10px] font-bold text-blue-900 uppercase mb-1">Packaging Unit Name</label>
                     <select
                       name="boxUnit"
                       value={formData.boxUnit}
                       onChange={handleInputChange}
                       className="w-full px-2 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold text-blue-900"
                     >
-                      <option value="BOX">BOX (खोका)</option>
-                      <option value="BAG">BAG (पोते/बॅग)</option>
-                      <option value="CARTON">CARTON (कार्टन)</option>
-                      <option value="CASE">CASE (केस/पेटी)</option>
+                      <option value="BOX">BOX</option>
+                      <option value="BAG">BAG</option>
+                      <option value="CARTON">CARTON</option>
+                      <option value="CASE">CASE</option>
                     </select>
                   </div>
                 </div>
@@ -860,25 +1132,25 @@ export default function ItemsView({
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-black text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
                       <Clock className="w-3.5 h-3.5 text-amber-700" />
-                      बॅच व एक्सपायरी ट्रॅकिंग (Batch & Expiry)
+                      Batch & Expiry Date Tracking
                     </span>
-                    <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">Pharma / FMCG / Kirana</span>
+                    <span className="text-[9px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-bold">Pharma / FMCG / Retail</span>
                   </div>
 
                   <div className="grid grid-cols-3 gap-2.5">
                     <div>
-                      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">Batch No. (बॅच क्र.)</label>
+                      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">Batch Number</label>
                       <input
                         type="text"
                         name="batchNumber"
                         value={formData.batchNumber || ""}
                         onChange={handleInputChange}
-                        placeholder="उदा. B-2026/09"
+                        placeholder="e.g. B-2026/09"
                         className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-mono font-bold text-amber-950 placeholder:font-normal"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">Mfg Date (तयार दिनांक)</label>
+                      <label className="block text-[10px] font-bold text-amber-900 uppercase mb-1">Mfg Date</label>
                       <input
                         type="date"
                         name="mfgDate"
@@ -888,7 +1160,7 @@ export default function ItemsView({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-bold text-rose-800 uppercase mb-1">Expiry Date (मुदत दिनांक)</label>
+                      <label className="block text-[10px] font-bold text-rose-800 uppercase mb-1">Expiry Date</label>
                       <input
                         type="date"
                         name="expiryDate"
@@ -899,7 +1171,7 @@ export default function ItemsView({
                     </div>
                   </div>
                   <p className="text-[10px] text-amber-700/80 leading-tight">
-                    * ही माहिती बिलावर आपोआप प्रिंट होईल आणि मुदत संपण्यापूर्वी तुम्हाला अलर्ट्स मिळतील.
+                    * Batch and expiry dates will print on invoices and trigger automatic expiry alerts.
                   </p>
                 </div>
 
@@ -934,7 +1206,7 @@ export default function ItemsView({
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Low Stock Limit</label>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Low Stock Alert Limit</label>
                     <input
                       id="modal-item-min-alert"
                       type="number"
@@ -954,9 +1226,9 @@ export default function ItemsView({
                 <button
                   id="save-item-modal-btn"
                   type="submit"
-                  className="w-full bg-emerald-650 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-xl text-xs tracking-wider uppercase shadow transition flex items-center justify-center space-x-2 cursor-pointer"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-xl text-xs tracking-wider uppercase shadow transition flex items-center justify-center space-x-2 cursor-pointer"
                 >
-                  <span>Save Record</span>
+                  <span>Save Product Record</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -965,6 +1237,17 @@ export default function ItemsView({
           </div>
         </div>
       )}
+
+      {/* Barcode Print Modal */}
+      <BarcodePrintModal
+        isOpen={isBarcodePrintModalOpen}
+        onClose={() => {
+          setIsBarcodePrintModalOpen(false);
+          setSelectedItemForPrint(null);
+        }}
+        item={selectedItemForPrint}
+        business={business}
+      />
 
       {/* AI Handwritten / Printed Items Scan Modal */}
       <ItemsScanModal

@@ -378,28 +378,28 @@ export function buildEodHtmlEmail(business: BusinessProfile, summary: EodSummary
       <div class="section-title">📊 Revenue & Payment Collections</div>
       <table class="table">
         <tr>
-          <td>Cash Collection (रोख विक्री)</td>
+          <td>Cash Collection</td>
           <td class="text-right font-mono font-bold" style="color: #2563eb;">${formatRupees(summary.sales.cashCollected)}</td>
         </tr>
         <tr>
-          <td>UPI & Bank Online (बँक / QR जमा)</td>
+          <td>UPI &amp; Bank Online Transfer</td>
           <td class="text-right font-mono font-bold" style="color: #7c3aed;">${formatRupees(summary.sales.bankCollected)}</td>
         </tr>
         <tr>
-          <td>Unpaid Khata / Credit Given (उधारी बिल)</td>
+          <td>Unpaid Khata / Credit Given</td>
           <td class="text-right font-mono font-bold" style="color: #d97706;">${formatRupees(summary.sales.creditPending)}</td>
         </tr>
         <tr>
-          <td>Customer Returns (परत आलेला माल - ${summary.returns.returnCount})</td>
+          <td>Customer Returns (${summary.returns.returnCount} returns)</td>
           <td class="text-right font-mono font-bold" style="color: #e11d48;">- ${formatRupees(summary.returns.returnTotal)}</td>
         </tr>
         ${summary.expenses.expenseTotal > 0 ? `
         <tr>
-          <td>Today's Shop Expenses (दुकान खर्च - ${summary.expenses.expenseCount})</td>
+          <td>Today's Store Expenses (${summary.expenses.expenseCount} entries)</td>
           <td class="text-right font-mono font-bold" style="color: #dc2626;">- ${formatRupees(summary.expenses.expenseTotal)}</td>
         </tr>` : ""}
         <tr style="background: #f8fafc; font-weight: bold;">
-          <td>Total Net Revenue (एकूण निव्वळ विक्री)</td>
+          <td>Total Net Revenue</td>
           <td class="text-right font-mono" style="font-size: 14px; color: #0f172a;">${formatRupees(summary.sales.netSalesTotal)}</td>
         </tr>
       </table>
@@ -423,7 +423,7 @@ export function buildEodHtmlEmail(business: BusinessProfile, summary: EodSummary
           <td class="text-right font-mono">${formatRupees(summary.sales.igst)}</td>
         </tr>` : ""}
         <tr style="background: #f8fafc; font-weight: bold;">
-          <td>Total Tax Collected (एकूण गोळा झालेला GST)</td>
+          <td>Total Tax Collected</td>
           <td class="text-right font-mono font-bold">${formatRupees(summary.sales.taxAmount)}</td>
         </tr>
       </table>
@@ -454,7 +454,7 @@ export function buildEodHtmlEmail(business: BusinessProfile, summary: EodSummary
 
       <!-- Low Stock Alerts -->
       ${emailCfg.lowStockAlerts && summary.lowStockItems.length > 0 ? `
-      <div class="section-title" style="color: #dc2626;">⚠️ Low Stock Restock Alerts (ऑर्डर आवश्यक)</div>
+      <div class="section-title" style="color: #dc2626;">⚠️ Low Stock Restock Alerts</div>
       <table class="table">
         <thead>
           <tr>
@@ -477,7 +477,7 @@ export function buildEodHtmlEmail(business: BusinessProfile, summary: EodSummary
 
       <!-- Near Expiry Items -->
       ${emailCfg.nearExpiryAlerts && summary.nearExpiryItems.length > 0 ? `
-      <div class="section-title" style="color: #d97706;">⏳ Near Expiry Batch Alerts (४५ दिवसांत संपणारा माल)</div>
+      <div class="section-title" style="color: #d97706;">⏳ Near Expiry Batch Alerts (Expiring within 45 days)</div>
       <table class="table">
         <thead>
           <tr>

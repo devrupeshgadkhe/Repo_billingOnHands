@@ -58,7 +58,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
     if (!file) return;
     const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
     if (!allowed.includes(file.type)) {
-      setErrorMessage("कृपया JPG, PNG किंवा PDF फॉरमॅटमधील फोटो निवडा.");
+      setErrorMessage("Please select an image in JPG, PNG or PDF format.");
       return;
     }
 
@@ -89,11 +89,11 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || "आयटम लिस्ट स्कॅन करताना अडचण आली.");
+        throw new Error(data.error || "Failed to scan item list.");
       }
 
       if (!data.items || data.items.length === 0) {
-        throw new Error("फोटोमधून कोणतेही आयटम वाचता आले नाहीत. कृपया स्पष्ट फोटो निवडा.");
+        throw new Error("No items could be recognized from the image. Please upload a clear photo.");
       }
 
       setParsedItems(
@@ -125,7 +125,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
       );
       setStep("review");
     } catch (innerErr: any) {
-      setErrorMessage(innerErr.message || "स्कॅनिंग अयशस्वी झाले.");
+      setErrorMessage(innerErr.message || "Scanning failed.");
     } finally {
       setIsProcessing(false);
     }
@@ -145,7 +145,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
       reader.readAsDataURL(selectedFile);
     } catch (err: any) {
       setIsProcessing(false);
-      setErrorMessage(err.message || "फाईल वाचताना अडचण आली.");
+      setErrorMessage(err.message || "Failed to read file.");
     }
   };
 
@@ -185,7 +185,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
   const handleImportAll = async () => {
     const selectedRows = parsedItems.filter((i) => i.selected && i.name.trim().length > 0);
     if (selectedRows.length === 0) {
-      setErrorMessage("कृपया किमान एक योग्य आयटम सिलेक्ट करा.");
+      setErrorMessage("Please select at least one valid item.");
       return;
     }
 
@@ -213,7 +213,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
       await onItemsImported(payload);
       onClose();
     } catch (err: any) {
-      setErrorMessage(err.message || "इन्व्हेंटरीमध्ये ॲड करताना त्रुटी आली.");
+      setErrorMessage(err.message || "Error adding items to inventory.");
     } finally {
       setIsSaving(false);
     }
@@ -232,8 +232,8 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
               <Sparkles className="w-5 h-5 text-emerald-200 animate-pulse" />
             </div>
             <div>
-              <h2 className="text-base font-bold">हँडरिटन व प्रिंटेड आयटम स्कॅनर (AI Item List Scanner)</h2>
-              <p className="text-[11px] text-emerald-100">कागदावर लिहिलेली लिस्ट, वहीतील नोंद किंवा कॅटलॉगचा फोटो काढून थेट इन्व्हेंटरीमध्ये ॲड करा</p>
+              <h2 className="text-base font-bold">AI Item List Scanner</h2>
+              <p className="text-[11px] text-emerald-100">Take a photo of handwritten notes, paper list or catalog to import directly into inventory</p>
             </div>
           </div>
           <button
@@ -275,7 +275,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                       }}
                       className="text-xs text-rose-600 hover:text-rose-700 font-bold underline cursor-pointer"
                     >
-                      दुसरा फोटो किंवा कॅमेरा निवडा
+                      Choose another photo or camera
                     </button>
                   </div>
                 </div>
@@ -291,8 +291,8 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                       <Camera className="w-6 h-6" />
                     </div>
                     <div>
-                      <p className="font-bold text-slate-900 text-sm">थेट वेबकॅमने फोटो काढा</p>
-                      <p className="text-[11px] text-emerald-800/80 mt-0.5">कॅमेरासमोर कागद किंवा यादी धरा व 1-क्लिकमध्ये स्कॅन करा</p>
+                      <p className="font-bold text-slate-900 text-sm">Capture with Webcam / Camera</p>
+                      <p className="text-[11px] text-emerald-800/80 mt-0.5">Hold paper or list before camera and capture in 1-click</p>
                     </div>
                     <span className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-bold rounded-full shadow-xs">
                       📷 Live Camera Scan
@@ -318,8 +318,8 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                       <Upload className="w-6 h-6 text-slate-700" />
                     </div>
                     <div>
-                      <p className="font-bold text-slate-800 text-sm">गॅलरी / फाईलमधून फोटो निवडा</p>
-                      <p className="text-[11px] text-slate-500 mt-0.5">JPG, PNG किंवा PDF फॉरमॅटमधील यादी</p>
+                      <p className="font-bold text-slate-800 text-sm">Upload from Gallery / Files</p>
+                      <p className="text-[11px] text-slate-500 mt-0.5">JPG, PNG or PDF format item lists</p>
                     </div>
                     <span className="px-3 py-1 bg-slate-100 text-slate-700 border border-slate-200 text-[10px] font-bold rounded-full">
                       📁 Browse File
@@ -332,12 +332,12 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2 text-xs text-slate-600">
                 <p className="font-bold text-slate-800 flex items-center space-x-1.5">
                   <Sparkles className="w-4 h-4 text-emerald-600" />
-                  <span>AI स्कॅनरचे फायदे:</span>
+                  <span>AI Scanner Advantages:</span>
                 </p>
                 <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-600 pl-1">
-                  <li>हस्तलिखित (Handwritten) वही, रजिस्टर किंवा कागदावरील मालाची यादी ओळखते.</li>
-                  <li>वस्तूचे नाव, खरेदी किंमत, विक्री दर, साठा (Qty), युनिट (KGS, PCS, BOX, LTR) आपोआप भरते.</li>
-                  <li>इन्व्हेंटरीमध्ये ॲड करण्याआधी सर्व दर व माहिती तपासता व एडिट करता येते.</li>
+                  <li>Recognizes handwritten registers, notebook entries or printed supplier catalog sheets.</li>
+                  <li>Automatically extracts Item Name, Purchase Price, Retail Rate, Stock Qty, and Unit.</li>
+                  <li>Allows reviewing, editing and verifying all details before adding to inventory.</li>
                 </ul>
               </div>
             </div>
@@ -347,7 +347,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                 <div className="flex items-center space-x-2">
                   <Boxes className="w-4 h-4 text-emerald-600" />
                   <span className="font-bold text-xs text-slate-800">
-                    वाचलेले प्रॉडक्ट्स ({parsedItems.filter((i) => i.selected).length}/{parsedItems.length})
+                    Recognized Products ({parsedItems.filter((i) => i.selected).length}/{parsedItems.length})
                   </span>
                 </div>
                 <button
@@ -359,7 +359,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                   className="text-xs text-slate-500 hover:text-slate-800 flex items-center space-x-1 font-semibold"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>दुसरा फोटो स्कॅन करा</span>
+                  <span>Scan another photo</span>
                 </button>
               </div>
 
@@ -380,13 +380,13 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                           className="accent-emerald-600 rounded"
                         />
                       </th>
-                      <th className="p-2.5">वस्तूचे नाव (Item Name)</th>
-                      <th className="p-2.5 text-right w-24">खरेदी (Purchase)</th>
-                      <th className="p-2.5 text-right w-24">विक्री (Retail)</th>
-                      <th className="p-2.5 text-right w-24">घाऊक (Wholesale)</th>
-                      <th className="p-2.5 text-center w-20">साठा (Stock)</th>
-                      <th className="p-2.5 text-center w-20">युनिट</th>
-                      <th className="p-2.5 text-center w-28">GST दर व कर रक्कम</th>
+                      <th className="p-2.5">Item Name</th>
+                      <th className="p-2.5 text-right w-24">Purchase</th>
+                      <th className="p-2.5 text-right w-24">Retail</th>
+                      <th className="p-2.5 text-right w-24">Wholesale</th>
+                      <th className="p-2.5 text-center w-20">Stock</th>
+                      <th className="p-2.5 text-center w-20">Unit</th>
+                      <th className="p-2.5 text-center w-28">GST Rate & Tax</th>
                       <th className="p-2.5 text-center w-12">Action</th>
                     </tr>
                   </thead>
@@ -406,7 +406,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                             type="text"
                             value={row.name}
                             onChange={(e) => handleRowChange(idx, "name", e.target.value)}
-                            placeholder="प्रॉडक्ट नाव"
+                            placeholder="Product Name"
                             className="w-full px-2 py-1 border border-slate-200 focus:border-emerald-500 rounded text-xs outline-none font-semibold text-slate-800"
                           />
                         </td>
@@ -466,11 +466,11 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
                             </select>
                             {parseGstRate(row.gstRate) > 0 ? (
                               <span className="text-[10px] text-emerald-700 font-medium mt-0.5 whitespace-nowrap">
-                                +₹{(((Number(row.salePrice || row.purchasePrice || 0) * parseGstRate(row.gstRate)) / 100)).toFixed(2)} कर
+                                +₹{(((Number(row.salePrice || row.purchasePrice || 0) * parseGstRate(row.gstRate)) / 100)).toFixed(2)} tax
                               </span>
                             ) : (
                               <span className="text-[10px] text-slate-400 font-medium mt-0.5 whitespace-nowrap">
-                                ०% करमुक्त
+                                0% Exempt
                               </span>
                             )}
                           </div>
@@ -500,7 +500,7 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-semibold transition cursor-pointer"
           >
-            रद्द करा (Cancel)
+            Cancel
           </button>
 
           {step === "upload" ? (
@@ -513,12 +513,12 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
               {isProcessing ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>AI वाचत आहे (Analyzing List)...</span>
+                  <span>AI Analyzing List...</span>
                 </>
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>स्कॅन सुरू करा (Scan Items)</span>
+                  <span>Scan Items</span>
                 </>
               )}
             </button>
@@ -532,12 +532,12 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
               {isSaving ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>इन्व्हेंटरीमध्ये ॲड करत आहे...</span>
+                  <span>Adding to Inventory...</span>
                 </>
               ) : (
                 <>
                   <Plus className="w-4 h-4" />
-                  <span>सर्व आयटम इन्व्हेंटरीमध्ये जोडा ({parsedItems.filter((i) => i.selected).length} Items)</span>
+                  <span>Add All to Inventory ({parsedItems.filter((i) => i.selected).length} Items)</span>
                 </>
               )}
             </button>
@@ -551,8 +551,8 @@ export const ItemsScanModal: React.FC<ItemsScanModalProps> = ({
         isOpen={isCameraModalOpen}
         onClose={() => setIsCameraModalOpen(false)}
         onCapture={handleCameraCapture}
-        title="थेट कॅमेऱ्याने मालाची / आयटम यादी स्कॅन करा"
-        description="हस्तलिखित किंवा छापिल आयटम यादीचा फोटो काढा. AI सर्व आयटम्स वाचून इन्व्हेंटरीमध्ये ॲड करेल."
+        title="Live Camera Item List Scanner"
+        description="Hold handwritten register or printed item list in front of camera. AI will extract all products directly into inventory."
       />
     </div>
   );

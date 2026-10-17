@@ -34,7 +34,7 @@ export default function StockTransferPrintModal({
               <Truck className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-sm leading-tight">स्टॉक ट्रान्सफर चलन (Stock Transfer Challan / Pass)</h3>
+              <h3 className="font-bold text-sm leading-tight">Stock Transfer Challan / Gate Pass</h3>
               <p className="text-[11px] text-slate-400 font-mono">Voucher #{voucher.voucherNumber}</p>
             </div>
           </div>
@@ -69,7 +69,7 @@ export default function StockTransferPrintModal({
                 GSTIN: <strong>{business.gstin || "Unregistered"}</strong> {business.phone ? `| 📞 ${business.phone}` : ""}
               </p>
               <div className="inline-block px-3 py-0.5 bg-slate-900 text-white text-[11px] font-bold rounded-full mt-2 uppercase tracking-wider">
-                Internal Stock Transfer Delivery Pass (अंतर्गत माल वाहतूक पास)
+                Internal Stock Transfer Delivery Pass
               </div>
             </div>
 
@@ -92,7 +92,7 @@ export default function StockTransferPrintModal({
             {/* From Godown -> To Godown Movement Banner */}
             <div className="bg-gradient-to-r from-emerald-50 to-blue-50 border border-emerald-200 rounded-xl p-3.5 flex items-center justify-between text-xs">
               <div className="space-y-0.5">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block">Source (माल पाठवणारे गोदाम)</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 block">Source Location (Dispatch)</span>
                 <div className="flex items-center gap-1.5 font-bold text-emerald-950 text-sm">
                   <Building className="w-4 h-4 text-emerald-600" />
                   <span>{voucher.sourceGodownName}</span>
@@ -104,7 +104,7 @@ export default function StockTransferPrintModal({
               </div>
 
               <div className="space-y-0.5 text-right">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-800 block">Destination (प्राप्त गोदाम)</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-800 block">Destination Location (Receiving)</span>
                 <div className="flex items-center justify-end gap-1.5 font-bold text-blue-950 text-sm">
                   <Building className="w-4 h-4 text-blue-600" />
                   <span>{voucher.destGodownName}</span>
@@ -161,17 +161,17 @@ export default function StockTransferPrintModal({
               <div>
                 <div className="border-b border-slate-400 h-8 mb-1.5"></div>
                 <span className="font-bold text-slate-800 block">Dispatched By (Source In-charge)</span>
-                <span className="text-[10px] text-slate-400">स्वाक्षरी / शिक्का</span>
+                <span className="text-[10px] text-slate-400">Signature &amp; Stamp</span>
               </div>
               <div>
                 <div className="border-b border-slate-400 h-8 mb-1.5"></div>
                 <span className="font-bold text-slate-800 block">Driver / Handover In-charge</span>
-                <span className="text-[10px] text-slate-400">स्वाक्षरी</span>
+                <span className="text-[10px] text-slate-400">Signature</span>
               </div>
               <div>
                 <div className="border-b border-slate-400 h-8 mb-1.5"></div>
                 <span className="font-bold text-slate-800 block">Received By (Destination In-charge)</span>
-                <span className="text-[10px] text-slate-400">माल मिळाल्याची स्वाक्षरी</span>
+                <span className="text-[10px] text-slate-400">Receiver Signature</span>
               </div>
             </div>
 

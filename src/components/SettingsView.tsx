@@ -214,8 +214,8 @@ export default function SettingsView({
       const base = specificProfile || formData;
       if (!base.name?.trim()) {
         await showAlert({
-          title: "व्यवसायाचे नाव आवश्यक",
-          message: "कृपया व्यवसायाचे नाव प्रविष्ट करा.",
+          title: "Business Name Required",
+          message: "Please enter your official business or store trade name.",
           variant: "warning"
         });
         setIsSaving(false);
@@ -264,18 +264,18 @@ export default function SettingsView({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.error || "सर्व्हरवर सेटिंग सेव्ह करण्यात अडचण आली");
+        throw new Error(data?.error || "Failed to save settings to server");
       }
       setShowSuccessAlert(true);
-      setSaveSuccessMsg("✅ सर्व सेटिंग्ज डेटाबेसमध्ये यशस्वीरीत्या सेव्ह झाल्या आहेत!");
+      setSaveSuccessMsg("✅ All settings have been saved successfully!");
       setTimeout(() => {
         setShowSuccessAlert(false);
         setSaveSuccessMsg(null);
       }, 4000);
     } catch (err: any) {
       await showAlert({
-        title: "त्रुटी",
-        message: "सेटिंग्ज सेव्ह करताना अडचण आली: " + (err?.message || "नेटवर्क त्रुटी"),
+        title: "Error",
+        message: "Failed to save settings: " + (err?.message || "Network error"),
         variant: "danger"
       });
     } finally {
@@ -421,10 +421,10 @@ export default function SettingsView({
 
   const handleHardReset = async () => {
     const confirmed = await showConfirm({
-      title: "⚠️ संपूर्ण डेटा पुसून टाकायचा आहे का? (Confirm Hard Reset)",
-      message: "या क्रियेमुळे डेटाबेसमधील सर्व विक्री बिल (Sales), खरेदी (Purchases), सर्व इन्व्हेंटरी आयटम्स (Items), ग्राहक/सप्लायर (Parties), कोटेशन्स, डिलिव्हरी चलान, ऑफर्स आणि सर्व जमा-खर्च रेकॉर्ड्स कायमस्वरूपी पुसले जातील.\n\nसॉफ्टवेअर एकदम नवीन आणि फ्रेश (Ready to Use) स्वच्छ स्थितीत येईल.\n\nतुम्हाला खात्री आहे का?",
-      confirmText: "हो, सर्व डेटा पुसा (Wipe All Data)",
-      cancelText: "रद्द करा (Cancel)",
+      title: "⚠️ Confirm Full Database Factory Reset",
+      message: "This action will permanently delete all sales invoices, purchases, inventory items, customer/supplier accounts, quotations, delivery challans, offers, and expense/income logs.\n\nThe application will return to a clean, fresh, ready-to-use initial state.\n\nAre you sure you want to proceed?",
+      confirmText: "Yes, Wipe All Data",
+      cancelText: "Cancel",
       variant: "danger"
     });
 
@@ -441,8 +441,8 @@ export default function SettingsView({
           onResetDb();
         }
         await showAlert({
-          title: "डेटाबेस हार्ड रिसेट यशस्वी!",
-          message: "सर्व जुना डेटा यशस्वीरीत्या पुसला गेला आहे. सॉफ्टवेअर आता नव्या नोंदींसाठी १००% सज्ज आहे.",
+          title: "Factory Reset Successful",
+          message: "All previous transactional and catalog data has been wiped. The software is now 100% clean and ready for new business operations.",
           variant: "success"
         });
         setTimeout(() => {
@@ -450,15 +450,15 @@ export default function SettingsView({
         }, 1000);
       } else {
         await showAlert({
-          title: "त्रुटी",
-          message: result.error || "हार्ड रिसेट अयशस्वी झाला.",
+          title: "Error",
+          message: result.error || "Factory reset was not successful.",
           variant: "danger"
         });
       }
     } catch (err: any) {
       await showAlert({
-        title: "त्रुटी",
-        message: "हार्ड रिसेट करताना अडचण आली: " + (err?.message || "नेटवर्क एरर"),
+        title: "Error",
+        message: "Failed to perform factory reset: " + (err?.message || "Network error"),
         variant: "danger"
       });
     } finally {
@@ -488,14 +488,14 @@ export default function SettingsView({
       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1.5 overflow-x-auto py-1 scrollbar-none max-w-full">
           {[
-            { id: "all", label: "सर्व पर्याय (All)", icon: Sliders },
-            { id: "profile", label: "🏢 व्यवसाय व GST", icon: Building2 },
-            { id: "loyalty", label: "⭐ लॉयल्टी रिवॉर्ड्स", icon: Star },
-            { id: "email", label: "📧 दैनिक अहवाल", icon: Mail },
-            { id: "thermal", label: "🖨️ थर्मल प्रिंटर", icon: Printer },
-            { id: "security", label: "🔐 सुरक्षा व लॉगिन", icon: PenTool },
-            { id: "backup", label: "💾 बॅकअप व रिसेट", icon: Database },
-            { id: "updater", label: "⚡ ॲप व्हर्जन", icon: Laptop },
+            { id: "all", label: "All Settings", icon: Sliders },
+            { id: "profile", label: "🏢 Business Profile & GST", icon: Building2 },
+            { id: "loyalty", label: "⭐ Customer Loyalty", icon: Star },
+            { id: "email", label: "📧 Daily EOD Reports", icon: Mail },
+            { id: "thermal", label: "🖨️ Thermal Printer", icon: Printer },
+            { id: "security", label: "🔐 Security & Access", icon: PenTool },
+            { id: "backup", label: "💾 Backups & Reset", icon: Database },
+            { id: "updater", label: "⚡ App Updates", icon: Laptop },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeSettingsTab === tab.id;
@@ -524,7 +524,7 @@ export default function SettingsView({
           className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-bold py-1.5 px-4 rounded-lg text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer select-none shrink-0"
         >
           {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          <span>{isSaving ? "सेव्ह होत आहे..." : "सर्व बदल सेव्ह करा"}</span>
+          <span>{isSaving ? "Saving..." : "Save All Changes"}</span>
         </button>
       </div>
 
@@ -560,7 +560,7 @@ export default function SettingsView({
                     className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-bold py-1.5 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer select-none"
                   >
                     {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    <span>{isSaving ? "सेव्ह होत आहे..." : "माहिती सेव्ह करा"}</span>
+                    <span>{isSaving ? "Saving..." : "Save Profile"}</span>
                   </button>
                 </div>
 
@@ -650,7 +650,7 @@ export default function SettingsView({
 
             {/* Business Type / Vertical */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">व्यवसायाचा प्रकार (Business Type / Industry)</label>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Business Type & Industry Vertical</label>
               <select
                 id="settings-business-type"
                 name="businessType"
@@ -662,12 +662,12 @@ export default function SettingsView({
                   <option key={bt.id} value={bt.id}>{bt.label}</option>
                 ))}
               </select>
-              <p className="text-[11px] text-slate-400 mt-1">व्यवसायाचा प्रकार निवडल्यास त्यानुसार हॉटेल टेबल मॅनेजमेंट, रेस्टॉरंट KOT किंवा बारकोड फीचर्स सक्रिय होतात.</p>
+              <p className="text-[11px] text-slate-400 mt-1">Selecting a business vertical dynamically optimizes point-of-sale features, restaurant table management, KOTs, or barcode matrix workflows.</p>
               {formData.businessType && (
                 <div className="mt-2.5 p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2.5">
                   <div className="w-5 h-5 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0 font-bold text-[10px] mt-0.5">✓</div>
                   <div>
-                    <span className="font-bold block text-emerald-950">सक्रिय व्यवसाय मोड (Active Business Mode):</span>
+                    <span className="font-bold block text-emerald-950">Active Business Vertical:</span>
                     <p className="text-emerald-800 text-[11px] mt-0.5">
                       {BUSINESS_TYPES.find(b => b.id === formData.businessType)?.desc || "Customized retail & billing features enabled."}
                     </p>
@@ -796,10 +796,10 @@ export default function SettingsView({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-800 uppercase tracking-wide">
-                    डिफॉल्ट बिलिंग मोड (Default Billing Mode)
+                    Default Billing Mode
                   </label>
                   <p className="text-[11px] text-slate-500">
-                    नवीन बिलांसाठी सुरुवातीचा प्रकार निवडा (हे प्रत्येक बिलाच्या वेळीही बदलता येते)
+                    Select starting invoice mode for new bills (can also be toggled anytime during billing)
                   </p>
                 </div>
                 <div className="inline-flex rounded-lg bg-white p-1 border border-slate-200 text-xs font-bold shadow-2xs">
@@ -837,7 +837,7 @@ export default function SettingsView({
                         : "text-slate-600 hover:text-slate-900"
                     }`}
                   >
-                    Non-GST (साधी पावती / 0% कर)
+                    Non-GST (Regular Receipt / 0% Tax)
                   </button>
                 </div>
               </div>
@@ -846,10 +846,10 @@ export default function SettingsView({
               <div className="pt-2.5 border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <label className="block text-xs font-bold text-slate-800">
-                    डीफॉल्ट विक्री जीएसटी स्लॅब (Default Sales GST Slab)
+                    Default Sales GST Slab
                   </label>
                   <p className="text-[11px] text-slate-500">
-                    नॉन-जीएसटी (०%) स्लॅब निवडल्यास सेल बिलात आयटम ॲड करताना जीएसटी बाय डिफॉल्ट ०% येईल
+                    When Non-GST (0%) slab is selected, added line items will default to 0% GST
                   </p>
                 </div>
                 <div className="w-full sm:w-64">
@@ -870,11 +870,11 @@ export default function SettingsView({
                     }}
                     className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs font-bold bg-white text-slate-800 focus:outline-emerald-500 cursor-pointer"
                   >
-                    <option value={0}>0% - नॉन-जीएसटी / करमुक्त (Non-GST / Zero Tax)</option>
-                    <option value={5}>5% - अत्यावश्यक किराणा व अन्नधान्य</option>
-                    <option value={12}>12% - प्रक्रिया केलेले खाद्यपदार्थ व वस्तू</option>
-                    <option value={18}>18% - सर्वसाधारण रिटेल विक्री (Standard 18%)</option>
-                    <option value={28}>28% - लक्झरी व इलेक्ट्रॉनिक्स वस्तू</option>
+                    <option value={0}>0% - Non-GST / Tax-Free (Zero Tax)</option>
+                    <option value={5}>5% - Essential Groceries & Food Grains</option>
+                    <option value={12}>12% - Processed Foods & Packaged Items</option>
+                    <option value={18}>18% - Standard Retail Sales (Standard 18%)</option>
+                    <option value={28}>28% - Luxury & Electronics Goods</option>
                   </select>
                 </div>
               </div>
@@ -889,10 +889,10 @@ export default function SettingsView({
                   </div>
                   <div>
                     <h3 className="font-bold text-xs text-slate-800 uppercase tracking-wide">
-                      बँक खाते, UPI आणि QR कोड पेमेंट तपशील (Bank Account & UPI QR Details)
+                      Bank Account & Dynamic UPI QR Payment Configuration
                     </h3>
                     <p className="text-[11px] text-slate-500">
-                      बिलांवर व थर्मल पावत्यांवर पेमेंटसाठी बँक तपशील व डायनॅमिक UPI QR कोड दाखवा
+                      Display store bank details and dynamic payment QR code on invoices and thermal receipts
                     </p>
                   </div>
                 </div>
@@ -912,7 +912,7 @@ export default function SettingsView({
                       }}
                       className="w-4 h-4 rounded text-emerald-600 cursor-pointer"
                     />
-                    <span>UPI QR कोड चालू करा</span>
+                    <span>Enable UPI QR Code</span>
                   </label>
 
                   <label className="flex items-center space-x-1.5 cursor-pointer text-xs font-semibold text-slate-700">
@@ -929,7 +929,7 @@ export default function SettingsView({
                       }}
                       className="w-4 h-4 rounded text-emerald-600 cursor-pointer"
                     />
-                    <span>बँक तपशील बिलावर छापा</span>
+                    <span>Print Bank Details on Invoices</span>
                   </label>
                 </div>
               </div>
@@ -954,19 +954,19 @@ export default function SettingsView({
                           thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), upiId: val }
                         }));
                       }}
-                      placeholder="उदा. 9876543210@okaxis किंवा store@ybl"
+                      placeholder="e.g. 9876543210@okaxis or store@ybl"
                       className="w-full pl-3 pr-10 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs font-mono font-bold outline-none bg-white"
                     />
                     <div className="absolute right-3 top-2.5 text-slate-400">
                       <QrCode className="w-4 h-4" />
                     </div>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">Google Pay, PhonePe, Paytm, BHIM द्वारे थेट दुकानाच्या बँक खात्यात पैसे स्वीकारण्यासाठी</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Accept direct payments via Google Pay, PhonePe, Paytm, BHIM and all UPI apps</p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                    UPI Payee / दुकानदाराचे नाव (Merchant Name)
+                    UPI Payee / Merchant Name
                   </label>
                   <div className="relative">
                     <input
@@ -982,14 +982,14 @@ export default function SettingsView({
                           thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), upiMerchantName: val }
                         }));
                       }}
-                      placeholder={formData.name || "दुकान / व्यवसायाचे नाव"}
+                      placeholder={formData.name || "Business / Trade Name"}
                       className="w-full pl-3 pr-10 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs outline-none bg-white font-medium"
                     />
                     <div className="absolute right-3 top-2.5 text-slate-400">
                       <Building2 className="w-4 h-4" />
                     </div>
                   </div>
-                  <p className="text-[10px] text-slate-400 mt-1">ग्राहकाच्या UPI ॲपमध्ये पेमेंट करताना दिसणारे नाव</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Merchant name displayed in customer's UPI app during QR code scan</p>
                 </div>
               </div>
 
@@ -997,7 +997,7 @@ export default function SettingsView({
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200/60">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                    बँकेचे नाव (Bank Name)
+                    Bank Name
                   </label>
                   <input
                     id="settings-bank-name"
@@ -1012,14 +1012,14 @@ export default function SettingsView({
                         thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), bankName: val }
                       }));
                     }}
-                    placeholder="उदा. State Bank of India"
+                    placeholder="e.g. State Bank of India"
                     className="w-full px-3 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs outline-none bg-white font-medium"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                    खाते क्रमांक (Account Number)
+                    Bank Account Number
                   </label>
                   <input
                     id="settings-bank-account-no"
@@ -1034,14 +1034,14 @@ export default function SettingsView({
                         thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), bankAccountNo: val }
                       }));
                     }}
-                    placeholder="उदा. 30123456789"
+                    placeholder="e.g. 30123456789"
                     className="w-full px-3 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs font-mono font-bold outline-none bg-white"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                    IFSC कोड (IFSC Code)
+                    IFSC Code
                   </label>
                   <input
                     id="settings-bank-ifsc"
@@ -1056,14 +1056,14 @@ export default function SettingsView({
                         thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), bankIfsc: val }
                       }));
                     }}
-                    placeholder="उदा. SBIN0001234"
+                    placeholder="e.g. SBIN0001234"
                     className="w-full px-3 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs font-mono font-bold uppercase outline-none bg-white"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                    शाखा (Branch)
+                    Branch Name
                   </label>
                   <input
                     id="settings-bank-branch"
@@ -1078,7 +1078,7 @@ export default function SettingsView({
                         thermalConfig: { ...(prev.thermalConfig || DEFAULT_THERMAL_CONFIG), bankBranch: val }
                       }));
                     }}
-                    placeholder="उदा. Main Branch"
+                    placeholder="e.g. Main Branch"
                     className="w-full px-3 py-2 border border-slate-300 focus:border-emerald-500 rounded-lg text-xs outline-none bg-white"
                   />
                 </div>
@@ -1110,7 +1110,7 @@ export default function SettingsView({
                       <Star className="w-4 h-4 fill-amber-500 text-amber-600" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-800">ग्राहक लॉयल्टी रिवॉर्ड्स (Customer Loyalty Scheme)</h3>
+                      <h3 className="text-sm font-bold text-slate-800">Customer Loyalty Rewards Scheme</h3>
                       <p className="text-[11px] text-slate-500">Configure customer points earning and redemption rules for POS billing</p>
                     </div>
                   </div>
@@ -1123,7 +1123,7 @@ export default function SettingsView({
                       className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-bold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer select-none"
                     >
                       {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      <span>{isSaving ? "..." : "लॉयल्टी सेव्ह करा"}</span>
+                      <span>{isSaving ? "..." : "Save Loyalty"}</span>
                     </button>
 
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -1284,12 +1284,12 @@ export default function SettingsView({
                   <div className="bg-white border border-amber-200/80 rounded-lg p-3 text-xs text-slate-700 flex items-start gap-2.5">
                     <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div className="space-y-1">
-                      <span className="font-bold text-slate-800 block">स्कीमचे स्वरूप व उदाहरण (Scheme Example):</span>
+                      <span className="font-bold text-slate-800 block">Scheme Summary & Calculation Example:</span>
                       <p className="text-[11px] text-slate-600">
-                        • ग्राहक ₹१,००० ची खरेदी करेल तेव्हा त्याला <strong>{Math.floor((1000 / 100) * (formData.loyaltyConfig?.pointsPer100Rupees || 1))} पॉईंट्स</strong> मिळतील.
+                        • When a customer spends ₹1,000, they will earn <strong>{Math.floor((1000 / 100) * (formData.loyaltyConfig?.pointsPer100Rupees || 1))} points</strong>.
                       </p>
                       <p className="text-[11px] text-slate-600">
-                        • पुढील बिलावर ५० पॉईंट्स रिडीम केल्यास थेट <strong>₹{(50 * (formData.loyaltyConfig?.redemptionRate || 1)).toFixed(2)}</strong> ची सवलत मिळेल.
+                        • Redeeming 50 points on a future bill yields an instant direct discount of <strong>₹{(50 * (formData.loyaltyConfig?.redemptionRate || 1)).toFixed(2)}</strong>.
                       </p>
                     </div>
                   </div>
@@ -1306,7 +1306,7 @@ export default function SettingsView({
                     className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-semibold py-2 px-6 rounded-lg text-xs tracking-wider uppercase shadow hover:shadow-md transition flex items-center space-x-2 cursor-pointer select-none"
                   >
                     {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    <span>{isSaving ? "Saving..." : "लॉयल्टी सेटिंग्ज सेव्ह करा (Save Loyalty Rules)"}</span>
+                    <span>{isSaving ? "Saving..." : "Save Loyalty Rules"}</span>
                   </button>
                 </div>
               </div>
@@ -1321,8 +1321,8 @@ export default function SettingsView({
                       <Mail className="w-4 h-4 text-blue-600" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-800">स्वयंचलित दैनिक ईमेल अहवाल (Automated EOD Email Reports)</h3>
-                      <p className="text-[11px] text-slate-500">रोज संध्याकाळी दुकान बंद होताना मालकाच्या ईमेलवर डे-एंड सारांश स्वयंचलित पाठवा</p>
+                      <h3 className="text-sm font-bold text-slate-800">Automated Daily EOD Email Reports</h3>
+                      <p className="text-[11px] text-slate-500">Automatically send end-of-day business summary to store owner's email every evening</p>
                     </div>
                   </div>
 
@@ -1334,7 +1334,7 @@ export default function SettingsView({
                       className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-bold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer select-none"
                     >
                       {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      <span>{isSaving ? "..." : "ईमेल सेव्ह करा"}</span>
+                      <span>{isSaving ? "..." : "Save Email"}</span>
                     </button>
 
                 <label className="relative inline-flex items-center cursor-pointer">
@@ -1380,7 +1380,7 @@ export default function SettingsView({
                     {/* Primary Recipient Email */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                        प्राथमिक ईमेल पत्ता (Store Owner Email) *
+                        Primary Recipient Email (Store Owner) *
                       </label>
                       <input
                         type="email"
@@ -1407,7 +1407,7 @@ export default function SettingsView({
                     {/* Scheduled Delivery Time */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                        ईमेल पाठवण्याची वेळ (Scheduled Time - 24Hr)
+                        Scheduled Dispatch Time (24-Hour Format)
                       </label>
                       <div className="relative">
                         <input
@@ -1430,13 +1430,13 @@ export default function SettingsView({
                           className="w-full px-3 py-2 bg-white border border-blue-200 focus:border-blue-500 rounded-lg text-xs outline-none font-mono font-bold"
                         />
                       </div>
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">दुकान बंद झाल्यावर दररोज या वेळेस ईमेल स्वयंचलित पाठवला जाईल</span>
+                      <span className="text-[10px] text-slate-500 mt-0.5 block">Report will be automatically dispatched at this time after store closing</span>
                     </div>
 
                     {/* CC Emails */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                        CC ईमेल (पार्टनर किंवा CA चे ईमेल्स - पर्यायी)
+                        Secondary / CC Emails (Partner or Accountant - Optional)
                       </label>
                       <input
                         type="text"
@@ -1464,7 +1464,7 @@ export default function SettingsView({
                     {/* Sender Name */}
                     <div>
                       <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                        प्रेषकाचे नाव (Sender Display Name)
+                        Sender Display Name
                       </label>
                       <input
                         type="text"
@@ -1493,19 +1493,19 @@ export default function SettingsView({
                   {/* Report Sections Selection */}
                   <div className="pt-2 border-t border-blue-200/60">
                     <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-2">
-                      ईमेलमध्ये समाविष्ट करायचे विभाग (Report Content Sections):
+                      Report Content Sections to Include:
                     </label>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 bg-white/80 p-3 rounded-lg border border-blue-100">
                       {[
-                        { key: "salesSummary", label: "📊 Sales Summary (एकूण विक्री व बिले)" },
-                        { key: "paymentModes", label: "💵 Cash & Bank UPI (गल्ल्यातील रोख व बँक जमा)" },
-                        { key: "profitAndMargins", label: "📈 Profit & Margin (अंदाजित नफा व मार्जिन)" },
-                        { key: "taxSummary", label: "🏛️ GST Tax (CGST, SGST, IGST कर सारांश)" },
-                        { key: "topSellingItems", label: "🔥 Top Selling Items (सर्वाधिक खप झालेले ५ आयटम्स)" },
-                        { key: "lowStockAlerts", label: "⚠️ Low Stock Alerts (कमी साठा व ऑर्डर आवश्यक)" },
-                        { key: "nearExpiryAlerts", label: "⏳ Near Expiry Alerts (४५ दिवसांत संपणारा माल)" },
-                        { key: "customerKhata", label: "📒 Customer Khata (बाकीदार ग्राहक यादी)" },
-                        { key: "loyaltySummary", label: "⭐ Loyalty Points (लॉयल्टी पॉईंट्स व्यवहार)" }
+                        { key: "salesSummary", label: "📊 Sales Summary (Total Revenue & Bills)" },
+                        { key: "paymentModes", label: "💵 Cash & Bank UPI (Counter Cash & Bank Deposits)" },
+                        { key: "profitAndMargins", label: "📈 Profit & Margin (Estimated Gross Margin)" },
+                        { key: "taxSummary", label: "🏛️ GST Tax (CGST, SGST, IGST Summary)" },
+                        { key: "topSellingItems", label: "🔥 Top Selling Items (Top 5 Fast-Moving Items)" },
+                        { key: "lowStockAlerts", label: "⚠️ Low Stock Alerts (Shortage & Reorders)" },
+                        { key: "nearExpiryAlerts", label: "⏳ Near Expiry Alerts (Goods Expiring Soon)" },
+                        { key: "customerKhata", label: "📒 Customer Khata (Receivables & Outstanding)" },
+                        { key: "loyaltySummary", label: "⭐ Loyalty Points (Loyalty Rewards Activity)" }
                       ].map(({ key, label }) => {
                         const sections = formData.scheduledEmailConfig?.reportSections || ({} as any);
                         const isChecked = sections[key] !== false;
@@ -1559,23 +1559,23 @@ export default function SettingsView({
                     >
                       <div className="flex items-center gap-2">
                         <Sliders className="w-3.5 h-3.5 text-blue-600" />
-                        <span>थेट इंटरनेट ईमेल पाठवण्यासाठी SMTP / Gmail सेटिंग्ज (Optional SMTP Configuration)</span>
+                        <span>Direct Internet SMTP / Gmail Settings (Optional Configuration)</span>
                       </div>
-                      <span className="text-[11px] text-blue-600 font-semibold">{showSmtpConfig ? "लपवा ▲" : "दाखवा / बदला ▼"}</span>
+                      <span className="text-[11px] text-blue-600 font-semibold">{showSmtpConfig ? "Hide ▲" : "Configure / Edit ▼"}</span>
                     </button>
 
                     {showSmtpConfig && (
                       <div className="p-4 space-y-3 border-t border-blue-100 text-xs bg-white">
                         <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-900 space-y-1">
-                          <p className="font-bold">💡 Gmail वापरकर्त्यांसाठी टीप (Gmail App Password):</p>
+                          <p className="font-bold">💡 Tip for Google Gmail Users (App Passwords):</p>
                           <p className="text-slate-600">
-                            गुगल सिक्युरिटीमुळे तुमचा साधा पासवर्ड न वापरता, तुमच्या Google Account मध्ये <strong>2-Step Verification</strong> चालू करा आणि <strong>App Passwords</strong> मधून १६-अंकी पासवर्ड तयार करून खाली पेस्ट करा.
+                            For enhanced Google security, enable <strong>2-Step Verification</strong> in your Google Account &gt; Security, create a 16-character code under <strong>App Passwords</strong>, and paste it below.
                           </p>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">ईमेल सेवा (Provider)</label>
+                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Email Provider</label>
                             <select
                               value={formData.scheduledEmailConfig?.smtpConfig?.service || "gmail"}
                               onChange={(e) => {
@@ -1600,7 +1600,7 @@ export default function SettingsView({
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">प्रेषक ईमेल (SMTP User/Email)</label>
+                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">Sender Email (SMTP User)</label>
                             <input
                               type="email"
                               value={formData.scheduledEmailConfig?.smtpConfig?.user || ""}
@@ -1623,7 +1623,7 @@ export default function SettingsView({
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">ॲप पासवर्ड (App Password)</label>
+                            <label className="block text-[11px] font-bold text-slate-700 uppercase mb-1">App Password</label>
                             <input
                               type="password"
                               value={formData.scheduledEmailConfig?.smtpConfig?.pass || ""}
@@ -1683,7 +1683,7 @@ export default function SettingsView({
                         className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:bg-blue-300 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs transition cursor-pointer select-none"
                       >
                         <Send className={`w-3.5 h-3.5 ${isTestingEmail ? "animate-spin" : ""}`} />
-                        <span>{isTestingEmail ? "चाचणी अहवाल पाठवत आहे..." : "चाचणी अहवाल त्वरित पाठवा (Send Test Now)"}</span>
+                        <span>{isTestingEmail ? "Sending Test Report..." : "Send Test Report Now"}</span>
                       </button>
 
                       <button
@@ -1707,13 +1707,13 @@ export default function SettingsView({
                         className="px-3 py-2 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-lg font-bold text-xs flex items-center gap-1.5 transition cursor-pointer select-none"
                       >
                         <Eye className="w-3.5 h-3.5 text-slate-500" />
-                        <span>अहवाल पूर्वावलोकन (Preview HTML)</span>
+                        <span>Preview HTML Report</span>
                       </button>
                     </div>
 
                     {formData.scheduledEmailConfig?.lastSentAt && (
                       <span className="text-[11px] text-slate-500 font-mono">
-                        शेवटचा अहवाल: {new Date(formData.scheduledEmailConfig.lastSentAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} ({formData.scheduledEmailConfig.lastSendStatus === "success" ? "✅ यशस्वी" : "⚠️ अयशस्वी"})
+                        Last Sent: {new Date(formData.scheduledEmailConfig.lastSentAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })} ({formData.scheduledEmailConfig.lastSendStatus === "success" ? "✅ Success" : "⚠️ Failed"})
                       </span>
                     )}
                   </div>
@@ -1739,7 +1739,7 @@ export default function SettingsView({
                     className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-2 px-6 rounded-lg text-xs tracking-wider uppercase shadow hover:shadow-md transition flex items-center space-x-2 cursor-pointer select-none"
                   >
                     {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    <span>{isSaving ? "Saving..." : "ईमेल अहवाल सेटिंग्ज सेव्ह करा (Save Email Settings)"}</span>
+                    <span>{isSaving ? "Saving..." : "Save Email Settings"}</span>
                   </button>
                 </div>
               </div>
@@ -1783,7 +1783,7 @@ export default function SettingsView({
               </div>
 
               <p className="text-[11px] text-indigo-200/90 leading-relaxed">
-                सानुकूल थर्मल प्रिंटर लेआउट (58mm व 80mm), दुकान लोगो, डायनॅमिक UPI QR कोड, मराठी/इंग्रजी भाषा, आणि फॉन्ट आकार एडिट करा.
+                Customize thermal printer layouts (58mm & 80mm), store logo, dynamic UPI QR code, fonts, headers, and print styling.
               </p>
 
               <button
@@ -2065,13 +2065,13 @@ export default function SettingsView({
                 <div className="flex items-center space-x-2 pb-3 border-b border-rose-200">
                   <AlertOctagon className="w-5 h-5 text-rose-600" />
                   <div>
-                    <h3 className="font-bold text-rose-950 text-sm">डेटाबेस हार्ड रिसेट (Hard Factory Reset)</h3>
+                    <h3 className="font-bold text-rose-950 text-sm">Database Factory Reset (Danger Zone)</h3>
                     <span className="text-[10px] font-semibold text-rose-700 uppercase tracking-wider">Clean Slate - 100% Ready To Use</span>
                   </div>
                 </div>
                 
                 <p className="text-[11px] text-rose-900 leading-relaxed">
-                  हे बटन दाबल्यास सॉफ्टवेअरमधील सर्व जुना डेटा (विक्री बिल, खरेदी, आयटम लिस्ट, ग्राहक/सप्लायर उधारी, कोटेशन, चलान आणि सर्व जमा-खर्च) संपूर्णपणे पुसला जाईल आणि सॉफ्टवेअर अगदी नवीन (Fresh Clean Slate) रेडी-टू-युज स्थितीत येईल.
+                  Clicking this button permanently wipes all stored transactional data (invoices, purchases, custom item catalog, party balances, quotations, delivery challans, and income/expense vouchers) to return the software to a 100% fresh, clean-slate state.
                 </p>
 
                 <div className="pt-1">
@@ -2083,7 +2083,7 @@ export default function SettingsView({
                     className="w-full bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:bg-rose-300 text-white font-bold py-2.5 px-4 rounded-lg text-xs tracking-wider uppercase transition cursor-pointer flex items-center justify-center space-x-2 shadow hover:shadow-md"
                   >
                     <Trash2 className={`w-4 h-4 ${isHardResetting ? "animate-spin" : ""}`} />
-                    <span>{isHardResetting ? "डेटा पुसत आहे..." : "सर्व डेटा पुसा - हार्ड रिसेट (Wipe All & Fresh Start)"}</span>
+                    <span>{isHardResetting ? "Wiping Data..." : "Wipe All Data & Fresh Start"}</span>
                   </button>
                 </div>
 
@@ -2122,7 +2122,7 @@ export default function SettingsView({
                   <Mail className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-sm leading-tight">दैनिक डे-एंड ईमेल अहवाल पूर्वावलोकन (Daily EOD Email Preview)</h3>
+                  <h3 className="font-bold text-sm leading-tight">Daily End-of-Day (EOD) Email Report Preview</h3>
                   <p className="text-[11px] text-slate-400">This is how the report will appear in your mobile & desktop email inbox</p>
                 </div>
               </div>
