@@ -16,6 +16,7 @@ import {
   Coins,
   Receipt,
   Scale,
+  Gift,
   ArrowRight,
   ScanLine,
   AlertCircle,
@@ -717,7 +718,64 @@ export default function InvoicingView({
 
     // Sum up dynamic extra charges
     const extraChargesSum = extraCharges.reduce((sum, curr) => sum + (curr.amount || 0), 0);
-    const grandTotal = subtotal + taxAmount + extraChargesSum;
+
+    // Multi-Form Customer Scheme & Discount Calculations (Instant Discount, Slab Discount, Cashback, Loyalty)
+    const schemeConfig = business.schemeConfig;
+    let schemeDiscount = 0;
+    let schemeTypeApplied: string | undefined = undefined;
+    let cashbackEarned = 0;
+    let pointsEarned = 0;
+
+    if (txSubtype === 'sale' && schemeConfig && schemeConfig.enabled) {
+      // 1. Instant Discount
+      if (schemeConfig.instantDiscount?.enabled && subtotal >= (schemeConfig.instantDiscount.minBillAmount || 0)) {
+        if (schemeConfig.instantDiscount.discountType === 'percentage') {
+          const raw = (subtotal * (schemeConfig.instantDiscount.discountValue || 0)) / 100;
+          schemeDiscount = schemeConfig.instantDiscount.maxDiscountAmount
+            ? Math.min(schemeConfig.instantDiscount.maxDiscountAmount, raw)
+            : raw;
+        } else {
+          schemeDiscount = schemeConfig.instantDiscount.discountValue || 0;
+        }
+        schemeTypeApplied = 'instant_discount';
+      }
+
+      // 2. Tiered Slab Discount (if higher than instant discount)
+      if (schemeConfig.slabDiscount?.enabled && schemeConfig.slabDiscount.slabs?.length > 0) {
+        const sorted = [...schemeConfig.slabDiscount.slabs].sort((a, b) => b.minAmount - a.minAmount);
+        const matched = sorted.find(s => subtotal >= s.minAmount);
+        if (matched) {
+          const slabVal = matched.discountType === 'percentage'
+            ? (subtotal * matched.discountValue) / 100
+            : matched.discountValue;
+          if (slabVal >= schemeDiscount) {
+            schemeDiscount = slabVal;
+            schemeTypeApplied = 'slab_discount';
+          }
+        }
+      }
+
+      // 3. Khata Cashback (store balance credited on checkout)
+      if (schemeConfig.cashback?.enabled && subtotal >= (schemeConfig.cashback.minBillAmount || 0)) {
+        const rawCb = (subtotal * (schemeConfig.cashback.cashbackPercent || 0)) / 100;
+        cashbackEarned = schemeConfig.cashback.maxCashbackPerBill
+          ? Math.min(schemeConfig.cashback.maxCashbackPerBill, rawCb)
+          : rawCb;
+      }
+
+      // 4. Loyalty points earned
+      if (schemeConfig.loyalty?.enabled || business.loyaltyConfig?.enabled) {
+        const rate = (schemeConfig.loyalty?.pointsPer100Rupees || business.loyaltyConfig?.pointsPer100Rupees || 1);
+        const netBase = Math.max(0, subtotal - schemeDiscount);
+        pointsEarned = Math.floor((netBase / 100) * rate);
+      }
+    } else if (txSubtype === 'sale' && business.loyaltyConfig?.enabled) {
+      const rate = business.loyaltyConfig.pointsPer100Rupees || 1;
+      pointsEarned = Math.floor((subtotal / 100) * rate);
+    }
+
+    const netTaxable = Math.max(0, subtotal - schemeDiscount);
+    const grandTotal = Math.max(0, netTaxable + taxAmount + extraChargesSum);
     const totalUnits = formattedLines.reduce((acc, curr) => acc + curr.quantity, 0);
 
     return {
@@ -727,13 +785,17 @@ export default function InvoicingView({
       sgstTotal,
       igstTotal,
       extraChargesSum,
-      totalDiscountGiven,
+      totalDiscountGiven: totalDiscountGiven + schemeDiscount,
+      schemeDiscount,
+      schemeTypeApplied,
+      cashbackEarned,
+      pointsEarned,
       grandTotal,
       itemCount: formattedLines.length,
       totalUnits,
       lines: formattedLines
     };
-  }, [invoiceLines, items, activeParty, business, extraCharges]);
+  }, [invoiceLines, items, activeParty, business, extraCharges, txSubtype]);
 
   // Monitor total changes to auto-update payment inputs
   useEffect(() => {
@@ -1155,6 +1217,10 @@ export default function InvoicingView({
       igstTotal: billingMode === "non_gst" ? 0 : computedInvoiceDetails.igstTotal,
       extraCharges: extraCharges.filter(c => c.title.trim() && c.amount > 0),
       totalAmount: computedInvoiceDetails.grandTotal,
+      schemeDiscount: computedInvoiceDetails.schemeDiscount,
+      schemeTypeApplied: computedInvoiceDetails.schemeTypeApplied,
+      cashbackEarned: computedInvoiceDetails.cashbackEarned,
+      pointsEarned: computedInvoiceDetails.pointsEarned,
       paymentType,
       paidAmount: finalPaidAmount,
       remainingAmount: finalRemainingAmount > 0.01 ? finalRemainingAmount : 0,
@@ -2138,14 +2204,47 @@ export default function InvoicingView({
                 <span className="font-bold text-slate-800">{formatINR(computedInvoiceDetails.subtotal)}</span>
               </div>
 
+              {/* Scheme / Slab / Instant Discount Display */}
+              {computedInvoiceDetails.schemeDiscount > 0 && (
+                <div className="flex justify-between items-center text-amber-800 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                  <span className="font-sans font-bold flex items-center space-x-1">
+                    <Gift className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Store Scheme Discount ({computedInvoiceDetails.schemeTypeApplied === 'slab_discount' ? 'Slab Tier' : 'Instant Off'}):</span>
+                  </span>
+                  <span className="font-bold">- {formatINR(computedInvoiceDetails.schemeDiscount)}</span>
+                </div>
+              )}
+
               {/* Total Discount (if any) */}
               {computedInvoiceDetails.totalDiscountGiven > 0 && (
                 <div className="flex justify-between items-center text-rose-600">
                   <span className="font-sans flex items-center space-x-1">
                     <Percent className="w-3 h-3" />
-                    <span>Total Discount:</span>
+                    <span>Total Discount Savings:</span>
                   </span>
                   <span className="font-bold">- {formatINR(computedInvoiceDetails.totalDiscountGiven)}</span>
+                </div>
+              )}
+
+              {/* Customer Khata Cashback Incentive */}
+              {computedInvoiceDetails.cashbackEarned > 0 && (
+                <div className="flex justify-between items-center text-purple-800 bg-purple-50 px-2 py-1 rounded border border-purple-200 text-[11px]">
+                  <span className="font-sans font-semibold flex items-center space-x-1">
+                    <Wallet className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Khata Cashback:</span>
+                  </span>
+                  <span className="font-bold text-purple-700">+{formatINR(computedInvoiceDetails.cashbackEarned)}</span>
+                </div>
+              )}
+
+              {/* Loyalty Points Earned Incentive */}
+              {computedInvoiceDetails.pointsEarned > 0 && (
+                <div className="flex justify-between items-center text-amber-800 bg-amber-50/70 px-2 py-1 rounded text-[11px]">
+                  <span className="font-sans flex items-center space-x-1">
+                    <Coins className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Points to Award:</span>
+                  </span>
+                  <span className="font-bold text-amber-700">+{computedInvoiceDetails.pointsEarned} Pts</span>
                 </div>
               )}
 

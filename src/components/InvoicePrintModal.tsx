@@ -557,6 +557,20 @@ export default function InvoicePrintModal({
                       ))
                     )}
 
+                    {invoice.schemeDiscount && invoice.schemeDiscount > 0 ? (
+                      <div className="flex justify-between text-emerald-800 text-[10px] font-semibold">
+                        <span>Scheme Discount:</span>
+                        <span>-₹{invoice.schemeDiscount.toFixed(2)}</span>
+                      </div>
+                    ) : null}
+
+                    {invoice.cashbackEarned && invoice.cashbackEarned > 0 ? (
+                      <div className="flex justify-between text-purple-800 text-[10px] font-semibold">
+                        <span>Khata Cashback:</span>
+                        <span>+₹{invoice.cashbackEarned.toFixed(2)}</span>
+                      </div>
+                    ) : null}
+
                     <div className="border-t border-dashed border-slate-400 my-1"></div>
                     <div className="flex justify-between font-black text-xs border-y-2 border-black py-1 my-1 bg-white">
                       <span>TOTAL AMOUNT:</span>
@@ -881,6 +895,20 @@ export default function InvoicePrintModal({
                       ))}
                     </div>
                   )}
+
+                  {invoice.schemeDiscount && invoice.schemeDiscount > 0 ? (
+                    <div className="flex justify-between text-emerald-800 text-xs font-semibold">
+                      <span>Scheme Discount:</span>
+                      <span className="font-mono">- {formatRupees(invoice.schemeDiscount)}</span>
+                    </div>
+                  ) : null}
+
+                  {invoice.cashbackEarned && invoice.cashbackEarned > 0 ? (
+                    <div className="flex justify-between text-purple-800 text-xs font-semibold">
+                      <span>Khata Cashback:</span>
+                      <span className="font-mono">+ {formatRupees(invoice.cashbackEarned)}</span>
+                    </div>
+                  ) : null}
 
                   <div className="flex justify-between items-center text-sm font-bold bg-slate-900 text-white rounded-lg px-3 py-2 mt-2">
                     <span>Grand Total:</span>

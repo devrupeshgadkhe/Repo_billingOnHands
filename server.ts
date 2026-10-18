@@ -346,7 +346,49 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
     state: String(raw.business?.state || "Maharashtra"),
     phone: String(raw.business?.phone || "+91 98765 43210"),
     email: String(raw.business?.email || "billing@apexelectro.com"),
-    signatureText: String(raw.business?.signatureText || "For Apex Electro-Tech Systems"),
+    securityPin: String(raw.business?.securityPin || "1234"),
+    requirePinForBusinessChange: Boolean(raw.business?.requirePinForBusinessChange ?? false),
+    schemeConfig: raw.business?.schemeConfig || {
+      activeSchemeType: "all_active",
+      enabled: true,
+      loyalty: raw.business?.loyaltyConfig || {
+        enabled: true,
+        pointsPer100Rupees: 1,
+        redemptionRate: 1.0,
+        minPointsToRedeem: 10,
+        maxRedemptionPercentage: 50,
+        expiryDays: 365
+      },
+      instantDiscount: {
+        enabled: true,
+        discountType: "percentage",
+        discountValue: 5,
+        minBillAmount: 1000,
+        maxDiscountAmount: 500,
+        autoApply: true
+      },
+      cashback: {
+        enabled: true,
+        cashbackPercent: 5,
+        minBillAmount: 500,
+        maxCashbackPerBill: 250,
+        autoCreditToKhata: true
+      },
+      bogo: {
+        enabled: false,
+        defaultBuyQty: 1,
+        defaultFreeQty: 1,
+        appliesToAllItems: true
+      },
+      slabDiscount: {
+        enabled: true,
+        slabs: [
+          { minAmount: 1000, discountType: "percentage", discountValue: 5 },
+          { minAmount: 2500, discountType: "percentage", discountValue: 8 },
+          { minAmount: 5000, discountType: "percentage", discountValue: 12 }
+        ]
+      }
+    },
     loyaltyConfig: raw.business?.loyaltyConfig || {
       enabled: true,
       pointsPer100Rupees: 1,
@@ -479,6 +521,10 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
       pointsRedeemed: Number(inv?.pointsRedeemed) || 0,
       pointsDiscount: Number(inv?.pointsDiscount) || 0,
       pointsEarned: Number(inv?.pointsEarned) || 0,
+      schemeDiscount: Number(inv?.schemeDiscount) || 0,
+      schemeTypeApplied: inv?.schemeTypeApplied ? String(inv.schemeTypeApplied) : undefined,
+      cashbackEarned: Number(inv?.cashbackEarned) || 0,
+      bogoFreeItems: Array.isArray(inv?.bogoFreeItems) ? inv.bogoFreeItems : [],
       notes: String(inv?.notes || ""),
       extraCharges: Array.isArray(inv?.extraCharges) ? inv.extraCharges : [],
       sourceChallanId: inv?.sourceChallanId ? String(inv.sourceChallanId) : undefined,
@@ -2088,6 +2134,23 @@ app.post("/api/invoices", (req, res) => {
           points: ptsEarned,
           balanceAfter: party.loyaltyPoints,
           description: `Earned +${ptsEarned} pts on Bill #${invNum}`
+        });
+      }
+
+      // 3. If cashback was awarded on this invoice (Customer Cashback Scheme)
+      const cbEarned = Number(invoice.cashbackEarned) || 0;
+      if (cbEarned > 0) {
+        // Automatically credit customer balance (store credit for next visit)
+        party.currentBalance -= cbEarned;
+        party.loyaltyLedger.unshift({
+          id: "ll_" + Date.now() + "_cb_" + Math.random().toString(36).substr(2, 4),
+          date: invDate,
+          invoiceId: invoice.id,
+          invoiceNumber: invNum,
+          type: "ADJUSTMENT",
+          points: 0,
+          balanceAfter: party.loyaltyPoints,
+          description: `Cashback of ₹${cbEarned.toFixed(2)} credited to Khata account on Bill #${invNum}`
         });
       }
     }

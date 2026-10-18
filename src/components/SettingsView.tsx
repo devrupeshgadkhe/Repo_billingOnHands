@@ -4,7 +4,19 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { BusinessProfile, DatabaseState, INDIAN_STATES, BUSINESS_TYPES } from "../types.js";
+import {
+  BusinessProfile,
+  DatabaseState,
+  INDIAN_STATES,
+  BUSINESS_TYPES,
+  StoreSchemeConfig,
+  SchemeType,
+  LoyaltyConfig,
+  InstantDiscountScheme,
+  CashbackScheme,
+  BogoScheme,
+  SlabDiscountScheme
+} from "../types.js";
 import { useDialog } from "../context/DialogContext.js";
 import { APP_VERSION, APP_BUILD_DATE } from "../version.js";
 import {
@@ -37,10 +49,20 @@ import {
   Send,
   Clock,
   Eye,
+  EyeOff,
   Calendar,
   QrCode,
   CreditCard,
-  Landmark
+  Landmark,
+  Lock,
+  ShieldCheck,
+  Tag,
+  Plus,
+  Percent,
+  Check,
+  KeyRound,
+  Coins,
+  Wallet
 } from "lucide-react";
 import ThermalDesignerModal, { DEFAULT_THERMAL_CONFIG } from "./ThermalDesignerModal.js";
 
@@ -193,9 +215,25 @@ export default function SettingsView({
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
+  // Business Type Switcher & Security PIN Verification States
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [pendingBusinessType, setPendingBusinessType] = useState<string | null>(null);
+  const [enteredPin, setEnteredPin] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [showPinSecret, setShowPinSecret] = useState(false);
+  const [newSecurityPinInput, setNewSecurityPinInput] = useState(business.securityPin || "1234");
+  const [securityPinSuccessMsg, setSecurityPinSuccessMsg] = useState<string | null>(null);
+
+  // Phase 10: Multi-Form Schemes States
+  const [activeSchemeSubTab, setActiveSchemeSubTab] = useState<
+    "overview" | "loyalty" | "instant" | "cashback" | "bogo" | "slab"
+  >("overview");
+  const [simBillAmount, setSimBillAmount] = useState<number>(2000);
+
   useEffect(() => {
     if (business) {
       setFormData(business);
+      setNewSecurityPinInput(business.securityPin || "1234");
     }
   }, [business]);
 
@@ -205,6 +243,48 @@ export default function SettingsView({
       ...prev,
       [name]: value
     }));
+  };
+
+  // Safe handler for switching business type
+  const handleBusinessTypeChange = (newType: string) => {
+    const currentType = formData.businessType || "general";
+    if (newType === currentType) return;
+
+    if (formData.requirePinForBusinessChange) {
+      setPendingBusinessType(newType);
+      setEnteredPin("");
+      setPinError(null);
+      setShowPinSecret(false);
+      setIsPinModalOpen(true);
+    } else {
+      const updated: BusinessProfile = {
+        ...formData,
+        businessType: newType as any
+      };
+      setFormData(updated);
+      handleSaveSettings(updated);
+    }
+  };
+
+  // Verify PIN and switch business vertical
+  const handleVerifyPinAndSwitch = async () => {
+    const correctPin = (formData.securityPin || "1234").trim();
+    if (enteredPin.trim() !== correctPin) {
+      setPinError(`Incorrect Security PIN! Configured PIN is "${correctPin}". You can also click 'Auto-Fill Default (1234)'.`);
+      return;
+    }
+    if (pendingBusinessType) {
+      const updated: BusinessProfile = {
+        ...formData,
+        businessType: pendingBusinessType as any
+      };
+      setFormData(updated);
+      setIsPinModalOpen(false);
+      setPendingBusinessType(null);
+      setEnteredPin("");
+      setPinError(null);
+      await handleSaveSettings(updated);
+    }
   };
 
   const handleSaveSettings = async (specificProfile?: BusinessProfile) => {
@@ -231,8 +311,57 @@ export default function SettingsView({
       const showUpiQrCode = base.showUpiQrCode ?? base.thermalConfig?.showUpiQrCode ?? true;
       const showBankDetails = base.showBankDetails ?? base.thermalConfig?.showBankDetails ?? false;
 
+      const securityPin = (base.securityPin || "1234").trim();
+      const requirePinForBusinessChange = Boolean(base.requirePinForBusinessChange ?? false);
+
+      const schemeConfig: StoreSchemeConfig = base.schemeConfig || {
+        activeSchemeType: 'all_active',
+        enabled: true,
+        loyalty: base.loyaltyConfig || {
+          enabled: true,
+          pointsPer100Rupees: 1,
+          redemptionRate: 1.0,
+          minPointsToRedeem: 10,
+          maxRedemptionPercentage: 50,
+          expiryDays: 365
+        },
+        instantDiscount: {
+          enabled: true,
+          discountType: 'percentage',
+          discountValue: 5,
+          minBillAmount: 1000,
+          maxDiscountAmount: 500,
+          autoApply: true
+        },
+        cashback: {
+          enabled: true,
+          cashbackPercent: 5,
+          minBillAmount: 500,
+          maxCashbackPerBill: 250,
+          autoCreditToKhata: true
+        },
+        bogo: {
+          enabled: false,
+          defaultBuyQty: 1,
+          defaultFreeQty: 1,
+          appliesToAllItems: true
+        },
+        slabDiscount: {
+          enabled: true,
+          slabs: [
+            { minAmount: 1000, discountType: 'percentage', discountValue: 5 },
+            { minAmount: 2500, discountType: 'percentage', discountValue: 8 },
+            { minAmount: 5000, discountType: 'percentage', discountValue: 12 }
+          ]
+        }
+      };
+
       const payload: BusinessProfile = {
         ...base,
+        securityPin,
+        requirePinForBusinessChange,
+        schemeConfig,
+        loyaltyConfig: schemeConfig.loyalty,
         upiId,
         upiMerchantName,
         bankName,
@@ -490,7 +619,7 @@ export default function SettingsView({
           {[
             { id: "all", label: "All Settings", icon: Sliders },
             { id: "profile", label: "🏢 Business Profile & GST", icon: Building2 },
-            { id: "loyalty", label: "⭐ Customer Loyalty", icon: Star },
+            { id: "loyalty", label: "🎁 Schemes & Rewards", icon: Gift },
             { id: "email", label: "📧 Daily EOD Reports", icon: Mail },
             { id: "thermal", label: "🖨️ Thermal Printer", icon: Printer },
             { id: "security", label: "🔐 Security & Access", icon: PenTool },
@@ -650,24 +779,41 @@ export default function SettingsView({
 
             {/* Business Type / Vertical */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1.5">Business Type & Industry Vertical</label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                  Business Type & Industry Vertical
+                </label>
+                {formData.requirePinForBusinessChange && (
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                    <Lock className="w-3 h-3 text-amber-600" />
+                    <span>PIN Protected</span>
+                  </span>
+                )}
+              </div>
               <select
                 id="settings-business-type"
                 name="businessType"
                 value={formData.businessType || "general"}
-                onChange={handleInputChange}
+                onChange={(e) => handleBusinessTypeChange(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs font-bold bg-white outline-none cursor-pointer"
               >
                 {BUSINESS_TYPES.map(bt => (
                   <option key={bt.id} value={bt.id}>{bt.label}</option>
                 ))}
               </select>
-              <p className="text-[11px] text-slate-400 mt-1">Selecting a business vertical dynamically optimizes point-of-sale features, restaurant table management, KOTs, or barcode matrix workflows.</p>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Selecting a business vertical dynamically optimizes point-of-sale features, restaurant table management, KOTs, or barcode matrix workflows.
+              </p>
               {formData.businessType && (
                 <div className="mt-2.5 p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2.5">
                   <div className="w-5 h-5 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0 font-bold text-[10px] mt-0.5">✓</div>
-                  <div>
-                    <span className="font-bold block text-emerald-950">Active Business Vertical:</span>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold block text-emerald-950">Active Business Vertical:</span>
+                      <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded font-bold">
+                        {BUSINESS_TYPES.find(b => b.id === formData.businessType)?.label}
+                      </span>
+                    </div>
                     <p className="text-emerald-800 text-[11px] mt-0.5">
                       {BUSINESS_TYPES.find(b => b.id === formData.businessType)?.desc || "Customized retail & billing features enabled."}
                     </p>
@@ -1101,216 +1247,916 @@ export default function SettingsView({
               </div>
             )}
 
-            {/* Phase 7: Customer Loyalty Points Scheme Configuration */}
-            {(activeSettingsTab === "all" || activeSettingsTab === "loyalty") && (
-              <div className="pt-5 border-t border-slate-200 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="p-1.5 bg-amber-100 text-amber-800 rounded-lg">
-                      <Star className="w-4 h-4 fill-amber-500 text-amber-600" />
+            {/* Phase 10: Multi-Form Customer Schemes, Discounts & Rewards Configuration */}
+            {(activeSettingsTab === "all" || activeSettingsTab === "loyalty") && (() => {
+              const schemeConfig: StoreSchemeConfig = formData.schemeConfig || {
+                activeSchemeType: 'all_active',
+                enabled: true,
+                loyalty: formData.loyaltyConfig || {
+                  enabled: true,
+                  pointsPer100Rupees: 1,
+                  redemptionRate: 1.0,
+                  minPointsToRedeem: 10,
+                  maxRedemptionPercentage: 50,
+                  expiryDays: 365
+                },
+                instantDiscount: {
+                  enabled: true,
+                  discountType: 'percentage',
+                  discountValue: 5,
+                  minBillAmount: 1000,
+                  maxDiscountAmount: 500,
+                  autoApply: true
+                },
+                cashback: {
+                  enabled: true,
+                  cashbackPercent: 5,
+                  minBillAmount: 500,
+                  maxCashbackPerBill: 250,
+                  autoCreditToKhata: true
+                },
+                bogo: {
+                  enabled: false,
+                  defaultBuyQty: 1,
+                  defaultFreeQty: 1,
+                  appliesToAllItems: true
+                },
+                slabDiscount: {
+                  enabled: true,
+                  slabs: [
+                    { minAmount: 1000, discountType: 'percentage', discountValue: 5 },
+                    { minAmount: 2500, discountType: 'percentage', discountValue: 8 },
+                    { minAmount: 5000, discountType: 'percentage', discountValue: 12 }
+                  ]
+                }
+              };
+
+              const updateScheme = (updater: (prev: StoreSchemeConfig) => StoreSchemeConfig) => {
+                const next = updater(schemeConfig);
+                setFormData(prev => ({
+                  ...prev,
+                  schemeConfig: next,
+                  loyaltyConfig: next.loyalty
+                }));
+              };
+
+              // Live Simulation Calculations
+              const billVal = simBillAmount || 0;
+              let simInstantDisc = 0;
+              let simSlabDisc = 0;
+              let simPtsEarned = 0;
+              let simPtsCashValue = 0;
+              let simCashback = 0;
+
+              if (schemeConfig.enabled) {
+                // Instant Discount
+                if (schemeConfig.instantDiscount.enabled && billVal >= schemeConfig.instantDiscount.minBillAmount) {
+                  if (schemeConfig.instantDiscount.discountType === 'percentage') {
+                    const rawDisc = (billVal * schemeConfig.instantDiscount.discountValue) / 100;
+                    simInstantDisc = schemeConfig.instantDiscount.maxDiscountAmount
+                      ? Math.min(schemeConfig.instantDiscount.maxDiscountAmount, rawDisc)
+                      : rawDisc;
+                  } else {
+                    simInstantDisc = schemeConfig.instantDiscount.discountValue;
+                  }
+                }
+
+                // Slab Discount
+                if (schemeConfig.slabDiscount.enabled && schemeConfig.slabDiscount.slabs?.length > 0) {
+                  const sorted = [...schemeConfig.slabDiscount.slabs].sort((a, b) => b.minAmount - a.minAmount);
+                  const matched = sorted.find(s => billVal >= s.minAmount);
+                  if (matched) {
+                    simSlabDisc = matched.discountType === 'percentage'
+                      ? (billVal * matched.discountValue) / 100
+                      : matched.discountValue;
+                  }
+                }
+
+                // Loyalty Points
+                if (schemeConfig.loyalty.enabled) {
+                  simPtsEarned = Math.floor((billVal / 100) * (schemeConfig.loyalty.pointsPer100Rupees || 1));
+                  simPtsCashValue = simPtsEarned * (schemeConfig.loyalty.redemptionRate || 1);
+                }
+
+                // Cashback
+                if (schemeConfig.cashback.enabled && billVal >= schemeConfig.cashback.minBillAmount) {
+                  const rawCb = (billVal * (schemeConfig.cashback.cashbackPercent || 5)) / 100;
+                  simCashback = schemeConfig.cashback.maxCashbackPerBill
+                    ? Math.min(schemeConfig.cashback.maxCashbackPerBill, rawCb)
+                    : rawCb;
+                }
+              }
+
+              const totalBillDisc = simInstantDisc + simSlabDisc;
+              const netPayable = Math.max(0, billVal - totalBillDisc);
+              const totalCustomerBenefit = totalBillDisc + simPtsCashValue + simCashback;
+
+              return (
+                <div className="pt-5 border-t border-slate-200 space-y-4">
+                  {/* Schemes Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-amber-500/10 via-pink-500/10 to-purple-500/10 p-4 rounded-xl border border-amber-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-pink-500 text-white flex items-center justify-center shadow-md">
+                        <Gift className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-slate-900">
+                            Customer Schemes, Discounts & Rewards Hub
+                          </h3>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white uppercase tracking-wider">
+                            Multi-Form
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mt-0.5">
+                          Empower your store with diverse incentives: Points, Instant Discounts, Customer Khata Cashback, BOGO, & Slabs
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-slate-800">Customer Loyalty Rewards Scheme</h3>
-                      <p className="text-[11px] text-slate-500">Configure customer points earning and redemption rules for POS billing</p>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      <button
+                        id="save-schemes-header-btn"
+                        type="button"
+                        onClick={() => handleSaveSettings()}
+                        disabled={isSaving}
+                        className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-bold py-1.5 px-3.5 rounded-lg text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer select-none"
+                      >
+                        {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        <span>{isSaving ? "Saving..." : "Save Scheme Rules"}</span>
+                      </button>
+
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={schemeConfig.enabled}
+                          onChange={(e) => {
+                            const enabled = e.target.checked;
+                            updateScheme(prev => ({ ...prev, enabled }));
+                          }}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                      </label>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {schemeConfig.enabled && (
+                    <div className="space-y-4">
+                      {/* Active Scheme Strategy Pills */}
+                      <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                            Active Store Scheme Strategy
+                          </label>
+                          <span className="text-[11px] text-slate-400">Select which promotions apply to customer checkout</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                          {[
+                            { id: "all_active", label: "✨ All-In-One (Hybrid)", desc: "All enabled schemes stack" },
+                            { id: "loyalty_points", label: "⭐ Loyalty Points", desc: "Points on spend" },
+                            { id: "instant_discount", label: "🏷️ Bill Discount", desc: "% or Flat off" },
+                            { id: "cashback", label: "💰 Khata Cashback", desc: "Credit store wallet" },
+                            { id: "bogo", label: "🎁 Buy X Get Y", desc: "Free items offers" },
+                            { id: "slab_discount", label: "📊 Tiered Slabs", desc: "Cart value tiers" },
+                          ].map((item) => {
+                            const isSelected = schemeConfig.activeSchemeType === item.id;
+                            return (
+                              <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => updateScheme(prev => ({ ...prev, activeSchemeType: item.id as SchemeType }))}
+                                className={`p-2.5 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
+                                  isSelected
+                                    ? "bg-amber-50 border-amber-500 ring-2 ring-amber-500/20 text-amber-950 font-bold"
+                                    : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-700"
+                                }`}
+                              >
+                                <span className="text-xs">{item.label}</span>
+                                <span className="text-[10px] text-slate-400 font-normal mt-0.5">{item.desc}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Sub-Tabs for Scheme Customization */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto border-b border-slate-200 pb-2">
+                        {[
+                          { id: "overview", label: "📋 Live Calculator & Overview", icon: Sparkles },
+                          { id: "loyalty", label: "⭐ Loyalty Points", icon: Star },
+                          { id: "instant", label: "🏷️ Instant Bill Discount", icon: Percent },
+                          { id: "cashback", label: "💰 Khata Cashback", icon: Coins },
+                          { id: "bogo", label: "🎁 Buy X Get Y (BOGO)", icon: Gift },
+                          { id: "slab", label: "📊 Tiered Slabs", icon: Sliders },
+                        ].map((subTab) => {
+                          const Icon = subTab.icon;
+                          const isActive = activeSchemeSubTab === subTab.id;
+                          return (
+                            <button
+                              key={subTab.id}
+                              type="button"
+                              onClick={() => setActiveSchemeSubTab(subTab.id as any)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer select-none whitespace-nowrap ${
+                                isActive
+                                  ? "bg-slate-900 text-white shadow-xs"
+                                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                              }`}
+                            >
+                              <Icon className="w-3.5 h-3.5" />
+                              <span>{subTab.label}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Sub-Tab 1: Live Simulation & Overview */}
+                      {activeSchemeSubTab === "overview" && (
+                        <div className="bg-gradient-to-br from-amber-50/60 via-pink-50/40 to-indigo-50/40 border border-amber-200 rounded-2xl p-5 shadow-xs space-y-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-200/60 pb-3">
+                            <div>
+                              <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                                <Sparkles className="w-4 h-4 text-amber-600" />
+                                <span>Live Scheme Incentive Simulator</span>
+                              </h4>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Enter a sample bill amount below to test how customer rewards and discounts are applied
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-amber-300 shadow-2xs">
+                              <span className="text-xs font-bold text-slate-600">Sample Bill: ₹</span>
+                              <input
+                                type="number"
+                                min="100"
+                                step="100"
+                                value={simBillAmount}
+                                onChange={(e) => setSimBillAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                                className="w-24 text-xs font-bold font-mono outline-none text-slate-900"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Simulation Outcome KPI Cards */}
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                            <div className="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Direct Bill Discount</span>
+                              <span className="text-lg font-bold font-mono text-emerald-700 block mt-1">
+                                -₹{totalBillDisc.toFixed(2)}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                {simInstantDisc > 0 ? `Instant: -₹${simInstantDisc.toFixed(2)}` : ""} {simSlabDisc > 0 ? `Slab: -₹${simSlabDisc.toFixed(2)}` : ""}
+                                {totalBillDisc === 0 ? "No discount threshold met" : ""}
+                              </span>
+                            </div>
+
+                            <div className="bg-white p-3.5 rounded-xl border border-amber-200 shadow-2xs">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Loyalty Points Earned</span>
+                              <span className="text-lg font-bold font-mono text-amber-700 block mt-1">
+                                +{simPtsEarned} pts
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                Cash redemption value: ₹{simPtsCashValue.toFixed(2)}
+                              </span>
+                            </div>
+
+                            <div className="bg-white p-3.5 rounded-xl border border-purple-200 shadow-2xs">
+                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Cashback to Khata Wallet</span>
+                              <span className="text-lg font-bold font-mono text-purple-700 block mt-1">
+                                +₹{simCashback.toFixed(2)}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                Store credit for next visit
+                              </span>
+                            </div>
+
+                            <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-3.5 rounded-xl shadow-2xs">
+                              <span className="text-[10px] font-bold text-amber-300 uppercase tracking-wide block">Total Customer Benefit</span>
+                              <span className="text-lg font-bold font-mono text-white block mt-1">
+                                ₹{totalCustomerBenefit.toFixed(2)}
+                              </span>
+                              <span className="text-[10px] text-slate-300">
+                                Net Bill to Pay: ₹{netPayable.toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="p-3 bg-white/80 border border-amber-200 rounded-xl text-xs text-slate-600 flex items-start gap-2.5">
+                            <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                            <span>
+                              Use the tabs above to fine-tune rates, qualifying minimum amounts, and maximum caps for each scheme category.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-Tab 2: Loyalty Points */}
+                      {activeSchemeSubTab === "loyalty" && (
+                        <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-5 space-y-4">
+                          <div className="flex items-center justify-between border-b border-amber-200/80 pb-3">
+                            <div>
+                              <h4 className="font-bold text-xs uppercase tracking-wide text-amber-950 flex items-center gap-1.5">
+                                <Star className="w-4 h-4 fill-amber-500 text-amber-600" />
+                                <span>Customer Loyalty Reward Points Scheme</span>
+                              </h4>
+                              <p className="text-[11px] text-amber-800 mt-0.5">
+                                Award points based on net spending, redeemable on subsequent sales bills
+                              </p>
+                            </div>
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={schemeConfig.loyalty.enabled}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    loyalty: { ...prev.loyalty, enabled: checked }
+                                  }));
+                                }}
+                                className="w-4 h-4 text-amber-600 rounded cursor-pointer"
+                              />
+                              <span>Enable Loyalty</span>
+                            </label>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Points Earned per ₹100 Spent
+                              </label>
+                              <input
+                                type="number"
+                                min="0.1"
+                                step="0.1"
+                                value={schemeConfig.loyalty.pointsPer100Rupees ?? 1}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    loyalty: { ...prev.loyalty, pointsPer100Rupees: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. 1 point for every ₹100 purchased</span>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Value of 1 Point in Rupees (₹)
+                              </label>
+                              <input
+                                type="number"
+                                min="0.05"
+                                step="0.05"
+                                value={schemeConfig.loyalty.redemptionRate ?? 1.0}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    loyalty: { ...prev.loyalty, redemptionRate: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. 1.0 = ₹1 discount per 1 point redeemed</span>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Minimum Points to Redeem
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={schemeConfig.loyalty.minPointsToRedeem ?? 10}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 0;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    loyalty: { ...prev.loyalty, minPointsToRedeem: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">Customer must have at least this balance</span>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Max Redemption Limit (% of Bill)
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                max="100"
+                                value={schemeConfig.loyalty.maxRedemptionPercentage ?? 50}
+                                onChange={(e) => {
+                                  const val = Math.min(100, Math.max(1, parseInt(e.target.value) || 50));
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    loyalty: { ...prev.loyalty, maxRedemptionPercentage: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">Maximum % of bill payable via points</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-Tab 3: Instant Bill Discount Scheme */}
+                      {activeSchemeSubTab === "instant" && (
+                        <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-5 space-y-4">
+                          <div className="flex items-center justify-between border-b border-emerald-200/80 pb-3">
+                            <div>
+                              <h4 className="font-bold text-xs uppercase tracking-wide text-emerald-950 flex items-center gap-1.5">
+                                <Percent className="w-4 h-4 text-emerald-600" />
+                                <span>Instant Invoice Discount Scheme (थेट बिल डिस्काउंट)</span>
+                              </h4>
+                              <p className="text-[11px] text-emerald-800 mt-0.5">
+                                Automatically or manually deduct a promotional % or flat ₹ amount on qualifying bills
+                              </p>
+                            </div>
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={schemeConfig.instantDiscount.enabled}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    instantDiscount: { ...prev.instantDiscount, enabled: checked }
+                                  }));
+                                }}
+                                className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                              />
+                              <span>Enable Instant Discount</span>
+                            </label>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Discount Type
+                              </label>
+                              <select
+                                value={schemeConfig.instantDiscount.discountType}
+                                onChange={(e) => {
+                                  const val = e.target.value as 'percentage' | 'flat';
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    instantDiscount: { ...prev.instantDiscount, discountType: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg text-xs font-bold outline-none cursor-pointer"
+                              >
+                                <option value="percentage">Percentage Off (%)</option>
+                                <option value="flat">Flat Amount Off (₹)</option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Discount Value {schemeConfig.instantDiscount.discountType === 'percentage' ? "(%)" : "(₹)"}
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={schemeConfig.instantDiscount.discountValue}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    instantDiscount: { ...prev.instantDiscount, discountValue: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">
+                                {schemeConfig.instantDiscount.discountType === 'percentage' ? "e.g. 5% off" : "e.g. ₹50 flat off"}
+                              </span>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Min Bill Amount (₹)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="100"
+                                value={schemeConfig.instantDiscount.minBillAmount}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    instantDiscount: { ...prev.instantDiscount, minBillAmount: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">Cart total must exceed this to qualify</span>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Max Cap in ₹ (Optional)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="50"
+                                value={schemeConfig.instantDiscount.maxDiscountAmount || ""}
+                                onChange={(e) => {
+                                  const val = e.target.value ? parseFloat(e.target.value) : undefined;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    instantDiscount: { ...prev.instantDiscount, maxDiscountAmount: val }
+                                  }));
+                                }}
+                                placeholder="No limit"
+                                className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">Maximum discount allowed per bill</span>
+                            </div>
+                          </div>
+
+                          <div className="pt-2">
+                            <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={schemeConfig.instantDiscount.autoApply}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    instantDiscount: { ...prev.instantDiscount, autoApply: checked }
+                                  }));
+                                }}
+                                className="w-4 h-4 text-emerald-600 rounded cursor-pointer"
+                              />
+                              <span>Automatically apply scheme discount on POS checkout when bill exceeds minimum</span>
+                            </label>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-Tab 4: Customer Khata Cashback Scheme */}
+                      {activeSchemeSubTab === "cashback" && (
+                        <div className="bg-purple-50/70 border border-purple-200 rounded-2xl p-5 space-y-4">
+                          <div className="flex items-center justify-between border-b border-purple-200/80 pb-3">
+                            <div>
+                              <h4 className="font-bold text-xs uppercase tracking-wide text-purple-950 flex items-center gap-1.5">
+                                <Coins className="w-4 h-4 text-purple-600" />
+                                <span>Customer Khata Cashback / Store Credit Scheme (कॅशबॅक योजना)</span>
+                              </h4>
+                              <p className="text-[11px] text-purple-800 mt-0.5">
+                                Reward customers with instant store credit automatically deposited to their Khata ledger for future purchases
+                              </p>
+                            </div>
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={schemeConfig.cashback.enabled}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    cashback: { ...prev.cashback, enabled: checked }
+                                  }));
+                                }}
+                                className="w-4 h-4 text-purple-600 rounded cursor-pointer"
+                              />
+                              <span>Enable Cashback</span>
+                            </label>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Cashback Percentage (%)
+                              </label>
+                              <input
+                                type="number"
+                                min="0.5"
+                                max="50"
+                                step="0.5"
+                                value={schemeConfig.cashback.cashbackPercent}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    cashback: { ...prev.cashback, cashbackPercent: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-purple-200 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. 5% cashback on qualifying purchase</span>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Minimum Bill for Cashback (₹)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="100"
+                                value={schemeConfig.cashback.minBillAmount}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    cashback: { ...prev.cashback, minBillAmount: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-purple-200 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. ₹500 minimum purchase</span>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Max Cashback Cap per Bill (₹)
+                              </label>
+                              <input
+                                type="number"
+                                min="10"
+                                step="50"
+                                value={schemeConfig.cashback.maxCashbackPerBill}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    cashback: { ...prev.cashback, maxCashbackPerBill: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-purple-200 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. maximum ₹250 cashback per single bill</span>
+                            </div>
+                          </div>
+
+                          <div className="pt-2">
+                            <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={schemeConfig.cashback.autoCreditToKhata}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    cashback: { ...prev.cashback, autoCreditToKhata: checked }
+                                  }));
+                                }}
+                                className="w-4 h-4 text-purple-600 rounded cursor-pointer"
+                              />
+                              <span>Automatically credit cashback amount to customer ledger / store wallet on bill completion</span>
+                            </label>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-Tab 5: Buy X Get Y (BOGO) */}
+                      {activeSchemeSubTab === "bogo" && (
+                        <div className="bg-pink-50/70 border border-pink-200 rounded-2xl p-5 space-y-4">
+                          <div className="flex items-center justify-between border-b border-pink-200/80 pb-3">
+                            <div>
+                              <h4 className="font-bold text-xs uppercase tracking-wide text-pink-950 flex items-center gap-1.5">
+                                <Gift className="w-4 h-4 text-pink-600" />
+                                <span>Buy One Get One (BOGO) / Buy X Get Y Scheme (बाय १ गेट १ मोफत)</span>
+                              </h4>
+                              <p className="text-[11px] text-pink-800 mt-0.5">
+                                Set default BOGO ratios or link to individual product promotional schemes in the Offers Catalog
+                              </p>
+                            </div>
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={schemeConfig.bogo.enabled}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    bogo: { ...prev.bogo, enabled: checked }
+                                  }));
+                                }}
+                                className="w-4 h-4 text-pink-600 rounded cursor-pointer"
+                              />
+                              <span>Enable BOGO</span>
+                            </label>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Default Buy Quantity (X)
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={schemeConfig.bogo.defaultBuyQty}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 1;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    bogo: { ...prev.bogo, defaultBuyQty: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-pink-200 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. Buy 1, Buy 2, or Buy 5</span>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
+                                Default Free Quantity (Y)
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                value={schemeConfig.bogo.defaultFreeQty}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 1;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    bogo: { ...prev.bogo, defaultFreeQty: val }
+                                  }));
+                                }}
+                                className="w-full px-3 py-2 bg-white border border-pink-200 rounded-lg text-xs font-mono font-bold outline-none"
+                              />
+                              <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. Get 1 Free</span>
+                            </div>
+                          </div>
+
+                          <div className="p-3 bg-white border border-pink-200 rounded-xl flex items-center justify-between">
+                            <div className="text-xs text-slate-600">
+                              <span className="font-bold text-slate-800 block">Manage Detailed SKU-Wise Offers</span>
+                              <span>Configure product-specific or brand-specific Buy X Get Y deals in the full Offers module.</span>
+                            </div>
+                            <span className="text-[11px] font-bold text-pink-700 bg-pink-100 px-3 py-1.5 rounded-lg border border-pink-300">
+                              Linked to Offers & Schemes
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sub-Tab 6: Tiered Slab Discounts */}
+                      {activeSchemeSubTab === "slab" && (
+                        <div className="bg-blue-50/70 border border-blue-200 rounded-2xl p-5 space-y-4">
+                          <div className="flex items-center justify-between border-b border-blue-200/80 pb-3">
+                            <div>
+                              <h4 className="font-bold text-xs uppercase tracking-wide text-blue-950 flex items-center gap-1.5">
+                                <Sliders className="w-4 h-4 text-blue-600" />
+                                <span>Tiered Cart Value Slab Discounts (टियर / स्लॅब सवलत)</span>
+                              </h4>
+                              <p className="text-[11px] text-blue-800 mt-0.5">
+                                Reward higher cart values with escalating discounts (e.g. ₹1000 = 5% off, ₹2500 = 8% off, ₹5000 = 12% off)
+                              </p>
+                            </div>
+                            <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={schemeConfig.slabDiscount.enabled}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  updateScheme(prev => ({
+                                    ...prev,
+                                    slabDiscount: { ...prev.slabDiscount, enabled: checked }
+                                  }));
+                                }}
+                                className="w-4 h-4 text-blue-600 rounded cursor-pointer"
+                              />
+                              <span>Enable Slabs</span>
+                            </label>
+                          </div>
+
+                          {/* Slabs Table */}
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-12 gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">
+                              <div className="col-span-4">Min Bill Value (₹)</div>
+                              <div className="col-span-4">Discount Type</div>
+                              <div className="col-span-3">Discount Value</div>
+                              <div className="col-span-1 text-center">Action</div>
+                            </div>
+
+                            {schemeConfig.slabDiscount.slabs?.map((slab, sIdx) => (
+                              <div key={sIdx} className="grid grid-cols-12 gap-2 items-center bg-white p-2.5 rounded-xl border border-blue-200">
+                                <div className="col-span-4">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="500"
+                                    value={slab.minAmount}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value) || 0;
+                                      updateScheme(prev => {
+                                        const newSlabs = [...prev.slabDiscount.slabs];
+                                        newSlabs[sIdx] = { ...newSlabs[sIdx], minAmount: val };
+                                        return { ...prev, slabDiscount: { ...prev.slabDiscount, slabs: newSlabs } };
+                                      });
+                                    }}
+                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold font-mono outline-none"
+                                  />
+                                </div>
+                                <div className="col-span-4">
+                                  <select
+                                    value={slab.discountType}
+                                    onChange={(e) => {
+                                      const val = e.target.value as 'percentage' | 'flat';
+                                      updateScheme(prev => {
+                                        const newSlabs = [...prev.slabDiscount.slabs];
+                                        newSlabs[sIdx] = { ...newSlabs[sIdx], discountType: val };
+                                        return { ...prev, slabDiscount: { ...prev.slabDiscount, slabs: newSlabs } };
+                                      });
+                                    }}
+                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none cursor-pointer"
+                                  >
+                                    <option value="percentage">Percentage (%)</option>
+                                    <option value="flat">Flat Amount (₹)</option>
+                                  </select>
+                                </div>
+                                <div className="col-span-3">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={slab.discountValue}
+                                    onChange={(e) => {
+                                      const val = parseFloat(e.target.value) || 0;
+                                      updateScheme(prev => {
+                                        const newSlabs = [...prev.slabDiscount.slabs];
+                                        newSlabs[sIdx] = { ...newSlabs[sIdx], discountValue: val };
+                                        return { ...prev, slabDiscount: { ...prev.slabDiscount, slabs: newSlabs } };
+                                      });
+                                    }}
+                                    className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold font-mono outline-none"
+                                  />
+                                </div>
+                                <div className="col-span-1 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateScheme(prev => ({
+                                        ...prev,
+                                        slabDiscount: {
+                                          ...prev.slabDiscount,
+                                          slabs: prev.slabDiscount.slabs.filter((_, i) => i !== sIdx)
+                                        }
+                                      }));
+                                    }}
+                                    className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer transition"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateScheme(prev => ({
+                                  ...prev,
+                                  slabDiscount: {
+                                    ...prev.slabDiscount,
+                                    slabs: [
+                                      ...(prev.slabDiscount.slabs || []),
+                                      { minAmount: 3000, discountType: 'percentage', discountValue: 10 }
+                                    ]
+                                  }
+                                }));
+                              }}
+                              className="w-full py-2 border-2 border-dashed border-blue-300 hover:border-blue-500 text-blue-700 hover:text-blue-900 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add New Cart Slab Tier</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Schemes Direct Save Footer */}
+                  <div className="pt-3 border-t border-amber-200/60 flex justify-end">
                     <button
+                      id="save-schemes-btn"
                       type="button"
                       onClick={() => handleSaveSettings()}
                       disabled={isSaving}
-                      className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-bold py-1.5 px-3 rounded-lg text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer select-none"
+                      className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-semibold py-2 px-6 rounded-lg text-xs tracking-wider uppercase shadow hover:shadow-md transition flex items-center space-x-2 cursor-pointer select-none"
                     >
-                      {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      <span>{isSaving ? "..." : "Save Loyalty"}</span>
+                      {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                      <span>{isSaving ? "Saving..." : "Save Scheme Rules"}</span>
                     </button>
-
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.loyaltyConfig?.enabled !== false}
-                    onChange={(e) => {
-                      const enabled = e.target.checked;
-                      setFormData(prev => ({
-                        ...prev,
-                        loyaltyConfig: {
-                          ...(prev.loyaltyConfig || {
-                            pointsPer100Rupees: 1,
-                            redemptionRate: 1.0,
-                            minPointsToRedeem: 10,
-                            maxRedemptionPercentage: 50,
-                            expiryDays: 365
-                          }),
-                          enabled
-                        }
-                      }));
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                </label>
-              </div>
-            </div>
-
-              {formData.loyaltyConfig?.enabled !== false && (
-                <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 space-y-3.5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                    {/* Points Earning Rate */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                        Points Earned per ₹100 Spent
-                      </label>
-                      <input
-                        type="number"
-                        min="0.1"
-                        step="0.1"
-                        value={formData.loyaltyConfig?.pointsPer100Rupees ?? 1}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setFormData(prev => ({
-                            ...prev,
-                            loyaltyConfig: {
-                              ...(prev.loyaltyConfig || {
-                                enabled: true,
-                                redemptionRate: 1.0,
-                                minPointsToRedeem: 10,
-                                maxRedemptionPercentage: 50
-                              }),
-                              enabled: true,
-                              pointsPer100Rupees: val
-                            }
-                          }));
-                        }}
-                        className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. 1 point for every ₹100 purchased</span>
-                    </div>
-
-                    {/* Redemption Value */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                        Value of 1 Point in Rupees (₹)
-                      </label>
-                      <input
-                        type="number"
-                        min="0.05"
-                        step="0.05"
-                        value={formData.loyaltyConfig?.redemptionRate ?? 1.0}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setFormData(prev => ({
-                            ...prev,
-                            loyaltyConfig: {
-                              ...(prev.loyaltyConfig || {
-                                enabled: true,
-                                pointsPer100Rupees: 1,
-                                minPointsToRedeem: 10,
-                                maxRedemptionPercentage: 50
-                              }),
-                              enabled: true,
-                              redemptionRate: val
-                            }
-                          }));
-                        }}
-                        className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">e.g. 1.0 = ₹1 discount per 1 point</span>
-                    </div>
-
-                    {/* Minimum Points to Redeem */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                        Minimum Points to Redeem
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        value={formData.loyaltyConfig?.minPointsToRedeem ?? 10}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0;
-                          setFormData(prev => ({
-                            ...prev,
-                            loyaltyConfig: {
-                              ...(prev.loyaltyConfig || {
-                                enabled: true,
-                                pointsPer100Rupees: 1,
-                                redemptionRate: 1.0,
-                                maxRedemptionPercentage: 50
-                              }),
-                              enabled: true,
-                              minPointsToRedeem: val
-                            }
-                          }));
-                        }}
-                        className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Customer must have at least this many points</span>
-                    </div>
-
-                    {/* Max Redemption % per Bill */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-                        Max Redemption Limit (% of Bill)
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={formData.loyaltyConfig?.maxRedemptionPercentage ?? 50}
-                        onChange={(e) => {
-                          const val = Math.min(100, Math.max(1, parseInt(e.target.value) || 50));
-                          setFormData(prev => ({
-                            ...prev,
-                            loyaltyConfig: {
-                              ...(prev.loyaltyConfig || {
-                                enabled: true,
-                                pointsPer100Rupees: 1,
-                                redemptionRate: 1.0,
-                                minPointsToRedeem: 10
-                              }),
-                              enabled: true,
-                              maxRedemptionPercentage: val
-                            }
-                          }));
-                        }}
-                        className="w-full px-3 py-2 bg-white border border-amber-200 focus:border-amber-500 rounded-lg text-xs font-mono font-bold outline-none"
-                      />
-                      <span className="text-[10px] text-slate-500 mt-0.5 block">Maximum % of bill payable via points</span>
-                    </div>
-                  </div>
-
-                  {/* Scheme Summary & Example Box */}
-                  <div className="bg-white border border-amber-200/80 rounded-lg p-3 text-xs text-slate-700 flex items-start gap-2.5">
-                    <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div className="space-y-1">
-                      <span className="font-bold text-slate-800 block">Scheme Summary & Calculation Example:</span>
-                      <p className="text-[11px] text-slate-600">
-                        • When a customer spends ₹1,000, they will earn <strong>{Math.floor((1000 / 100) * (formData.loyaltyConfig?.pointsPer100Rupees || 1))} points</strong>.
-                      </p>
-                      <p className="text-[11px] text-slate-600">
-                        • Redeeming 50 points on a future bill yields an instant direct discount of <strong>₹{(50 * (formData.loyaltyConfig?.redemptionRate || 1)).toFixed(2)}</strong>.
-                      </p>
-                    </div>
                   </div>
                 </div>
-              )}
-
-                {/* Loyalty Direct Save */}
-                <div className="pt-3 border-t border-amber-200/60 flex justify-end">
-                  <button
-                    id="save-loyalty-btn"
-                    type="button"
-                    onClick={() => handleSaveSettings()}
-                    disabled={isSaving}
-                    className="bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white font-semibold py-2 px-6 rounded-lg text-xs tracking-wider uppercase shadow hover:shadow-md transition flex items-center space-x-2 cursor-pointer select-none"
-                  >
-                    {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                    <span>{isSaving ? "Saving..." : "Save Loyalty Rules"}</span>
-                  </button>
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* Phase 8: Automated Scheduled EOD Email Reports Configuration */}
             {(activeSettingsTab === "all" || activeSettingsTab === "email") && (
@@ -1870,6 +2716,114 @@ export default function SettingsView({
             </div>
           )}
 
+          {/* Store Admin Security PIN & Vertical Switch Authorization */}
+          {(activeSettingsTab === "all" || activeSettingsTab === "security") && (
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
+                <Lock className="w-5 h-5 text-amber-600" />
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm">Store Admin Security PIN & Controls</h3>
+                  <span className="text-[10px] text-slate-400">Manage 4-digit security PIN for critical administrative actions</span>
+                </div>
+              </div>
+
+              {securityPinSuccessMsg && (
+                <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-600" />
+                  <span>{securityPinSuccessMsg}</span>
+                </div>
+              )}
+
+              <div className="space-y-4 text-xs">
+                {/* Require PIN Toggle */}
+                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <div>
+                    <span className="font-bold text-slate-800 block">Require PIN for Business Vertical Switch</span>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      When enabled, switching business vertical (e.g. to Restaurant or Medical) prompts for the admin security PIN.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(formData.requirePinForBusinessChange)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        const updated = { ...formData, requirePinForBusinessChange: checked };
+                        setFormData(updated);
+                        handleSaveSettings(updated);
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+
+                {/* PIN Code Configuration */}
+                <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-amber-950 block">Admin Security PIN</span>
+                      <span className="text-[11px] text-amber-800">
+                        Default PIN is <strong>1234</strong>. You can change it to any 4-digit numeric code.
+                      </span>
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                      Current: {formData.securityPin || "1234"}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type={showPinSecret ? "text" : "password"}
+                        maxLength={6}
+                        value={newSecurityPinInput}
+                        onChange={(e) => setNewSecurityPinInput(e.target.value.replace(/\D/g, ""))}
+                        placeholder="Enter 4-digit numeric PIN"
+                        className="w-full px-3 py-2 bg-white border border-amber-300 focus:border-amber-600 rounded-lg text-xs font-mono font-bold tracking-widest outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPinSecret(!showPinSecret)}
+                        className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title={showPinSecret ? "Hide PIN" : "Show PIN"}
+                      >
+                        {showPinSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const trimmed = newSecurityPinInput.trim();
+                        if (trimmed.length < 4) {
+                          await showAlert({
+                            title: "Invalid PIN Length",
+                            message: "Security PIN must be at least 4 digits long.",
+                            variant: "warning"
+                          });
+                          return;
+                        }
+                        const updated: BusinessProfile = {
+                          ...formData,
+                          securityPin: trimmed
+                        };
+                        setFormData(updated);
+                        await handleSaveSettings(updated);
+                        setSecurityPinSuccessMsg(`✅ Security PIN updated successfully to: ${trimmed}`);
+                        setTimeout(() => setSecurityPinSuccessMsg(null), 4000);
+                      }}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-xs cursor-pointer transition select-none shrink-0"
+                    >
+                      Update PIN
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Backup & Restore Panel */}
           {(activeSettingsTab === "all" || activeSettingsTab === "backup") && (
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
@@ -2141,6 +3095,145 @@ export default function SettingsView({
                   srcDoc={previewEmailHtml}
                   className="w-full h-[65vh] border-0"
                 />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Business Vertical PIN Verification Modal */}
+      {isPinModalOpen && pendingBusinessType && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-scale-in">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm leading-tight">Switch Business Vertical</h3>
+                  <p className="text-[11px] text-slate-400">Security authorization required</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPinModalOpen(false);
+                  setPendingBusinessType(null);
+                  setEnteredPin("");
+                  setPinError(null);
+                }}
+                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer transition"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 space-y-4">
+              {/* Vertical Transition Badges */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2">
+                <div className="flex items-center justify-between font-semibold">
+                  <span className="text-slate-500">Current Vertical:</span>
+                  <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-bold">
+                    {BUSINESS_TYPES.find(b => b.id === (formData.businessType || 'general'))?.label}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between font-semibold text-emerald-800">
+                  <span className="text-emerald-700">Switching To:</span>
+                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded font-bold">
+                    {BUSINESS_TYPES.find(b => b.id === pendingBusinessType)?.label}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-slate-600 leading-relaxed">
+                {BUSINESS_TYPES.find(b => b.id === pendingBusinessType)?.desc || "Changing vertical will adapt relevant POS features, units, and billing layouts."}
+              </p>
+
+              {/* PIN Input Form */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
+                  Enter Admin Security PIN
+                </label>
+                <div className="relative">
+                  <input
+                    id="business-type-pin-input"
+                    type={showPinSecret ? "text" : "password"}
+                    maxLength={6}
+                    autoFocus
+                    value={enteredPin}
+                    onChange={(e) => {
+                      setEnteredPin(e.target.value.replace(/\D/g, ""));
+                      setPinError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleVerifyPinAndSwitch();
+                      }
+                    }}
+                    placeholder="Enter 4-digit PIN"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-300 focus:border-emerald-600 focus:bg-white rounded-xl text-sm font-mono font-bold tracking-widest outline-none transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPinSecret(!showPinSecret)}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showPinSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {pinError && (
+                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs font-semibold flex items-start gap-1.5 animate-shake">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <span>{pinError}</span>
+                  </div>
+                )}
+
+                {/* Helpful Default PIN Auto-Fill Helper */}
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] text-slate-500">
+                    Default PIN: <strong className="font-mono text-slate-700">{formData.securityPin || "1234"}</strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEnteredPin(formData.securityPin || "1234");
+                      setPinError(null);
+                    }}
+                    className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold underline cursor-pointer"
+                  >
+                    Auto-Fill Default ({formData.securityPin || "1234"})
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPinModalOpen(false);
+                    setPendingBusinessType(null);
+                    setEnteredPin("");
+                    setPinError(null);
+                  }}
+                  className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl cursor-pointer transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  id="confirm-business-switch-btn"
+                  type="button"
+                  onClick={handleVerifyPinAndSwitch}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow hover:shadow-md cursor-pointer transition flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Confirm & Switch Vertical</span>
+                </button>
               </div>
             </div>
           </div>

@@ -80,6 +80,54 @@ export interface LoyaltyConfig {
   expiryDays?: number; // Validity period in days (e.g. 365, 0/undefined = no expiry)
 }
 
+export type SchemeType = 'loyalty_points' | 'instant_discount' | 'cashback' | 'bogo' | 'slab_discount' | 'all_active' | 'none';
+
+export interface InstantDiscountScheme {
+  enabled: boolean;
+  discountType: 'percentage' | 'flat';
+  discountValue: number; // e.g. 5% or ₹50
+  minBillAmount: number; // e.g. ₹1000
+  maxDiscountAmount?: number; // e.g. ₹500 cap
+  autoApply: boolean;
+}
+
+export interface CashbackScheme {
+  enabled: boolean;
+  cashbackPercent: number; // e.g. 5%
+  minBillAmount: number; // e.g. ₹500
+  maxCashbackPerBill: number; // e.g. ₹200
+  autoCreditToKhata: boolean; // Auto-credits customer ledger balance
+}
+
+export interface BogoScheme {
+  enabled: boolean;
+  defaultBuyQty: number; // e.g. 1
+  defaultFreeQty: number; // e.g. 1
+  appliesToAllItems: boolean;
+  targetCategory?: string;
+}
+
+export interface SlabDiscountRule {
+  minAmount: number;
+  discountType: 'percentage' | 'flat';
+  discountValue: number;
+}
+
+export interface SlabDiscountScheme {
+  enabled: boolean;
+  slabs: SlabDiscountRule[];
+}
+
+export interface StoreSchemeConfig {
+  activeSchemeType: SchemeType;
+  enabled: boolean;
+  loyalty: LoyaltyConfig;
+  instantDiscount: InstantDiscountScheme;
+  cashback: CashbackScheme;
+  bogo: BogoScheme;
+  slabDiscount: SlabDiscountScheme;
+}
+
 export interface ScheduledEmailConfig {
   enabled: boolean;
   recipientEmail: string; // Primary store owner email
@@ -140,6 +188,9 @@ export interface BusinessProfile {
   showBankDetails?: boolean;
   thermalConfig?: ThermalPrintConfig;
   loyaltyConfig?: LoyaltyConfig;
+  schemeConfig?: StoreSchemeConfig;
+  securityPin?: string; // Admin 4-digit security PIN (Default: "1234")
+  requirePinForBusinessChange?: boolean; // If true, requires PIN confirmation when switching business vertical
   scheduledEmailConfig?: ScheduledEmailConfig;
   defaultBillingMode?: 'gst' | 'non_gst';
   defaultGstSlab?: number; // 0 for Non-GST / Exempt, or standard GST percentage (5, 12, 18, 28)
@@ -274,6 +325,10 @@ export interface Invoice {
   pointsRedeemed?: number; // Number of loyalty points redeemed
   pointsDiscount?: number; // Discount in ₹ given for redeemed points
   pointsEarned?: number; // Loyalty points awarded for this invoice
+  schemeDiscount?: number; // Instant or slab discount applied in ₹
+  schemeTypeApplied?: string; // e.g. 'instant_discount' | 'slab_discount' | 'bogo' | 'loyalty'
+  cashbackEarned?: number; // Cashback in ₹ credited to customer ledger/wallet
+  bogoFreeItems?: Array<{ itemName: string; quantity: number }>; // Free promotional items awarded
   notes: string;
   originalInvoiceNumber?: string;
   sourceChallanId?: string;

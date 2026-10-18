@@ -132,14 +132,35 @@
   - **Repository Secret Shield:** Expanded `.gitignore` to strictly exclude `gemini_keys.txt`, `gemini_keys*.txt`, `data/gemini_keys.txt`, `*.key`, and `*.pem` from ever being tracked in GitHub.
   - **100% Real-Time Dynamic Dashboard Liquidity (`DashboardView.tsx`, `App.tsx`):** Removed all hardcoded static amounts (such as `750000`). Cash & Bank liquidity is now calculated dynamically in real-time directly from actual database invoices (sales collections minus purchase payments) and miscellaneous transactions.
 
+### ✅ Phase 10: Barcode Generator & Thermal/Sheet Label Sticker Printing (`BarcodePrintModal.tsx`, `ItemsView.tsx`, `utils/barcodeUtils.ts`)
+* **Multi-Barcode Catalog Architecture:** Every item supports unlimited barcodes (UPC-A, EAN-13, CODE128, QR Code, internal SKU) with 1-click generation, validation, and collision prevention.
+* **Thermal & A4 Sheet Label Printing:** Print on standard thermal rolls (50x25mm, 38x25mm) as well as 24-up / 40-up A4 sticker sheets (Avery standard) with customizable price, item name, business name, and barcode rendering.
+* **Complete English Localization:** High-quality English terminology across all dialogs, tooltips, buttons, tables, and settings.
+
+### ✅ Phase 11: Multi-Form Customer Schemes, Discounts & Rewards Hub and Settings PIN Security (`SettingsView.tsx`, `InvoicingView.tsx`, `InvoicePrintModal.tsx`, `types.ts`, `server.ts`)
+* **Dedicated Business Type PIN Verification Modal (`SettingsView.tsx`):**
+  - Eliminated the broken confirmation dialog and replaced it with an interactive security modal (`business-type-pin-input`).
+  - Allows merchants to configure their 4-digit admin security PIN (default: `1234`) with optional vertical switch protection toggle.
+  - Features real-time PIN validation, show/hide password toggle, informative vertical preview card, error messages, and an auto-fill helper for default credentials.
+* **Multi-Form Customer Schemes & Rewards Engine (`types.ts`, `SettingsView.tsx`, `server.ts`, `InvoicingView.tsx`):**
+  - Expands beyond basic loyalty points to provide comprehensive retail schemes:
+    1. **Loyalty Points:** Configurable earning rates (e.g. 1 pt per ₹100), ₹ redemption rate, min redeem threshold, and max % cap.
+    2. **Instant Discount Scheme:** Percentage (e.g. 5%) or flat amount (e.g. ₹50) with min bill value and max discount cap.
+    3. **Customer Khata Cashback:** Percentage cashback credited directly to customer ledger/wallet on bill completion.
+    4. **Buy One Get One (BOGO):** Configurable buy quantity and free promotional items per category or store-wide.
+    5. **Tiered Slab Discounts:** Multi-tier volume discounts (e.g. ₹1000 = 5% off, ₹2500 = 8% off, ₹5000 = 12% off).
+  - **Live Interactive Scheme Simulator:** Real-time test calculator in Settings allowing merchants to test any simulated bill amount (e.g. ₹2,500) and immediately see the computed discount, cashback, loyalty points, and net payable.
+  - **POS Billing Integration (`InvoicingView.tsx`):** Automatically computes scheme discounts, points, and khata cashback, showing clear itemized savings and auto-crediting customer ledger balances on checkout.
+  - **Print Layout Support (`InvoicePrintModal.tsx`):** Scheme discounts and khata cashback printed cleanly on thermal and A4 receipts.
+
 ---
 
 ## 🚀 4. Upcoming Roadmap & Next Phases (In Serial Order)
 
 | Phase | Feature Name | Scope & Specifications | Priority |
 | :--- | :--- | :--- | :--- |
-| **Phase 10** | **Barcode Generator & Label Sticker Printing** | 24-up / 40-up sticker sheet printing for retail barcodes and thermal barcode printers. | **Next / High** |
-| **Phase 11** | **Automated WhatsApp Payment Reminders & Invoices** | Direct WhatsApp Web / Cloud API integration for 1-click sharing of PDF bills and payment balance reminder links. | High |
+| **Phase 12** | **Automated WhatsApp Payment Reminders & Invoices** | Direct WhatsApp Web / Cloud API integration for 1-click sharing of PDF bills and payment balance reminder links. | **Next / High** |
+| **Phase 13** | **Cloud Multi-Device Sync & PWA Offline Engine** | Cloud Firestore / SQL synchronization for real-time multi-counter billing across multiple stores. | High |
 
 ---
 
