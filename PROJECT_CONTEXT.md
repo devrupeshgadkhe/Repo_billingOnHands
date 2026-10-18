@@ -181,6 +181,7 @@
 * `src/components/MunimjiDrawer.tsx` - Digital Munimji AI floating voice assistant drawer.
 * `src/services/munimjiClient.ts` - Frontend client service for voice recording, streaming, and command processing.
 * `docs/FEATURE_ROADMAP_AND_STATUS.md` - Detailed Marathi & English feature completion and status breakdown.
+* `docs/END_TO_END_TEST_CASES.md` - Comprehensive end-to-end test suite and test plan covering all modules, business types, positive/negative scenarios, and Digital Munimji voice interactions.
 
 ---
 
