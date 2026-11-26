@@ -20,6 +20,7 @@ import {
   Truck,
   FileText,
   UtensilsCrossed,
+  Tag,
   X
 } from "lucide-react";
 import { BusinessProfile } from "../types.js";
@@ -73,18 +74,18 @@ export default function Sidebar({
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, badge: 0 },
     { id: "parties", label: "Parties", icon: Users, badge: unpaidCount },
     { id: "items", label: "Items & Stock", icon: PackageCheck, badge: lowStockCount },
+    ...((business?.businessType === 'restaurant' || activeTab === 'tables') ? [
+      { id: "tables", label: "Restaurant Tables", icon: UtensilsCrossed, badge: 0 }
+    ] : []),
+    { id: "sales", label: "Sales & POS", icon: ReceiptIndianRupee, badge: 0 },
     { id: "godowns", label: "Godowns & Stock", icon: Building, badge: 0 },
     { id: "quotations", label: "Quotations", icon: FileText, badge: pendingQuotationsCount || 0 },
-    { id: "sales", label: "Sales & POS", icon: ReceiptIndianRupee, badge: 0 },
     { id: "challans", label: "Delivery Challans", icon: Truck, badge: pendingChallansCount || 0 },
     { id: "purchases", label: "Purchase Bills", icon: Building2, badge: 0 },
+    { id: "offers", label: "Offers & Schemes", icon: Tag, badge: 0 },
     { id: "transactions", label: "Income & Expenses", icon: Coins, badge: 0 },
     { id: "reports", label: "Reports & GST", icon: FileSpreadsheet, badge: 0 },
   ];
-
-  if (business?.businessType === 'restaurant') {
-    menuItems.push({ id: "tables", label: "Restaurant Tables", icon: UtensilsCrossed, badge: 0 });
-  }
 
   // If user is owner or admin, append the User Access module
   if (sessionRole === "owner" || sessionRole === "admin" || sessionRole === "manager") {
@@ -99,7 +100,7 @@ export default function Sidebar({
     if (!sessionPermissions) return true;
     const block = sessionPermissions[item.id];
     if (block && typeof block === "object") {
-      return block.view;
+      return block.view !== false;
     }
     return true;
   });

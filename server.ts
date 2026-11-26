@@ -11,7 +11,7 @@ dotenv.config({ override: true });
 
 const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import { GoogleGenAI, Type } from "@google/genai";
-import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher, StockTransferItem } from "./src/types.js";
+import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher, StockTransferItem, RestaurantTable, InstallStatus, BusinessProfile } from "./src/types.js";
 import { APP_VERSION } from "./src/version.js";
 import { munimjiPool, processMunimjiCommand } from "./src/server/munimjiPool.js";
 import { generateEodSummary, sendEodEmailReport, checkScheduledEodEmailJob } from "./src/server/eodReportService.js";
@@ -23,6 +23,7 @@ const DB_DIR = process.env.ELECTRON_USER_DATA
   ? path.join(process.env.ELECTRON_USER_DATA, "data") 
   : path.join(process.cwd(), "data");
 const DB_PATH = path.join(DB_DIR, "db.json");
+const INSTALL_LOCK_PATH = path.join(DB_DIR, "install-lock.json");
 const BACKUP_DIR = path.join(DB_DIR, "backups");
 export const TARGET_BACKUP_ACCOUNT = "pradipayanbackup@gmail.com";
 export const BACKUP_FOLDER_NAME = "BillingOnHand_Backups";
@@ -329,7 +330,15 @@ const initialData: DatabaseState = {
   ],
   challans: [],
   quotations: [],
-  transactions: []
+  transactions: [],
+  tables: [
+    { id: "tbl_1", tableNumber: "T-1", section: "AC Dining", capacity: 4, status: "available", currentOrderTotal: 0 },
+    { id: "tbl_2", tableNumber: "T-2", section: "AC Dining", capacity: 6, status: "available", currentOrderTotal: 0 },
+    { id: "tbl_3", tableNumber: "T-3", section: "Main Hall", capacity: 4, status: "available", currentOrderTotal: 0 },
+    { id: "tbl_4", tableNumber: "T-4", section: "Main Hall", capacity: 2, status: "available", currentOrderTotal: 0 },
+    { id: "tbl_5", tableNumber: "T-5", section: "Family Section", capacity: 8, status: "reserved", currentOrderTotal: 0 },
+    { id: "tbl_6", tableNumber: "T-6", section: "Garden / Terrace", capacity: 4, status: "available", currentOrderTotal: 0 }
+  ]
 };
 
 // Ensure JSON file exists with built-in auth accounts
@@ -346,8 +355,7 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
     state: String(raw.business?.state || "Maharashtra"),
     phone: String(raw.business?.phone || "+91 98765 43210"),
     email: String(raw.business?.email || "billing@apexelectro.com"),
-    securityPin: String(raw.business?.securityPin || "1234"),
-    requirePinForBusinessChange: Boolean(raw.business?.requirePinForBusinessChange ?? false),
+    signatureText: String(raw.business?.signatureText || "For Apex Electro-Tech Systems"),
     schemeConfig: raw.business?.schemeConfig || {
       activeSchemeType: "all_active",
       enabled: true,
@@ -631,6 +639,28 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
       }))
     : [];
 
+  const defaultPresetTables: RestaurantTable[] = [
+    { id: "tbl_1", tableNumber: "T-1", section: "AC Dining", capacity: 4, status: "available", currentOrderTotal: 0 },
+    { id: "tbl_2", tableNumber: "T-2", section: "AC Dining", capacity: 6, status: "available", currentOrderTotal: 0 },
+    { id: "tbl_3", tableNumber: "T-3", section: "Main Hall", capacity: 4, status: "available", currentOrderTotal: 0 },
+    { id: "tbl_4", tableNumber: "T-4", section: "Main Hall", capacity: 2, status: "available", currentOrderTotal: 0 },
+    { id: "tbl_5", tableNumber: "T-5", section: "Family Section", capacity: 8, status: "reserved", currentOrderTotal: 0 },
+    { id: "tbl_6", tableNumber: "T-6", section: "Garden / Terrace", capacity: 4, status: "available", currentOrderTotal: 0 }
+  ];
+
+  const tables: RestaurantTable[] = Array.isArray(raw.tables)
+    ? raw.tables.map((tbl: any, idx: number) => ({
+        id: String(tbl?.id || `tbl_${idx + 1}`),
+        tableNumber: String(tbl?.tableNumber || `T-${idx + 1}`),
+        section: String(tbl?.section || "Main Dining"),
+        capacity: Number(tbl?.capacity) || 4,
+        status: (["available", "occupied", "reserved", "cleaning"].includes(tbl?.status) ? tbl.status : "available") as RestaurantTable["status"],
+        currentOrderId: tbl?.currentOrderId ? String(tbl.currentOrderId) : undefined,
+        currentOrderTotal: Number(tbl?.currentOrderTotal) || 0,
+        runningItemsSummary: tbl?.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined
+      }))
+    : defaultPresetTables;
+
   return {
     business,
     items,
@@ -642,8 +672,57 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
     quotations,
     transactions,
     users,
-    offers: Array.isArray(raw.offers) ? raw.offers : []
+    offers: Array.isArray(raw.offers) ? raw.offers : [],
+    tables
   };
+}
+
+const VALID_BUSINESS_TYPES: NonNullable<BusinessProfile["businessType"]>[] = [
+  "kirana",
+  "krishi_seva",
+  "garment",
+  "medical",
+  "wine_shop",
+  "restaurant",
+  "electronics",
+  "mall",
+  "general"
+];
+
+export function readInstallLock(): InstallStatus {
+  try {
+    if (fs.existsSync(INSTALL_LOCK_PATH)) {
+      const parsed = JSON.parse(fs.readFileSync(INSTALL_LOCK_PATH, "utf8"));
+      if (parsed && parsed.businessModeLocked === true && VALID_BUSINESS_TYPES.includes(parsed.businessType)) {
+        return {
+          businessModeLocked: true,
+          businessType: parsed.businessType,
+          installedAt: parsed.installedAt,
+          installedVersion: parsed.installedVersion
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[InstallLock] Unable to read install-lock.json:", err);
+  }
+  return {
+    businessModeLocked: false,
+    businessType: null
+  };
+}
+
+export function writeInstallLock(businessType: NonNullable<BusinessProfile["businessType"]>): InstallStatus {
+  if (!fs.existsSync(DB_DIR)) {
+    fs.mkdirSync(DB_DIR, { recursive: true });
+  }
+  const lockData: InstallStatus = {
+    businessModeLocked: true,
+    businessType,
+    installedAt: new Date().toISOString(),
+    installedVersion: APP_VERSION
+  };
+  fs.writeFileSync(INSTALL_LOCK_PATH, JSON.stringify(lockData, null, 2), "utf8");
+  return lockData;
 }
 
 function readDb(): DatabaseState {
@@ -1052,8 +1131,8 @@ function writeDb(data: DatabaseState) {
   }
 }
 
-// Generate customizable demo database states for specific small retail sectors
-function generateTemplateData(businessType: "kirana" | "garment" | "mall" | "electronics" | "general"): DatabaseState {
+// Generate customizable demo database states for all retail & hospitality verticals
+function generateTemplateData(businessType: NonNullable<BusinessProfile["businessType"]>): DatabaseState {
   const users = [
     {
       username: "admin",
@@ -1062,6 +1141,146 @@ function generateTemplateData(businessType: "kirana" | "garment" | "mall" | "ele
       role: "owner"
     }
   ];
+
+  if (businessType === "restaurant") {
+    return {
+      users,
+      business: {
+        name: "Royal Spice Restaurant & Cafe",
+        gstin: "27RSRCF1234A1Z5",
+        address: "Ground Floor, Culinary Plaza, FC Road, Pune",
+        state: "Maharashtra",
+        phone: "+91 98220 11223",
+        email: "orders@royalspice.in",
+        signatureText: "For Royal Spice Restaurant & Cafe",
+        fssaiNo: "11524001000982",
+        businessType: "restaurant",
+        defaultBillingMode: "gst",
+        defaultGstSlab: 5
+      },
+      items: [
+        { id: "food_1", name: "Paneer Butter Masala", category: "Main Course", hsn: "2106", purchasePrice: 110, salePrice: 220, stockQuantity: 50, minStockAlert: 10, gstRate: 5, unit: "PLATE" },
+        { id: "food_2", name: "Veg Dum Biryani", category: "Rice & Biryani", hsn: "2106", purchasePrice: 90, salePrice: 180, stockQuantity: 45, minStockAlert: 10, gstRate: 5, unit: "PLATE" },
+        { id: "food_3", name: "Butter Garlic Naan", category: "Breads", hsn: "1905", purchasePrice: 15, salePrice: 45, stockQuantity: 100, minStockAlert: 20, gstRate: 5, unit: "PCS" },
+        { id: "food_4", name: "Masala Dosa with Sambar", category: "Breakfast", hsn: "2106", purchasePrice: 35, salePrice: 90, stockQuantity: 60, minStockAlert: 15, gstRate: 5, unit: "PLATE" },
+        { id: "food_5", name: "Packaged Drinking Water 1L", category: "Beverages", hsn: "2201", purchasePrice: 12, salePrice: 20, stockQuantity: 120, minStockAlert: 24, gstRate: 18, unit: "BTL" }
+      ],
+      parties: [
+        { id: "rp_1", name: "Walk-in Dining Guest", type: "customer", phone: "", email: "", address: "", state: "Maharashtra", gstin: "", initialBalance: 0, currentBalance: 0 },
+        { id: "rp_2", name: "FreshFarm Dairy & Produce (Supplier)", type: "supplier", phone: "+91 97654 32100", email: "supply@freshfarm.in", address: "Market Yard, Pune", state: "Maharashtra", gstin: "27AAFFP1122K1Z1", initialBalance: 0, currentBalance: 8500 }
+      ],
+      tables: [
+        { id: "tbl_1", tableNumber: "T-1", section: "AC Dining", capacity: 4, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_2", tableNumber: "T-2", section: "AC Dining", capacity: 6, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_3", tableNumber: "T-3", section: "Main Hall", capacity: 4, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_4", tableNumber: "T-4", section: "Main Hall", capacity: 2, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_5", tableNumber: "T-5", section: "Family Section", capacity: 8, status: "reserved", currentOrderTotal: 0 },
+        { id: "tbl_6", tableNumber: "T-6", section: "Garden / Terrace", capacity: 4, status: "available", currentOrderTotal: 0 }
+      ],
+      invoices: [],
+      challans: [],
+      quotations: [],
+      transactions: []
+    };
+  }
+
+  if (businessType === "medical") {
+    return {
+      users,
+      business: {
+        name: "Sanjivani Medico & Healthcare",
+        gstin: "27MEDHC5678B1Z2",
+        address: "Shop 3, Wellness Arcade, Dadar East, Mumbai",
+        state: "Maharashtra",
+        phone: "+91 98211 33445",
+        email: "care@sanjivanimedico.in",
+        signatureText: "For Sanjivani Medico & Healthcare",
+        drugLicenseNo: "MH-TZ2-20B-99812 / 21B-99813",
+        businessType: "medical",
+        defaultBillingMode: "gst",
+        defaultGstSlab: 12
+      },
+      items: [
+        { id: "med_1", name: "Dolo 650mg Paracetamol Tablets", category: "Pain Relief", brand: "Micro Labs", hsn: "3004", purchasePrice: 24.5, salePrice: 34, mrp: 35, stockQuantity: 150, minStockAlert: 20, gstRate: 12, unit: "STRIP", batchNumber: "DL-2026-X4", expiryDate: "2027-11-30" },
+        { id: "med_2", name: "Azithromycin 500mg Tablets", category: "Antibiotics", brand: "Cipla", hsn: "3004", purchasePrice: 62, salePrice: 89, mrp: 95, stockQuantity: 60, minStockAlert: 10, gstRate: 12, unit: "STRIP", batchNumber: "AZ-9921-A", expiryDate: "2028-05-31" },
+        { id: "med_3", name: "Ascoril-D Cough Syrup 100ml", category: "Syrups", brand: "Glenmark", hsn: "3004", purchasePrice: 85, salePrice: 120, mrp: 128, stockQuantity: 40, minStockAlert: 10, gstRate: 12, unit: "BTL", batchNumber: "AS-332", expiryDate: "2027-06-15" }
+      ],
+      parties: [
+        { id: "mp_1", name: "Ramesh Patil (Regular Patient)", type: "customer", phone: "+91 98200 11223", email: "", address: "Dadar East, Mumbai", state: "Maharashtra", gstin: "", initialBalance: 0, currentBalance: 0 },
+        { id: "mp_2", name: "Wellcare Pharma Distributors (Supplier)", type: "supplier", phone: "+91 98111 44556", email: "dispatch@wellcarepharma.in", address: "Bhiwandi Pharma Hub", state: "Maharashtra", gstin: "27AAAWP1234F1Z8", initialBalance: 0, currentBalance: 22400 }
+      ],
+      invoices: [],
+      challans: [],
+      quotations: [],
+      transactions: []
+    };
+  }
+
+  if (businessType === "krishi_seva") {
+    return {
+      users,
+      business: {
+        name: "Kisan Krishi Seva Kendra",
+        gstin: "27KKKSK7890C1Z4",
+        address: "Plot 9, Krishi Utpanna Bazar Samiti, Nashik",
+        state: "Maharashtra",
+        phone: "+91 94222 55667",
+        email: "support@kisankrishi.in",
+        signatureText: "For Kisan Krishi Seva Kendra",
+        fertilizerLicenseNo: "LCFD-2026-8812",
+        seedLicenseNo: "LCSD-2026-4410",
+        pesticideLicenseNo: "LCPS-2026-1920",
+        businessType: "krishi_seva",
+        defaultBillingMode: "gst",
+        defaultGstSlab: 5
+      },
+      items: [
+        { id: "ag_1", name: "Mahadhan 10:26:26 Complex Fertilizer 50kg", category: "Fertilizers", brand: "Mahadhan", hsn: "3105", purchasePrice: 1320, salePrice: 1470, stockQuantity: 120, minStockAlert: 20, gstRate: 5, unit: "BAG", batchNumber: "MH-2026-01", expiryDate: "2028-03-31" },
+        { id: "ag_2", name: "Neem Coated Urea 45kg Bag", category: "Fertilizers", brand: "IFFCO", hsn: "3102", purchasePrice: 242, salePrice: 266.5, stockQuantity: 200, minStockAlert: 30, gstRate: 5, unit: "BAG" },
+        { id: "ag_3", name: "Roundup Herbicide 1L", category: "Pesticides", brand: "Bayer", hsn: "3808", purchasePrice: 410, salePrice: 520, stockQuantity: 48, minStockAlert: 10, gstRate: 18, unit: "BTL", batchNumber: "BY-884", expiryDate: "2027-09-30" }
+      ],
+      parties: [
+        { id: "agp_1", name: "Suresh Deshmukh (Farmer)", type: "customer", phone: "+91 97661 22334", email: "", address: "Niphad Taluka, Nashik", state: "Maharashtra", gstin: "", initialBalance: 0, currentBalance: 5400 },
+        { id: "agp_2", name: "Sahyadri Agro Wholesale Depot", type: "supplier", phone: "+91 94230 77889", email: "orders@sahyadriagro.in", address: "MIDC Satpur, Nashik", state: "Maharashtra", gstin: "27AAACS9988D1Z3", initialBalance: 0, currentBalance: 35000 }
+      ],
+      invoices: [],
+      challans: [],
+      quotations: [],
+      transactions: []
+    };
+  }
+
+  if (businessType === "wine_shop") {
+    return {
+      users,
+      business: {
+        name: "Royal Cellars & Wine Mart",
+        gstin: "27RCWMT1122E1Z9",
+        address: "Shop 4, Commercial Square, Thane West",
+        state: "Maharashtra",
+        phone: "+91 98204 77889",
+        email: "accounts@royalcellars.in",
+        signatureText: "For Royal Cellars & Wine Mart",
+        exciseLicenseNo: "FL-II-THN-2026-412",
+        businessType: "wine_shop",
+        defaultBillingMode: "non_gst",
+        defaultGstSlab: 0
+      },
+      items: [
+        { id: "ws_1", name: "Sula Shiraz Cabernet 750ml", category: "Red Wine", brand: "Sula", hsn: "2204", purchasePrice: 680, salePrice: 890, stockQuantity: 48, minStockAlert: 12, gstRate: 0, unit: "BTL" },
+        { id: "ws_2", name: "Kingfisher Ultra Lager 650ml", category: "Beer", brand: "Kingfisher", hsn: "2203", purchasePrice: 135, salePrice: 180, stockQuantity: 120, minStockAlert: 24, gstRate: 0, unit: "BTL" },
+        { id: "ws_3", name: "Packaged Soda & Ice Cubes", category: "Mixers", hsn: "2201", purchasePrice: 18, salePrice: 30, stockQuantity: 90, minStockAlert: 20, gstRate: 18, unit: "PCS" }
+      ],
+      parties: [
+        { id: "wsp_1", name: "Counter Cash Customer", type: "customer", phone: "", email: "", address: "", state: "Maharashtra", gstin: "", initialBalance: 0, currentBalance: 0 },
+        { id: "wsp_2", name: "Deccan Beverage Distributors", type: "supplier", phone: "+91 98230 11990", email: "orders@deccanbev.in", address: "Wagle Estate, Thane", state: "Maharashtra", gstin: "27AAADB3344H1Z2", initialBalance: 0, currentBalance: 42000 }
+      ],
+      invoices: [],
+      challans: [],
+      quotations: [],
+      transactions: []
+    };
+  }
 
   if (businessType === "kirana") {
     return {
@@ -1154,18 +1373,19 @@ function generateTemplateData(businessType: "kirana" | "garment" | "mall" | "ele
     };
   }
 
-  // default to electronics
+  // electronics or general
+  const resolvedType = businessType === "general" ? "general" : "electronics";
   return {
     users,
     business: {
-      name: "Apex Electro-Tech Systems",
+      name: resolvedType === "general" ? "My Retail & Wholesale Store" : "Apex Electro-Tech Systems",
       gstin: "27AAAAA1111A1Z1",
       address: "Suite 405, Tech Green Boulevard, Bandra East",
       state: "Maharashtra",
       phone: "+91 98765 43210",
       email: "billing@apexelectro.com",
-      signatureText: "For Apex Electro-Tech Systems",
-      businessType: "electronics"
+      signatureText: resolvedType === "general" ? "Authorized Signatory" : "For Apex Electro-Tech Systems",
+      businessType: resolvedType
     },
     items: [
       { id: "item_1", name: "Industrial LED Floodlight 100W", hsn: "9405", purchasePrice: 1800, salePrice: 2450, stockQuantity: 45, minStockAlert: 10, gstRate: 18, unit: "PCS" },
@@ -1190,6 +1410,8 @@ function getDefaultPermissionsFor(role: string) {
     dashboard: { view: true, create: isElevated, update: isElevated, delete: isElevated },
     parties: { view: true, create: true, update: true, delete: isElevated },
     items: { view: true, create: true, update: true, delete: isElevated },
+    tables: { view: true, create: true, update: true, delete: isElevated },
+    offers: { view: true, create: isElevated, update: isElevated, delete: isElevated },
     quotations: { view: true, create: true, update: true, delete: isElevated },
     sales: { view: true, create: true, update: true, delete: isElevated },
     purchases: { view: true, create: true, update: true, delete: isElevated },
@@ -1414,10 +1636,135 @@ app.delete("/api/users/:userName", (req, res) => {
   res.json({ message: `Access for user '${targetUserName}' has been revoked successfully.` });
 });
 
-// Get full Database State
+// Get Installation & Business Mode Lock Status
+app.get("/api/install-status", (req, res) => {
+  const lock = readInstallLock();
+  const db = readDb();
+  const hasExistingData = (db.invoices?.length || 0) > 0 || (db.items?.length || 0) > 0 || (db.parties?.length || 0) > 0;
+  res.json({
+    ...lock,
+    hasExistingData
+  });
+});
+
+// One-Time First Installation Business Mode Setup (Immutable once locked; only cleared on uninstall)
+app.post("/api/install/setup", (req, res) => {
+  try {
+    const currentLock = readInstallLock();
+    if (currentLock.businessModeLocked) {
+      return res.status(403).json({
+        error: "Business mode is already locked at installation. To change business mode, uninstall and reinstall the application."
+      });
+    }
+
+    const { businessType, storeName, state, phone, gstin, setupMode } = req.body || {};
+    if (!businessType || !VALID_BUSINESS_TYPES.includes(businessType)) {
+      return res.status(400).json({ error: "Please select a valid business mode." });
+    }
+
+    const existingDb = readDb();
+    let targetDb: DatabaseState;
+
+    if (setupMode === "keep_existing") {
+      targetDb = {
+        ...existingDb,
+        business: {
+          ...existingDb.business,
+          businessType,
+          name: storeName?.trim() || existingDb.business.name,
+          state: state?.trim() || existingDb.business.state,
+          phone: phone !== undefined ? String(phone).trim() : existingDb.business.phone,
+          gstin: gstin !== undefined ? String(gstin).trim().toUpperCase() : existingDb.business.gstin
+        }
+      };
+    } else if (setupMode === "demo") {
+      targetDb = generateTemplateData(businessType);
+      if (storeName?.trim()) {
+        targetDb.business.name = storeName.trim();
+        targetDb.business.signatureText = `For ${storeName.trim()}`;
+      }
+      if (state?.trim()) targetDb.business.state = state.trim();
+      if (phone?.trim()) targetDb.business.phone = phone.trim();
+      if (gstin?.trim()) targetDb.business.gstin = gstin.trim().toUpperCase();
+    } else {
+      // Clean blank store ready for real entries
+      const starterTables: RestaurantTable[] = businessType === "restaurant"
+        ? [
+            { id: "tbl_1", tableNumber: "T-1", section: "AC Dining", capacity: 4, status: "available", currentOrderTotal: 0 },
+            { id: "tbl_2", tableNumber: "T-2", section: "AC Dining", capacity: 6, status: "available", currentOrderTotal: 0 },
+            { id: "tbl_3", tableNumber: "T-3", section: "Main Hall", capacity: 4, status: "available", currentOrderTotal: 0 },
+            { id: "tbl_4", tableNumber: "T-4", section: "Main Hall", capacity: 2, status: "available", currentOrderTotal: 0 }
+          ]
+        : [];
+      const cleanName = storeName?.trim() || "My Store";
+      targetDb = {
+        business: {
+          ...existingDb.business,
+          name: cleanName,
+          gstin: gstin !== undefined ? String(gstin).trim().toUpperCase() : "",
+          address: "",
+          state: state?.trim() || existingDb.business?.state || "Maharashtra",
+          phone: phone !== undefined ? String(phone).trim() : "",
+          email: "",
+          signatureText: `For ${cleanName}`,
+          businessType,
+          defaultBillingMode: businessType === "wine_shop" ? "non_gst" : "gst",
+          defaultGstSlab: businessType === "restaurant" || businessType === "kirana" || businessType === "krishi_seva" ? 5 : (businessType === "medical" ? 12 : 18)
+        },
+        items: [],
+        parties: [],
+        invoices: [],
+        challans: [],
+        quotations: [],
+        offers: [],
+        transactions: [],
+        tables: starterTables,
+        users: existingDb.users && existingDb.users.length > 0
+          ? existingDb.users
+          : [{ username: "admin", passwordHash: "admin123", name: "Store Manager", role: "owner" }]
+      };
+    }
+
+    if (businessType === "restaurant" && (!Array.isArray(targetDb.tables) || targetDb.tables.length === 0)) {
+      targetDb.tables = [
+        { id: "tbl_1", tableNumber: "T-1", section: "AC Dining", capacity: 4, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_2", tableNumber: "T-2", section: "AC Dining", capacity: 6, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_3", tableNumber: "T-3", section: "Main Hall", capacity: 4, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_4", tableNumber: "T-4", section: "Main Hall", capacity: 2, status: "available", currentOrderTotal: 0 }
+      ];
+    }
+
+    writeDb(targetDb);
+    const lock = writeInstallLock(businessType);
+
+    console.log(`[InstallSetup] Permanently locked installation business mode to: ${businessType}`);
+    res.json({
+      success: true,
+      installStatus: { ...lock, hasExistingData: (targetDb.invoices?.length || 0) > 0 || (targetDb.items?.length || 0) > 0 },
+      business: targetDb.business,
+      message: `Business mode '${businessType}' configured and locked for this installation.`
+    });
+  } catch (err: any) {
+    console.error("[InstallSetup] Failed:", err);
+    res.status(500).json({ error: "Failed to configure installation business mode: " + (err?.message || err) });
+  }
+});
+
+// Get full Database State (with installation lock metadata enforced)
 app.get("/api/db", (req, res) => {
   const data = readDb();
-  res.json(data);
+  const lock = readInstallLock();
+  if (lock.businessModeLocked && lock.businessType) {
+    data.business.businessType = lock.businessType;
+  }
+  const hasExistingData = (data.invoices?.length || 0) > 0 || (data.items?.length || 0) > 0 || (data.parties?.length || 0) > 0;
+  res.json({
+    ...data,
+    installStatus: {
+      ...lock,
+      hasExistingData
+    }
+  });
 });
 
 // Backup full database file as downloadable JSON with Store Name, Date, Time format
@@ -1577,8 +1924,17 @@ app.post("/api/backups/restore/:filename", (req, res) => {
       return res.status(400).json({ error: "Backup file corrupted or missing required sections." });
     }
 
-    writeDb(parsed);
-    res.json({ message: `Database restored successfully from '${filename}'!`, business: parsed.business });
+    const lock = readInstallLock();
+    const preservedBusinessType = lock.businessModeLocked && lock.businessType ? lock.businessType : parsed.business?.businessType;
+    const normalized = normalizeDatabaseState({
+      ...parsed,
+      business: {
+        ...parsed.business,
+        businessType: preservedBusinessType
+      }
+    });
+    writeDb(normalized);
+    res.json({ message: `Database restored successfully from '${filename}'!`, business: normalized.business });
   } catch (err: any) {
     res.status(500).json({ error: "Restore failed: " + err.message });
   }
@@ -1595,47 +1951,60 @@ app.post("/api/db/restore", (req, res) => {
     if (!data.business || !Array.isArray(data.items) || !Array.isArray(data.parties) || !Array.isArray(data.invoices)) {
       return res.status(400).json({ error: "The backup structure is invalid or missing required sections (business, items, parties or invoices)." });
     }
-    writeDb(data);
+    const lock = readInstallLock();
+    const preservedBusinessType = lock.businessModeLocked && lock.businessType ? lock.businessType : data.business?.businessType;
+    const normalized = normalizeDatabaseState({
+      ...data,
+      business: {
+        ...data.business,
+        businessType: preservedBusinessType
+      }
+    });
+    writeDb(normalized);
     res.json({ message: "Store database successfully restored and initialized!" });
   } catch (err: any) {
     res.status(500).json({ error: "Unable to parse and load the backup file payload: " + err.message });
   }
 });
 
-// Reset database to initial sample data or custom retail sectors
+// Reset database to initial sample data or custom retail sectors (preserves installation business mode lock)
 app.post("/api/db/reset", (req, res) => {
+  const lock = readInstallLock();
   const { businessType } = req.body || {};
-  let targetData: DatabaseState;
+  const effectiveType = (lock.businessModeLocked && lock.businessType)
+    ? lock.businessType
+    : (businessType && VALID_BUSINESS_TYPES.includes(businessType) ? businessType : "electronics");
 
-  if (businessType && ["kirana", "garment", "mall", "electronics", "general", "krishi_seva", "medical", "wine_shop", "restaurant"].includes(businessType)) {
-    targetData = generateTemplateData(businessType);
-  } else {
-    // defaults to existing standard electro blueprint
-    targetData = generateTemplateData("electronics");
-  }
-
+  const targetData = generateTemplateData(effectiveType);
   writeDb(targetData);
   res.json({ message: "Store workspace initialized with specific retail blueprints.", db: targetData });
 });
 
-// Hard Reset / Wipe All Data to a clean slate (0 items, 0 parties, 0 invoices, 0 challans, 0 quotations, 0 offers, 0 transactions)
+// Hard Reset / Wipe All Data to a clean slate (preserves locked business mode)
 app.post("/api/db/hard-reset", (req, res) => {
   try {
     const currentDb = readDb();
+    const lock = readInstallLock();
     // Safety automated snapshot prior to hard wipe
     performAutoBackup(currentDb);
 
+    const lockedType = (lock.businessModeLocked && lock.businessType)
+      ? lock.businessType
+      : (currentDb.business?.businessType || "general");
+
     const cleanSlate: DatabaseState = {
-      business: currentDb.business || {
-        name: "My Store",
-        gstin: "",
-        address: "",
-        state: "Maharashtra",
-        phone: "",
-        email: "",
-        signatureText: "Authorized Signatory",
-        businessType: "general",
-        operationMode: "both"
+      business: {
+        ...(currentDb.business || {
+          name: "My Store",
+          gstin: "",
+          address: "",
+          state: "Maharashtra",
+          phone: "",
+          email: "",
+          signatureText: "Authorized Signatory",
+          operationMode: "both"
+        }),
+        businessType: lockedType
       },
       items: [],
       parties: [],
@@ -1644,12 +2013,13 @@ app.post("/api/db/hard-reset", (req, res) => {
       quotations: [],
       offers: [],
       transactions: [],
+      tables: [],
       users: currentDb.users && currentDb.users.length > 0 ? currentDb.users : [
         {
           username: "admin",
           passwordHash: "admin123",
           name: "Store Admin",
-          role: "admin"
+          role: "owner"
         }
       ]
     };
@@ -1667,12 +2037,19 @@ app.post("/api/db/hard-reset", (req, res) => {
   }
 });
 
-// Update Business details and Store Settings
+// Update Business details and Store Settings (Business Mode is immutable once locked at installation)
 app.post("/api/business", (req, res) => {
   try {
     const db = readDb();
+    const lock = readInstallLock();
     const existing: any = db.business || {};
     const incoming: any = req.body || {};
+
+    if (lock.businessModeLocked && lock.businessType && incoming.businessType && incoming.businessType !== lock.businessType) {
+      return res.status(403).json({
+        error: "Business mode is locked to this installation and cannot be changed. Uninstall and reinstall the application to select a different business mode."
+      });
+    }
 
     const mergedThermalConfig = incoming.thermalConfig
       ? { ...(existing.thermalConfig || {}), ...incoming.thermalConfig }
@@ -1687,9 +2064,14 @@ app.post("/api/business", (req, res) => {
     if (incoming.showUpiQrCode !== undefined) mergedThermalConfig.showUpiQrCode = incoming.showUpiQrCode;
     if (incoming.showBankDetails !== undefined) mergedThermalConfig.showBankDetails = incoming.showBankDetails;
 
+    const enforcedBusinessType = (lock.businessModeLocked && lock.businessType)
+      ? lock.businessType
+      : (incoming.businessType || existing.businessType || "general");
+
     db.business = {
       ...existing,
       ...incoming,
+      businessType: enforcedBusinessType,
       thermalConfig: Object.keys(mergedThermalConfig).length > 0 ? mergedThermalConfig : undefined,
       loyaltyConfig: incoming.loyaltyConfig
         ? { ...(existing.loyaltyConfig || {}), ...incoming.loyaltyConfig }
@@ -1698,21 +2080,52 @@ app.post("/api/business", (req, res) => {
         ? { ...(existing.scheduledEmailConfig || {}), ...incoming.scheduledEmailConfig }
         : existing.scheduledEmailConfig
     };
+
+    if (enforcedBusinessType === "restaurant" && !Array.isArray(db.tables)) {
+      db.tables = [
+        { id: "tbl_1", tableNumber: "T-1", section: "AC Dining", capacity: 4, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_2", tableNumber: "T-2", section: "AC Dining", capacity: 6, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_3", tableNumber: "T-3", section: "Main Hall", capacity: 4, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_4", tableNumber: "T-4", section: "Main Hall", capacity: 2, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_5", tableNumber: "T-5", section: "Family Section", capacity: 8, status: "reserved", currentOrderTotal: 0 },
+        { id: "tbl_6", tableNumber: "T-6", section: "Garden / Terrace", capacity: 4, status: "available", currentOrderTotal: 0 }
+      ];
+    }
     writeDb(db);
     console.log("[Settings] Business profile & store preferences updated in database successfully.");
-    res.json({ success: true, message: "Business profile and settings updated successfully in database.", business: db.business });
+    res.json({ success: true, message: "Business profile and settings updated successfully in database.", business: db.business, tables: db.tables });
   } catch (err: any) {
     console.error("[Settings] Failed to save settings:", err);
     res.status(500).json({ error: "Failed to save settings: " + (err?.message || err) });
   }
 });
 
+// Switch Business Vertical Endpoint - Disabled when locked at installation
+app.post("/api/business/switch-vertical", (req, res) => {
+  const lock = readInstallLock();
+  if (lock.businessModeLocked) {
+    return res.status(403).json({
+      error: "Business mode is locked after installation and cannot be changed. To change business mode, uninstall and reinstall the application."
+    });
+  }
+  return res.status(403).json({
+    error: "Business mode must be selected during first-time installation setup."
+  });
+});
+
 // Settings persistence alias endpoints
 app.post("/api/settings", (req, res) => {
   try {
     const db = readDb();
+    const lock = readInstallLock();
     const existing: any = db.business || {};
     const incoming: any = req.body || {};
+
+    if (lock.businessModeLocked && lock.businessType && incoming.businessType && incoming.businessType !== lock.businessType) {
+      return res.status(403).json({
+        error: "Business mode is locked to this installation and cannot be changed."
+      });
+    }
 
     const mergedThermalConfig = incoming.thermalConfig
       ? { ...(existing.thermalConfig || {}), ...incoming.thermalConfig }
@@ -1727,9 +2140,14 @@ app.post("/api/settings", (req, res) => {
     if (incoming.showUpiQrCode !== undefined) mergedThermalConfig.showUpiQrCode = incoming.showUpiQrCode;
     if (incoming.showBankDetails !== undefined) mergedThermalConfig.showBankDetails = incoming.showBankDetails;
 
+    const enforcedBusinessType = (lock.businessModeLocked && lock.businessType)
+      ? lock.businessType
+      : (incoming.businessType || existing.businessType || "general");
+
     db.business = {
       ...existing,
       ...incoming,
+      businessType: enforcedBusinessType,
       thermalConfig: Object.keys(mergedThermalConfig).length > 0 ? mergedThermalConfig : undefined,
       loyaltyConfig: incoming.loyaltyConfig
         ? { ...(existing.loyaltyConfig || {}), ...incoming.loyaltyConfig }
@@ -1852,16 +2270,107 @@ app.post("/api/parties", (req, res) => {
   res.json({ message: "Party saved successfully.", party: incoming });
 });
 
-// Save Restaurant Tables
+// Save All Restaurant Tables (bulk replace)
 app.post("/api/tables", (req, res) => {
   try {
     const db = readDb();
-    const { tables } = req.body;
-    db.tables = tables || [];
+    const incomingTables = Array.isArray(req.body?.tables) ? req.body.tables : [];
+    db.tables = incomingTables.map((tbl: any, idx: number) => ({
+      id: String(tbl?.id || `tbl_${Date.now()}_${idx}`),
+      tableNumber: String(tbl?.tableNumber || `T-${idx + 1}`).trim(),
+      section: String(tbl?.section || "Main Dining").trim(),
+      capacity: Math.max(1, Number(tbl?.capacity) || 4),
+      status: (["available", "occupied", "reserved", "cleaning"].includes(tbl?.status) ? tbl.status : "available") as RestaurantTable["status"],
+      currentOrderId: tbl?.currentOrderId ? String(tbl.currentOrderId) : undefined,
+      currentOrderTotal: Number(tbl?.currentOrderTotal) || 0,
+      runningItemsSummary: tbl?.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined
+    }));
     writeDb(db);
     res.json({ success: true, tables: db.tables });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to save tables: " + (err?.message || err) });
+  }
+});
+
+// Atomic Single Restaurant Table Create / Update
+app.post("/api/tables/item", (req, res) => {
+  try {
+    const db = readDb();
+    if (!Array.isArray(db.tables)) db.tables = [];
+    const tbl = req.body || {};
+    const cleanNumber = String(tbl.tableNumber || "").trim();
+    if (!cleanNumber) {
+      return res.status(400).json({ error: "Table name / number is required." });
+    }
+
+    const sanitized: RestaurantTable = {
+      id: String(tbl.id || `tbl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`),
+      tableNumber: cleanNumber,
+      section: String(tbl.section || "Main Dining").trim() || "Main Dining",
+      capacity: Math.max(1, Number(tbl.capacity) || 4),
+      status: (["available", "occupied", "reserved", "cleaning"].includes(tbl.status) ? tbl.status : "available") as RestaurantTable["status"],
+      currentOrderId: tbl.currentOrderId ? String(tbl.currentOrderId) : undefined,
+      currentOrderTotal: Number(tbl.currentOrderTotal) || 0,
+      runningItemsSummary: tbl.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined
+    };
+
+    const existingIdx = db.tables.findIndex(t => t.id === sanitized.id);
+    if (existingIdx >= 0) {
+      db.tables[existingIdx] = sanitized;
+    } else {
+      const dupNumber = db.tables.some(t => t.tableNumber.toLowerCase() === cleanNumber.toLowerCase());
+      if (dupNumber) {
+        return res.status(400).json({ error: `Table '${cleanNumber}' already exists.` });
+      }
+      db.tables.push(sanitized);
+    }
+
+    writeDb(db);
+    res.json({ success: true, table: sanitized, tables: db.tables });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to create or update table: " + (err?.message || err) });
+  }
+});
+
+// Atomic Seed Sample Restaurant Tables
+app.post("/api/tables/seed", (req, res) => {
+  try {
+    const db = readDb();
+    if (!Array.isArray(db.tables)) db.tables = [];
+    const presets: RestaurantTable[] = Array.isArray(req.body?.tables) && req.body.tables.length > 0
+      ? req.body.tables
+      : [
+          { id: "tbl_1", tableNumber: "T-1", section: "AC Dining", capacity: 4, status: "available", currentOrderTotal: 0 },
+          { id: "tbl_2", tableNumber: "T-2", section: "AC Dining", capacity: 6, status: "available", currentOrderTotal: 0 },
+          { id: "tbl_3", tableNumber: "T-3", section: "Main Hall", capacity: 4, status: "available", currentOrderTotal: 0 },
+          { id: "tbl_4", tableNumber: "T-4", section: "Main Hall", capacity: 2, status: "available", currentOrderTotal: 0 },
+          { id: "tbl_5", tableNumber: "T-5", section: "Family Section", capacity: 8, status: "reserved", currentOrderTotal: 0 },
+          { id: "tbl_6", tableNumber: "T-6", section: "Garden / Terrace", capacity: 4, status: "available", currentOrderTotal: 0 }
+        ];
+
+    for (const p of presets) {
+      if (!db.tables.some(t => t.id === p.id || t.tableNumber.toLowerCase() === p.tableNumber.toLowerCase())) {
+        db.tables.push(p);
+      }
+    }
+    writeDb(db);
+    res.json({ success: true, tables: db.tables });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to seed tables: " + (err?.message || err) });
+  }
+});
+
+// Atomic Delete Restaurant Table
+app.delete("/api/tables/:id", (req, res) => {
+  try {
+    const db = readDb();
+    if (!Array.isArray(db.tables)) db.tables = [];
+    const id = req.params.id;
+    db.tables = db.tables.filter(t => t.id !== id);
+    writeDb(db);
+    res.json({ success: true, tables: db.tables });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to delete table: " + (err?.message || err) });
   }
 });
 
@@ -2140,7 +2649,6 @@ app.post("/api/invoices", (req, res) => {
       // 3. If cashback was awarded on this invoice (Customer Cashback Scheme)
       const cbEarned = Number(invoice.cashbackEarned) || 0;
       if (cbEarned > 0) {
-        // Automatically credit customer balance (store credit for next visit)
         party.currentBalance -= cbEarned;
         party.loyaltyLedger.unshift({
           id: "ll_" + Date.now() + "_cb_" + Math.random().toString(36).substr(2, 4),

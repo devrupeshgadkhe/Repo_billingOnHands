@@ -18,3 +18,5 @@ data/backups/
 **/scanner_config.json
 *.key
 *.pem
+data/install-lock.json
+data/drive_config.json

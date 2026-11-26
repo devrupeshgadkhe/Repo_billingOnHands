@@ -4,19 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import {
-  BusinessProfile,
-  DatabaseState,
-  INDIAN_STATES,
-  BUSINESS_TYPES,
-  StoreSchemeConfig,
-  SchemeType,
-  LoyaltyConfig,
-  InstantDiscountScheme,
-  CashbackScheme,
-  BogoScheme,
-  SlabDiscountScheme
-} from "../types.js";
+import { BusinessProfile, DatabaseState, INDIAN_STATES, BUSINESS_TYPES, InstallStatus, StoreSchemeConfig, SchemeType } from "../types.js";
 import { useDialog } from "../context/DialogContext.js";
 import { APP_VERSION, APP_BUILD_DATE } from "../version.js";
 import {
@@ -49,20 +37,15 @@ import {
   Send,
   Clock,
   Eye,
-  EyeOff,
   Calendar,
   QrCode,
   CreditCard,
   Landmark,
   Lock,
-  ShieldCheck,
   Tag,
   Plus,
   Percent,
-  Check,
-  KeyRound,
-  Coins,
-  Wallet
+  Coins
 } from "lucide-react";
 import ThermalDesignerModal, { DEFAULT_THERMAL_CONFIG } from "./ThermalDesignerModal.js";
 
@@ -74,6 +57,8 @@ interface SettingsViewProps {
   onUpdateSession?: (updatedSession: { username: string; name: string; role: string; token: string }) => void;
   currentDb?: DatabaseState;
   onRestoreSuccess?: () => void;
+  installStatus?: InstallStatus;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export default function SettingsView({
@@ -83,12 +68,19 @@ export default function SettingsView({
   session,
   onUpdateSession,
   currentDb,
-  onRestoreSuccess
+  onRestoreSuccess,
+  installStatus,
+  onNavigateTab
 }: SettingsViewProps) {
   
   // State managers
   const { showConfirm, showAlert } = useDialog();
   const [formData, setFormData] = useState<BusinessProfile>({ ...business });
+
+  useEffect(() => {
+    setFormData({ ...business });
+  }, [business]);
+
   const [showSuccessAlert, setShowSuccessAlert] = useState(false);
   const [isThermalDesignerOpen, setIsThermalDesignerOpen] = useState(false);
   const [updaterMsg, setUpdaterMsg] = useState<string | null>(null);
@@ -212,28 +204,16 @@ export default function SettingsView({
   const [activeSettingsTab, setActiveSettingsTab] = useState<
     "all" | "profile" | "loyalty" | "email" | "thermal" | "security" | "backup" | "updater"
   >("all");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
-
-  // Business Type Switcher & Security PIN Verification States
-  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
-  const [pendingBusinessType, setPendingBusinessType] = useState<string | null>(null);
-  const [enteredPin, setEnteredPin] = useState("");
-  const [pinError, setPinError] = useState<string | null>(null);
-  const [showPinSecret, setShowPinSecret] = useState(false);
-  const [newSecurityPinInput, setNewSecurityPinInput] = useState(business.securityPin || "1234");
-  const [securityPinSuccessMsg, setSecurityPinSuccessMsg] = useState<string | null>(null);
-
-  // Phase 10: Multi-Form Schemes States
   const [activeSchemeSubTab, setActiveSchemeSubTab] = useState<
     "overview" | "loyalty" | "instant" | "cashback" | "bogo" | "slab"
   >("overview");
   const [simBillAmount, setSimBillAmount] = useState<number>(2000);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (business) {
       setFormData(business);
-      setNewSecurityPinInput(business.securityPin || "1234");
     }
   }, [business]);
 
@@ -243,48 +223,6 @@ export default function SettingsView({
       ...prev,
       [name]: value
     }));
-  };
-
-  // Safe handler for switching business type
-  const handleBusinessTypeChange = (newType: string) => {
-    const currentType = formData.businessType || "general";
-    if (newType === currentType) return;
-
-    if (formData.requirePinForBusinessChange) {
-      setPendingBusinessType(newType);
-      setEnteredPin("");
-      setPinError(null);
-      setShowPinSecret(false);
-      setIsPinModalOpen(true);
-    } else {
-      const updated: BusinessProfile = {
-        ...formData,
-        businessType: newType as any
-      };
-      setFormData(updated);
-      handleSaveSettings(updated);
-    }
-  };
-
-  // Verify PIN and switch business vertical
-  const handleVerifyPinAndSwitch = async () => {
-    const correctPin = (formData.securityPin || "1234").trim();
-    if (enteredPin.trim() !== correctPin) {
-      setPinError(`Incorrect Security PIN! Configured PIN is "${correctPin}". You can also click 'Auto-Fill Default (1234)'.`);
-      return;
-    }
-    if (pendingBusinessType) {
-      const updated: BusinessProfile = {
-        ...formData,
-        businessType: pendingBusinessType as any
-      };
-      setFormData(updated);
-      setIsPinModalOpen(false);
-      setPendingBusinessType(null);
-      setEnteredPin("");
-      setPinError(null);
-      await handleSaveSettings(updated);
-    }
   };
 
   const handleSaveSettings = async (specificProfile?: BusinessProfile) => {
@@ -302,6 +240,9 @@ export default function SettingsView({
         return;
       }
 
+      // Preserve the installation-locked business type
+      const lockedBusinessType = installStatus?.businessType || business.businessType || base.businessType;
+
       const upiId = (base.upiId || base.thermalConfig?.upiId || "").trim();
       const upiMerchantName = base.upiMerchantName || base.thermalConfig?.upiMerchantName || base.name || "";
       const bankName = base.bankName || base.thermalConfig?.bankName || "";
@@ -310,9 +251,6 @@ export default function SettingsView({
       const bankBranch = base.bankBranch || base.thermalConfig?.bankBranch || "";
       const showUpiQrCode = base.showUpiQrCode ?? base.thermalConfig?.showUpiQrCode ?? true;
       const showBankDetails = base.showBankDetails ?? base.thermalConfig?.showBankDetails ?? false;
-
-      const securityPin = (base.securityPin || "1234").trim();
-      const requirePinForBusinessChange = Boolean(base.requirePinForBusinessChange ?? false);
 
       const schemeConfig: StoreSchemeConfig = base.schemeConfig || {
         activeSchemeType: 'all_active',
@@ -358,10 +296,7 @@ export default function SettingsView({
 
       const payload: BusinessProfile = {
         ...base,
-        securityPin,
-        requirePinForBusinessChange,
-        schemeConfig,
-        loyaltyConfig: schemeConfig.loyalty,
+        businessType: lockedBusinessType,
         upiId,
         upiMerchantName,
         bankName,
@@ -370,6 +305,8 @@ export default function SettingsView({
         bankBranch,
         showUpiQrCode,
         showBankDetails,
+        schemeConfig,
+        loyaltyConfig: schemeConfig.loyalty,
         thermalConfig: {
           ...(base.thermalConfig || DEFAULT_THERMAL_CONFIG),
           upiId,
@@ -777,49 +714,180 @@ export default function SettingsView({
               </div>
             </div>
 
-            {/* Business Type / Vertical */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Business Type & Industry Vertical
-                </label>
-                {formData.requirePinForBusinessChange && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                    <Lock className="w-3 h-3 text-amber-600" />
-                    <span>PIN Protected</span>
-                  </span>
-                )}
+            {/* Business Type / Vertical (Locked at Installation) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-800 uppercase tracking-wide flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-emerald-700" />
+                    <span>Business Mode & Industry Vertical</span>
+                  </label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Configured during first-time installation and preserved automatically across software updates.
+                  </p>
+                </div>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[10px] font-bold self-start sm:self-auto shrink-0">
+                  <Lock className="w-3 h-3" />
+                  <span>Locked at Installation</span>
+                </span>
               </div>
-              <select
-                id="settings-business-type"
-                name="businessType"
-                value={formData.businessType || "general"}
-                onChange={(e) => handleBusinessTypeChange(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 focus:border-emerald-500 rounded-lg text-xs font-bold bg-white outline-none cursor-pointer"
-              >
-                {BUSINESS_TYPES.map(bt => (
-                  <option key={bt.id} value={bt.id}>{bt.label}</option>
-                ))}
-              </select>
-              <p className="text-[11px] text-slate-400 mt-1">
-                Selecting a business vertical dynamically optimizes point-of-sale features, restaurant table management, KOTs, or barcode matrix workflows.
-              </p>
-              {formData.businessType && (
-                <div className="mt-2.5 p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-start gap-2.5">
-                  <div className="w-5 h-5 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0 font-bold text-[10px] mt-0.5">✓</div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold block text-emerald-950">Active Business Vertical:</span>
-                      <span className="text-[10px] font-mono text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded font-bold">
-                        {BUSINESS_TYPES.find(b => b.id === formData.businessType)?.label}
+
+              {/* Active Locked Business Vertical Capabilities Card */}
+              <div className="p-3.5 bg-white border border-slate-200 rounded-xl text-xs space-y-2.5 shadow-2xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl">
+                      {(business.businessType || formData.businessType) === 'restaurant' ? '🍽️' :
+                       (business.businessType || formData.businessType) === 'kirana' ? '🛒' :
+                       (business.businessType || formData.businessType) === 'medical' ? '💊' :
+                       (business.businessType || formData.businessType) === 'garment' ? '👕' :
+                       (business.businessType || formData.businessType) === 'electronics' ? '⚡' :
+                       (business.businessType || formData.businessType) === 'wine_shop' ? '🍷' :
+                       (business.businessType || formData.businessType) === 'mall' ? '🏪' :
+                       (business.businessType || formData.businessType) === 'krishi_seva' ? '🌱' : '🏢'}
+                    </span>
+                    <div>
+                      <span className="font-bold text-slate-900 block text-xs">
+                        {BUSINESS_TYPES.find(b => b.id === (business.businessType || formData.businessType || "general"))?.label || "General Retail & Wholesale Trade"}
+                      </span>
+                      <span className="text-[10px] text-emerald-700 font-semibold">
+                        ✓ Active Installation Mode • Preserved Across Updates
+                        {installStatus?.installedAt ? ` • Activated ${new Date(installStatus.installedAt).toLocaleDateString()}` : ""}
                       </span>
                     </div>
-                    <p className="text-emerald-800 text-[11px] mt-0.5">
-                      {BUSINESS_TYPES.find(b => b.id === formData.businessType)?.desc || "Customized retail & billing features enabled."}
-                    </p>
+                  </div>
+
+                  {(business.businessType || formData.businessType) === 'restaurant' && (
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[10px] font-bold">
+                      🍽️ Tables Tab Active
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-slate-600 text-[11px] leading-relaxed">
+                  {BUSINESS_TYPES.find(b => b.id === (business.businessType || formData.businessType || "general"))?.desc}
+                </p>
+
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] text-slate-600 flex items-start gap-2">
+                  <Info className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                  <span>
+                    Business mode cannot be switched from Settings once installed. To choose a different business mode, uninstall and reinstall the application.
+                  </span>
+                </div>
+
+                  {/* Vertical Specific Highlights */}
+                  <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                    {formData.businessType === 'restaurant' && (
+                      <>
+                        <div className="flex items-center gap-1.5 text-amber-900 bg-amber-50/70 p-2 rounded-lg border border-amber-200">
+                          <span>🪑</span>
+                          <span><strong>Tables Floor Map:</strong> AC Dining, Main Hall, Family Section</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-amber-900 bg-amber-50/70 p-2 rounded-lg border border-amber-200">
+                          <span>🧾</span>
+                          <span><strong>KOT Printing:</strong> Kitchen Order Tickets thermal slips</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-amber-900 bg-amber-50/70 p-2 rounded-lg border border-amber-200">
+                          <span>🍱</span>
+                          <span><strong>Dining Modes:</strong> Dine-In, Parcel / Takeaway & Delivery</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-amber-900 bg-amber-50/70 p-2 rounded-lg border border-amber-200">
+                          <span>📜</span>
+                          <span><strong>FSSAI Ready:</strong> Food safety license number on bills</span>
+                        </div>
+                      </>
+                    )}
+
+                    {formData.businessType === 'kirana' && (
+                      <>
+                        <div className="flex items-center gap-1.5 text-emerald-900 bg-emerald-50/70 p-2 rounded-lg border border-emerald-200">
+                          <span>⚖️</span>
+                          <span><strong>Weighing Scale:</strong> Loose grains, spices & packet items</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-emerald-900 bg-emerald-50/70 p-2 rounded-lg border border-emerald-200">
+                          <span>🏷️</span>
+                          <span><strong>Fast Barcodes:</strong> Instant beep-and-add cash POS</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-emerald-900 bg-emerald-50/70 p-2 rounded-lg border border-emerald-200">
+                          <span>💰</span>
+                          <span><strong>Multi-Tier:</strong> Retail vs Wholesale quantity pricing</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-emerald-900 bg-emerald-50/70 p-2 rounded-lg border border-emerald-200">
+                          <span>⚡</span>
+                          <span><strong>Quick Cash:</strong> Walk-in customer rapid checkout</span>
+                        </div>
+                      </>
+                    )}
+
+                    {formData.businessType === 'medical' && (
+                      <>
+                        <div className="flex items-center gap-1.5 text-teal-900 bg-teal-50/70 p-2 rounded-lg border border-teal-200">
+                          <span>💊</span>
+                          <span><strong>Drug License:</strong> D.L. 20B/21B printed on all bills</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-teal-900 bg-teal-50/70 p-2 rounded-lg border border-teal-200">
+                          <span>📅</span>
+                          <span><strong>Batch & Expiry:</strong> Lot tracking and near-expiry alerts</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-teal-900 bg-teal-50/70 p-2 rounded-lg border border-teal-200">
+                          <span>✂️</span>
+                          <span><strong>Strip Dispensing:</strong> Full strips & loose tablets</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-teal-900 bg-teal-50/70 p-2 rounded-lg border border-teal-200">
+                          <span>📋</span>
+                          <span><strong>H1 Register:</strong> Prescription & doctor record keeper</span>
+                        </div>
+                      </>
+                    )}
+
+                    {formData.businessType === 'garment' && (
+                      <>
+                        <div className="flex items-center gap-1.5 text-indigo-900 bg-indigo-50/70 p-2 rounded-lg border border-indigo-200">
+                          <span>👕</span>
+                          <span><strong>Matrix Variants:</strong> Sizes (S/M/L/XL/32/34) & Colors</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-indigo-900 bg-indigo-50/70 p-2 rounded-lg border border-indigo-200">
+                          <span>🏷️</span>
+                          <span><strong>Barcode Labels:</strong> Apparel tag sticker printing</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-indigo-900 bg-indigo-50/70 p-2 rounded-lg border border-indigo-200">
+                          <span>🎨</span>
+                          <span><strong>Brand & Design:</strong> Article codes and seasonal catalogs</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-indigo-900 bg-indigo-50/70 p-2 rounded-lg border border-indigo-200">
+                          <span>%</span>
+                          <span><strong>Textile GST:</strong> 5% under ₹1000 & 12% standard</span>
+                        </div>
+                      </>
+                    )}
+
+                    {formData.businessType === 'electronics' && (
+                      <>
+                        <div className="flex items-center gap-1.5 text-blue-900 bg-blue-50/70 p-2 rounded-lg border border-blue-200">
+                          <span>⚡</span>
+                          <span><strong>Serial / IMEI:</strong> Unique device number tracking</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-blue-900 bg-blue-50/70 p-2 rounded-lg border border-blue-200">
+                          <span>🛡️</span>
+                          <span><strong>Warranty Bills:</strong> Brand warranty period validation</span>
+                        </div>
+                      </>
+                    )}
+
+                    {(formData.businessType === 'mall' || formData.businessType === 'wine_shop' || formData.businessType === 'krishi_seva' || formData.businessType === 'general') && (
+                      <>
+                        <div className="flex items-center gap-1.5 text-slate-800 bg-slate-100 p-2 rounded-lg">
+                          <span>📦</span>
+                          <span><strong>Inventory & Barcodes:</strong> Complete stock control & barcode billing</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-800 bg-slate-100 p-2 rounded-lg">
+                          <span>💳</span>
+                          <span><strong>GST & Khata:</strong> Dual GST compliance and party ledgers</span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
-              )}
             </div>
 
             {/* GSTIN and State side-by-side */}
@@ -1309,8 +1377,13 @@ export default function SettingsView({
               let simCashback = 0;
 
               if (schemeConfig.enabled) {
-                // Instant Discount
-                if (schemeConfig.instantDiscount.enabled && billVal >= schemeConfig.instantDiscount.minBillAmount) {
+                const active = schemeConfig.activeSchemeType;
+                const applyInstant = active === 'all_active' || active === 'instant_discount';
+                const applySlab = active === 'all_active' || active === 'slab_discount';
+                const applyLoyalty = active === 'all_active' || active === 'loyalty_points';
+                const applyCashback = active === 'all_active' || active === 'cashback';
+
+                if (applyInstant && schemeConfig.instantDiscount.enabled && billVal >= schemeConfig.instantDiscount.minBillAmount) {
                   if (schemeConfig.instantDiscount.discountType === 'percentage') {
                     const rawDisc = (billVal * schemeConfig.instantDiscount.discountValue) / 100;
                     simInstantDisc = schemeConfig.instantDiscount.maxDiscountAmount
@@ -1321,8 +1394,7 @@ export default function SettingsView({
                   }
                 }
 
-                // Slab Discount
-                if (schemeConfig.slabDiscount.enabled && schemeConfig.slabDiscount.slabs?.length > 0) {
+                if (applySlab && schemeConfig.slabDiscount.enabled && schemeConfig.slabDiscount.slabs?.length > 0) {
                   const sorted = [...schemeConfig.slabDiscount.slabs].sort((a, b) => b.minAmount - a.minAmount);
                   const matched = sorted.find(s => billVal >= s.minAmount);
                   if (matched) {
@@ -1332,14 +1404,12 @@ export default function SettingsView({
                   }
                 }
 
-                // Loyalty Points
-                if (schemeConfig.loyalty.enabled) {
+                if (applyLoyalty && schemeConfig.loyalty.enabled) {
                   simPtsEarned = Math.floor((billVal / 100) * (schemeConfig.loyalty.pointsPer100Rupees || 1));
                   simPtsCashValue = simPtsEarned * (schemeConfig.loyalty.redemptionRate || 1);
                 }
 
-                // Cashback
-                if (schemeConfig.cashback.enabled && billVal >= schemeConfig.cashback.minBillAmount) {
+                if (applyCashback && schemeConfig.cashback.enabled && billVal >= schemeConfig.cashback.minBillAmount) {
                   const rawCb = (billVal * (schemeConfig.cashback.cashbackPercent || 5)) / 100;
                   simCashback = schemeConfig.cashback.maxCashbackPerBill
                     ? Math.min(schemeConfig.cashback.maxCashbackPerBill, rawCb)
@@ -1364,7 +1434,7 @@ export default function SettingsView({
                           <h3 className="text-sm font-bold text-slate-900">
                             Customer Schemes, Discounts & Rewards Hub
                           </h3>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500 text-white uppercase tracking-wider">
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-lg bg-amber-500 text-white uppercase tracking-wider">
                             Multi-Form
                           </span>
                         </div>
@@ -1403,7 +1473,7 @@ export default function SettingsView({
 
                   {schemeConfig.enabled && (
                     <div className="space-y-4">
-                      {/* Active Scheme Strategy Pills */}
+                      {/* Active Scheme Strategy */}
                       <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-xs space-y-2">
                         <div className="flex items-center justify-between">
                           <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
@@ -1496,7 +1566,6 @@ export default function SettingsView({
                             </div>
                           </div>
 
-                          {/* Simulation Outcome KPI Cards */}
                           <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                             <div className="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
                               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide block">Direct Bill Discount</span>
@@ -1673,7 +1742,7 @@ export default function SettingsView({
                             <div>
                               <h4 className="font-bold text-xs uppercase tracking-wide text-emerald-950 flex items-center gap-1.5">
                                 <Percent className="w-4 h-4 text-emerald-600" />
-                                <span>Instant Invoice Discount Scheme (थेट बिल डिस्काउंट)</span>
+                                <span>Instant Invoice Discount Scheme</span>
                               </h4>
                               <p className="text-[11px] text-emerald-800 mt-0.5">
                                 Automatically or manually deduct a promotional % or flat ₹ amount on qualifying bills
@@ -1811,7 +1880,7 @@ export default function SettingsView({
                             <div>
                               <h4 className="font-bold text-xs uppercase tracking-wide text-purple-950 flex items-center gap-1.5">
                                 <Coins className="w-4 h-4 text-purple-600" />
-                                <span>Customer Khata Cashback / Store Credit Scheme (कॅशबॅक योजना)</span>
+                                <span>Customer Khata Cashback / Store Credit Scheme</span>
                               </h4>
                               <p className="text-[11px] text-purple-800 mt-0.5">
                                 Reward customers with instant store credit automatically deposited to their Khata ledger for future purchases
@@ -1927,7 +1996,7 @@ export default function SettingsView({
                             <div>
                               <h4 className="font-bold text-xs uppercase tracking-wide text-pink-950 flex items-center gap-1.5">
                                 <Gift className="w-4 h-4 text-pink-600" />
-                                <span>Buy One Get One (BOGO) / Buy X Get Y Scheme (बाय १ गेट १ मोफत)</span>
+                                <span>Buy One Get One (BOGO) / Buy X Get Y Scheme</span>
                               </h4>
                               <p className="text-[11px] text-pink-800 mt-0.5">
                                 Set default BOGO ratios or link to individual product promotional schemes in the Offers Catalog
@@ -1992,14 +2061,24 @@ export default function SettingsView({
                             </div>
                           </div>
 
-                          <div className="p-3 bg-white border border-pink-200 rounded-xl flex items-center justify-between">
+                          <div className="p-3 bg-white border border-pink-200 rounded-xl flex items-center justify-between gap-3">
                             <div className="text-xs text-slate-600">
                               <span className="font-bold text-slate-800 block">Manage Detailed SKU-Wise Offers</span>
                               <span>Configure product-specific or brand-specific Buy X Get Y deals in the full Offers module.</span>
                             </div>
-                            <span className="text-[11px] font-bold text-pink-700 bg-pink-100 px-3 py-1.5 rounded-lg border border-pink-300">
-                              Linked to Offers & Schemes
-                            </span>
+                            {onNavigateTab ? (
+                              <button
+                                type="button"
+                                onClick={() => onNavigateTab("offers")}
+                                className="text-[11px] font-bold text-pink-700 bg-pink-100 hover:bg-pink-200 px-3 py-1.5 rounded-lg border border-pink-300 cursor-pointer shrink-0 transition"
+                              >
+                                Open Offers & Schemes →
+                              </button>
+                            ) : (
+                              <span className="text-[11px] font-bold text-pink-700 bg-pink-100 px-3 py-1.5 rounded-lg border border-pink-300 shrink-0">
+                                Linked to Offers & Schemes
+                              </span>
+                            )}
                           </div>
                         </div>
                       )}
@@ -2011,7 +2090,7 @@ export default function SettingsView({
                             <div>
                               <h4 className="font-bold text-xs uppercase tracking-wide text-blue-950 flex items-center gap-1.5">
                                 <Sliders className="w-4 h-4 text-blue-600" />
-                                <span>Tiered Cart Value Slab Discounts (टियर / स्लॅब सवलत)</span>
+                                <span>Tiered Cart Value Slab Discounts</span>
                               </h4>
                               <p className="text-[11px] text-blue-800 mt-0.5">
                                 Reward higher cart values with escalating discounts (e.g. ₹1000 = 5% off, ₹2500 = 8% off, ₹5000 = 12% off)
@@ -2034,7 +2113,6 @@ export default function SettingsView({
                             </label>
                           </div>
 
-                          {/* Slabs Table */}
                           <div className="space-y-2">
                             <div className="grid grid-cols-12 gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">
                               <div className="col-span-4">Min Bill Value (₹)</div>
@@ -2141,8 +2219,19 @@ export default function SettingsView({
                     </div>
                   )}
 
-                  {/* Schemes Direct Save Footer */}
-                  <div className="pt-3 border-t border-amber-200/60 flex justify-end">
+                  {/* Schemes Direct Save & Offers Catalog Link Footer */}
+                  <div className="pt-3 border-t border-amber-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    {onNavigateTab ? (
+                      <button
+                        type="button"
+                        onClick={() => onNavigateTab("offers")}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg text-xs border border-slate-300 transition cursor-pointer flex items-center gap-1.5 self-start sm:self-auto"
+                      >
+                        <Tag className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Manage Product-Level Offers & Schemes</span>
+                      </button>
+                    ) : <div />}
+
                     <button
                       id="save-schemes-btn"
                       type="button"
@@ -2716,114 +2805,6 @@ export default function SettingsView({
             </div>
           )}
 
-          {/* Store Admin Security PIN & Vertical Switch Authorization */}
-          {(activeSettingsTab === "all" || activeSettingsTab === "security") && (
-            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center space-x-2 pb-3 border-b border-slate-100">
-                <Lock className="w-5 h-5 text-amber-600" />
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Store Admin Security PIN & Controls</h3>
-                  <span className="text-[10px] text-slate-400">Manage 4-digit security PIN for critical administrative actions</span>
-                </div>
-              </div>
-
-              {securityPinSuccessMsg && (
-                <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-800 rounded-lg text-xs font-semibold flex items-center gap-2">
-                  <CheckCircle className="w-4 h-4 text-emerald-600" />
-                  <span>{securityPinSuccessMsg}</span>
-                </div>
-              )}
-
-              <div className="space-y-4 text-xs">
-                {/* Require PIN Toggle */}
-                <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                  <div>
-                    <span className="font-bold text-slate-800 block">Require PIN for Business Vertical Switch</span>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      When enabled, switching business vertical (e.g. to Restaurant or Medical) prompts for the admin security PIN.
-                    </p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(formData.requirePinForBusinessChange)}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        const updated = { ...formData, requirePinForBusinessChange: checked };
-                        setFormData(updated);
-                        handleSaveSettings(updated);
-                      }}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                  </label>
-                </div>
-
-                {/* PIN Code Configuration */}
-                <div className="p-3 bg-amber-50/60 border border-amber-200 rounded-xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-amber-950 block">Admin Security PIN</span>
-                      <span className="text-[11px] text-amber-800">
-                        Default PIN is <strong>1234</strong>. You can change it to any 4-digit numeric code.
-                      </span>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                      Current: {formData.securityPin || "1234"}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <div className="relative flex-1">
-                      <input
-                        type={showPinSecret ? "text" : "password"}
-                        maxLength={6}
-                        value={newSecurityPinInput}
-                        onChange={(e) => setNewSecurityPinInput(e.target.value.replace(/\D/g, ""))}
-                        placeholder="Enter 4-digit numeric PIN"
-                        className="w-full px-3 py-2 bg-white border border-amber-300 focus:border-amber-600 rounded-lg text-xs font-mono font-bold tracking-widest outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPinSecret(!showPinSecret)}
-                        className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                        title={showPinSecret ? "Hide PIN" : "Show PIN"}
-                      >
-                        {showPinSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const trimmed = newSecurityPinInput.trim();
-                        if (trimmed.length < 4) {
-                          await showAlert({
-                            title: "Invalid PIN Length",
-                            message: "Security PIN must be at least 4 digits long.",
-                            variant: "warning"
-                          });
-                          return;
-                        }
-                        const updated: BusinessProfile = {
-                          ...formData,
-                          securityPin: trimmed
-                        };
-                        setFormData(updated);
-                        await handleSaveSettings(updated);
-                        setSecurityPinSuccessMsg(`✅ Security PIN updated successfully to: ${trimmed}`);
-                        setTimeout(() => setSecurityPinSuccessMsg(null), 4000);
-                      }}
-                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-xs shadow-xs cursor-pointer transition select-none shrink-0"
-                    >
-                      Update PIN
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Backup & Restore Panel */}
           {(activeSettingsTab === "all" || activeSettingsTab === "backup") && (
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
@@ -3095,145 +3076,6 @@ export default function SettingsView({
                   srcDoc={previewEmailHtml}
                   className="w-full h-[65vh] border-0"
                 />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Business Vertical PIN Verification Modal */}
-      {isPinModalOpen && pendingBusinessType && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-scale-in">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
-                  <Lock className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm leading-tight">Switch Business Vertical</h3>
-                  <p className="text-[11px] text-slate-400">Security authorization required</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPinModalOpen(false);
-                  setPendingBusinessType(null);
-                  setEnteredPin("");
-                  setPinError(null);
-                }}
-                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer transition"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-5 space-y-4">
-              {/* Vertical Transition Badges */}
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2">
-                <div className="flex items-center justify-between font-semibold">
-                  <span className="text-slate-500">Current Vertical:</span>
-                  <span className="px-2 py-0.5 bg-slate-200 text-slate-800 rounded font-bold">
-                    {BUSINESS_TYPES.find(b => b.id === (formData.businessType || 'general'))?.label}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between font-semibold text-emerald-800">
-                  <span className="text-emerald-700">Switching To:</span>
-                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 rounded font-bold">
-                    {BUSINESS_TYPES.find(b => b.id === pendingBusinessType)?.label}
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-slate-600 leading-relaxed">
-                {BUSINESS_TYPES.find(b => b.id === pendingBusinessType)?.desc || "Changing vertical will adapt relevant POS features, units, and billing layouts."}
-              </p>
-
-              {/* PIN Input Form */}
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Enter Admin Security PIN
-                </label>
-                <div className="relative">
-                  <input
-                    id="business-type-pin-input"
-                    type={showPinSecret ? "text" : "password"}
-                    maxLength={6}
-                    autoFocus
-                    value={enteredPin}
-                    onChange={(e) => {
-                      setEnteredPin(e.target.value.replace(/\D/g, ""));
-                      setPinError(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleVerifyPinAndSwitch();
-                      }
-                    }}
-                    placeholder="Enter 4-digit PIN"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border-2 border-slate-300 focus:border-emerald-600 focus:bg-white rounded-xl text-sm font-mono font-bold tracking-widest outline-none transition"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPinSecret(!showPinSecret)}
-                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    {showPinSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-
-                {pinError && (
-                  <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-xs font-semibold flex items-start gap-1.5 animate-shake">
-                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <span>{pinError}</span>
-                  </div>
-                )}
-
-                {/* Helpful Default PIN Auto-Fill Helper */}
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-slate-500">
-                    Default PIN: <strong className="font-mono text-slate-700">{formData.securityPin || "1234"}</strong>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEnteredPin(formData.securityPin || "1234");
-                      setPinError(null);
-                    }}
-                    className="text-[11px] text-emerald-700 hover:text-emerald-900 font-bold underline cursor-pointer"
-                  >
-                    Auto-Fill Default ({formData.securityPin || "1234"})
-                  </button>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsPinModalOpen(false);
-                    setPendingBusinessType(null);
-                    setEnteredPin("");
-                    setPinError(null);
-                  }}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-xl cursor-pointer transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  id="confirm-business-switch-btn"
-                  type="button"
-                  onClick={handleVerifyPinAndSwitch}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow hover:shadow-md cursor-pointer transition flex items-center gap-1.5"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>Confirm & Switch Vertical</span>
-                </button>
               </div>
             </div>
           </div>

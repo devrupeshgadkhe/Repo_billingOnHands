@@ -132,26 +132,15 @@
   - **Repository Secret Shield:** Expanded `.gitignore` to strictly exclude `gemini_keys.txt`, `gemini_keys*.txt`, `data/gemini_keys.txt`, `*.key`, and `*.pem` from ever being tracked in GitHub.
   - **100% Real-Time Dynamic Dashboard Liquidity (`DashboardView.tsx`, `App.tsx`):** Removed all hardcoded static amounts (such as `750000`). Cash & Bank liquidity is now calculated dynamically in real-time directly from actual database invoices (sales collections minus purchase payments) and miscellaneous transactions.
 
-### ✅ Phase 10: Barcode Generator & Thermal/Sheet Label Sticker Printing (`BarcodePrintModal.tsx`, `ItemsView.tsx`, `utils/barcodeUtils.ts`)
-* **Multi-Barcode Catalog Architecture:** Every item supports unlimited barcodes (UPC-A, EAN-13, CODE128, QR Code, internal SKU) with 1-click generation, validation, and collision prevention.
-* **Thermal & A4 Sheet Label Printing:** Print on standard thermal rolls (50x25mm, 38x25mm) as well as 24-up / 40-up A4 sticker sheets (Avery standard) with customizable price, item name, business name, and barcode rendering.
-* **Complete English Localization:** High-quality English terminology across all dialogs, tooltips, buttons, tables, and settings.
-
-### ✅ Phase 11: Multi-Form Customer Schemes, Discounts & Rewards Hub and Settings PIN Security (`SettingsView.tsx`, `InvoicingView.tsx`, `InvoicePrintModal.tsx`, `types.ts`, `server.ts`)
-* **Dedicated Business Type PIN Verification Modal (`SettingsView.tsx`):**
-  - Eliminated the broken confirmation dialog and replaced it with an interactive security modal (`business-type-pin-input`).
-  - Allows merchants to configure their 4-digit admin security PIN (default: `1234`) with optional vertical switch protection toggle.
-  - Features real-time PIN validation, show/hide password toggle, informative vertical preview card, error messages, and an auto-fill helper for default credentials.
-* **Multi-Form Customer Schemes & Rewards Engine (`types.ts`, `SettingsView.tsx`, `server.ts`, `InvoicingView.tsx`):**
-  - Expands beyond basic loyalty points to provide comprehensive retail schemes:
-    1. **Loyalty Points:** Configurable earning rates (e.g. 1 pt per ₹100), ₹ redemption rate, min redeem threshold, and max % cap.
-    2. **Instant Discount Scheme:** Percentage (e.g. 5%) or flat amount (e.g. ₹50) with min bill value and max discount cap.
-    3. **Customer Khata Cashback:** Percentage cashback credited directly to customer ledger/wallet on bill completion.
-    4. **Buy One Get One (BOGO):** Configurable buy quantity and free promotional items per category or store-wide.
-    5. **Tiered Slab Discounts:** Multi-tier volume discounts (e.g. ₹1000 = 5% off, ₹2500 = 8% off, ₹5000 = 12% off).
-  - **Live Interactive Scheme Simulator:** Real-time test calculator in Settings allowing merchants to test any simulated bill amount (e.g. ₹2,500) and immediately see the computed discount, cashback, loyalty points, and net payable.
-  - **POS Billing Integration (`InvoicingView.tsx`):** Automatically computes scheme discounts, points, and khata cashback, showing clear itemized savings and auto-crediting customer ledger balances on checkout.
-  - **Print Layout Support (`InvoicePrintModal.tsx`):** Scheme discounts and khata cashback printed cleanly on thermal and A4 receipts.
+* **Installation-Only Business Mode Lock (`InstallSetupView.tsx`, `SettingsView.tsx`, `server.ts`, `scripts/installer.nsh`):**
+  - **One-Time Installation Selector:** On first launch (`data/install-lock.json` absent), `App.tsx` gates the workspace with `InstallSetupView` so the user selects one of 9 business modes (`kirana`, `krishi_seva`, `medical`, `wine_shop`, `restaurant`, `garment`, `electronics`, `mall`, `general`) alongside `clean`, `demo`, or `keep_existing` setup mode.
+  - **Immutable Across Runtime & Updates:** Settings renders the active Business Mode read-only; backend `/api/business`, `/api/settings`, `/api/db/restore`, `/api/backups/restore/:filename`, `/api/db/reset`, and `/api/db/hard-reset` enforce the locked `businessType`, and `/api/business/switch-vertical` is disabled (`403`).
+  - **NSIS Uninstall-Only Clear:** `scripts/installer.nsh` removes `data/install-lock.json` inside `customUnInstall` guarded by `${ifNot} ${isUpdated}` so auto-updates never unlock or reset the chosen mode while full uninstallation allows selecting a new mode on fresh reinstall.
+* **Restaurant Table Management & Cleaning Lifecycle (`TablesView.tsx`, `InvoicingView.tsx`, `server.ts`):**
+  - Atomic endpoints `/api/tables/item`, `/api/tables/seed`, and `/api/tables/:id` fix stale closure bulk-seeding, silent modal error swallowing, and empty-table resurrection in `normalizeDatabaseState()`.
+  - Full status lifecycle (`available` → `occupied` → `cleaning` → `available`, plus `reserved`) with automatic transition to `cleaning` on POS dining bill settlement and 1-click "Mark Cleaned" action in `TablesView.tsx`.
+* **Promotional Offers & Cashback Multi-Scheme Engine (`OffersView.tsx`, `Sidebar.tsx`, `SettingsView.tsx`, `App.tsx`):**
+  - Wired `OffersView.tsx` into `Sidebar` ("Offers & Schemes"), `App.tsx`, and `SettingsView` Loyalty/Schemes tab, expanding schemes to support Percentage Discounts, Flat Discounts, Buy X Get Y Free, Bill Value Slabs, and Cashback Rewards (`cashbackPercent`, `cashbackAmount`, `maxCashbackAmount`).
 
 ---
 
@@ -159,29 +148,32 @@
 
 | Phase | Feature Name | Scope & Specifications | Priority |
 | :--- | :--- | :--- | :--- |
-| **Phase 12** | **Automated WhatsApp Payment Reminders & Invoices** | Direct WhatsApp Web / Cloud API integration for 1-click sharing of PDF bills and payment balance reminder links. | **Next / High** |
-| **Phase 13** | **Cloud Multi-Device Sync & PWA Offline Engine** | Cloud Firestore / SQL synchronization for real-time multi-counter billing across multiple stores. | High |
+| **Phase 10** | **Barcode Generator & Label Sticker Printing** | 24-up / 40-up sticker sheet printing for retail barcodes and thermal barcode printers. | **Next / High** |
+| **Phase 11** | **Automated WhatsApp Payment Reminders & Invoices** | Direct WhatsApp Web / Cloud API integration for 1-click sharing of PDF bills and payment balance reminder links. | High |
 
 ---
 
 ## 💻 5. Key File Index for Quick Navigation
-* `src/App.tsx` - Root UI orchestrator, persistent database sync, view router, and top navigation.
-* `server.ts` - Express API backend, Gemini AI client, Digital Munimji execution engine, database normalization, and backup runner.
+* `src/App.tsx` - Root UI orchestrator, installation lock gate, persistent database sync, view router, and top navigation.
+* `server.ts` - Express API backend, install-lock enforcement, atomic table & offer routes, Gemini AI client, Digital Munimji execution engine, database normalization, and backup runner.
+* `src/components/InstallSetupView.tsx` - First-time installation business mode selection and lock screen.
+* `scripts/installer.nsh` - NSIS custom uninstaller hook clearing `install-lock.json` only on full uninstall (preserved across updates).
+* `src/components/TablesView.tsx` - Restaurant table floor management, cleaning workflow, and atomic CRUD.
+* `src/components/OffersView.tsx` - Multi-scheme promotional engine (Percentage, Flat, Buy X Get Y, Bill Slab, Cashback).
 * `src/server/eodReportService.ts` - End-of-Day report engine, HTML email builder, and SMTP scheduler (Phase 8).
-* `src/types.ts` - Central TypeScript interfaces (`Item`, `Party`, `Invoice`, `Godown`, `StockTransferVoucher`, `DeliveryChallan`, `Quotation`, `BusinessProfile`, `ScheduledEmailConfig`, etc.).
+* `src/types.ts` - Central TypeScript interfaces (`Item`, `Party`, `Invoice`, `OfferScheme`, `RestaurantTable`, `InstallStatus`, `BusinessProfile`, etc.).
 * `src/components/GodownsView.tsx` - Multi-Godown and warehouse stock transfer manager (Phase 9).
 * `src/components/StockTransferPrintModal.tsx` - Inter-godown stock transfer delivery transit pass print modal (Phase 9).
 * `src/components/EWayBillModal.tsx` - Official NIC E-Way Bill & E-Invoice modal (Phase 5).
-* `src/components/InvoicingView.tsx` - High-speed POS Billing, item search, batch selection, dynamic GST, checkout, and parked bills.
+* `src/components/InvoicingView.tsx` - High-speed POS Billing, dining table lifecycle, item search, batch selection, dynamic GST, checkout, and parked bills.
 * `src/components/DeliveryChallansView.tsx` - Delivery challan management, vehicle transport tracking, and bill conversion.
 * `src/components/ItemsView.tsx` - Inventory catalog, dynamic GST selector, batch/expiry alerts, low stock badges, AI item scanner.
 * `src/components/PartiesView.tsx` - Customer and Supplier Khata ledger, loyalty ledger, and payment reminders.
 * `src/components/ReportsView.tsx` - GSTR-1, GSTR-3B, P&L, Daybook, EOD email dispatch, and CSV export.
-* `src/components/SettingsView.tsx` - Business profile, thermal bill designer, loyalty config, and automated EOD email reports.
+* `src/components/SettingsView.tsx` - Business profile, locked business mode summary, thermal bill designer, loyalty config, and automated EOD email reports.
 * `src/components/MunimjiDrawer.tsx` - Digital Munimji AI floating voice assistant drawer.
 * `src/services/munimjiClient.ts` - Frontend client service for voice recording, streaming, and command processing.
 * `docs/FEATURE_ROADMAP_AND_STATUS.md` - Detailed Marathi & English feature completion and status breakdown.
-* `docs/END_TO_END_TEST_CASES.md` - Comprehensive end-to-end test suite and test plan covering all modules, business types, positive/negative scenarios, and Digital Munimji voice interactions.
 
 ---
 
@@ -192,3 +184,4 @@ Whenever resuming work on this codebase in a new Google AI Studio conversation:
 3. **Verify Builds:** Always run `lint_applet` and `compile_applet` before completing work.
 4. **Push to GitHub:** Commit and push changes to the repository `devrupeshgadkhe/Repo_billingOnHands` on branch `main`.
 5. **Update this file (`PROJECT_CONTEXT.md`):** Mark the completed phase and document key architecture changes immediately.
+

@@ -58,6 +58,9 @@ export default function OffersView({
     targetValue: "",
     discountPercent: 10,
     discountAmount: 0,
+    cashbackPercent: 5,
+    cashbackAmount: 0,
+    maxCashbackAmount: 200,
     buyQuantity: 1,
     freeQuantity: 1,
     freeItemName: "",
@@ -75,7 +78,8 @@ export default function OffersView({
     const active = offers.filter((o) => o.isActive).length;
     const buyXGetY = offers.filter((o) => o.type === "buy_x_get_y" && o.isActive).length;
     const discounts = offers.filter((o) => o.type !== "buy_x_get_y" && o.isActive).length;
-    return { total, active, buyXGetY, discounts };
+    const cashbacks = offers.filter((o) => o.type === "cashback" && o.isActive).length;
+    return { total, active, buyXGetY, discounts, cashbacks };
   }, [offers]);
 
   // Filtered offers list
@@ -110,6 +114,9 @@ export default function OffersView({
       targetValue: "",
       discountPercent: 10,
       discountAmount: 0,
+      cashbackPercent: 5,
+      cashbackAmount: 0,
+      maxCashbackAmount: 200,
       buyQuantity: 5,
       freeQuantity: 1,
       freeItemName: "",
@@ -133,6 +140,9 @@ export default function OffersView({
       targetValue: offer.targetValue || "",
       discountPercent: offer.discountPercent || 0,
       discountAmount: offer.discountAmount || 0,
+      cashbackPercent: offer.cashbackPercent || 0,
+      cashbackAmount: offer.cashbackAmount || 0,
+      maxCashbackAmount: offer.maxCashbackAmount || 0,
       buyQuantity: offer.buyQuantity || 1,
       freeQuantity: offer.freeQuantity || 1,
       freeItemName: offer.freeItemName || "",
@@ -147,7 +157,7 @@ export default function OffersView({
   };
 
   // Quick preset templates
-  const applyPreset = (presetKey: 'krishi_free' | 'brand_pct' | 'bill_slab' | 'bulk_flat') => {
+  const applyPreset = (presetKey: 'krishi_free' | 'brand_pct' | 'bill_slab' | 'bulk_flat' | 'cashback_5') => {
     if (presetKey === 'krishi_free') {
       setFormData(prev => ({
         ...prev,
@@ -178,7 +188,7 @@ export default function OffersView({
         targetType: "all",
         minBillAmount: 5000,
         discountAmount: 250,
-        notes: "Cashback slab discount for high-value purchases"
+        notes: "Slab discount for high-value purchases"
       }));
     } else if (presetKey === 'bulk_flat') {
       setFormData(prev => ({
@@ -189,6 +199,18 @@ export default function OffersView({
         minItemQty: 10,
         discountAmount: 50,
         notes: "Special tiered pricing for bulk buyers"
+      }));
+    } else if (presetKey === 'cashback_5') {
+      setFormData(prev => ({
+        ...prev,
+        title: "5% Instant Cashback (Up to ₹200)",
+        type: "cashback",
+        targetType: "all",
+        cashbackPercent: 5,
+        cashbackAmount: 0,
+        maxCashbackAmount: 200,
+        minBillAmount: 500,
+        notes: "Customer wallet / invoice cashback scheme on eligible bills"
       }));
     }
   };
@@ -232,7 +254,7 @@ export default function OffersView({
             <h1 className="text-2xl font-black tracking-tight">Promotional Offers & Dynamic Schemes</h1>
           </div>
           <p className="text-amber-100 text-sm font-medium">
-            Configure Buy X Get Y, brand discounts, tiered flat cuts, and bill value slab discounts.
+            Configure Buy X Get Y, Cashback rewards, percentage discounts, tiered flat cuts, and bill value slab schemes.
           </p>
         </div>
 
@@ -240,7 +262,7 @@ export default function OffersView({
           <button
             type="button"
             onClick={openAddModal}
-            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white hover:bg-amber-50 text-amber-900 font-bold text-sm rounded-xl shadow-md transition-transform active:scale-95 whitespace-nowrap"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-white hover:bg-amber-50 text-amber-900 font-bold text-sm rounded-xl shadow-md transition-transform active:scale-95 whitespace-nowrap cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>+ New Scheme</span>
@@ -256,7 +278,7 @@ export default function OffersView({
             <Tag className="w-4 h-4 text-slate-400" />
           </div>
           <div className="text-2xl font-black text-slate-900 mt-1">{stats.total}</div>
-          <div className="text-[11px] text-slate-500 mt-0.5">All configured discount rules</div>
+          <div className="text-[11px] text-slate-500 mt-0.5">All configured scheme rules</div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-emerald-200 bg-emerald-50/30 shadow-sm">
@@ -279,11 +301,11 @@ export default function OffersView({
 
         <div className="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/30 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Discounts & Slabs</span>
+            <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Discounts & Cashback</span>
             <Percent className="w-4 h-4 text-amber-600" />
           </div>
           <div className="text-2xl font-black text-amber-800 mt-1">{stats.discounts}</div>
-          <div className="text-[11px] text-amber-600 font-medium mt-0.5">% and cash discounts</div>
+          <div className="text-[11px] text-amber-600 font-medium mt-0.5">{stats.cashbacks} cashback • % & flat cuts</div>
         </div>
       </div>
 
@@ -311,6 +333,7 @@ export default function OffersView({
             <option value="percentage_discount">% Discount</option>
             <option value="flat_discount">Flat ₹ Discount</option>
             <option value="bill_slab_discount">Bill Value Slab</option>
+            <option value="cashback">Cashback Rewards</option>
           </select>
 
           <select
@@ -352,6 +375,7 @@ export default function OffersView({
             const isBuyGet = offer.type === "buy_x_get_y";
             const isSlab = offer.type === "bill_slab_discount";
             const isPct = offer.type === "percentage_discount";
+            const isCashback = offer.type === "cashback";
 
             return (
               <div
@@ -369,7 +393,9 @@ export default function OffersView({
                       ? "bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-100"
                       : isSlab
                         ? "bg-gradient-to-r from-purple-50 to-pink-50 border-purple-100"
-                        : "bg-gradient-to-r from-amber-50 to-orange-50 border-amber-100"
+                        : isCashback
+                          ? "bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-100"
+                          : "bg-gradient-to-r from-amber-50 to-orange-50 border-amber-100"
                     : "bg-slate-100 border-slate-200"
                 }`}>
                   <div className="flex items-start justify-between gap-2">
@@ -379,16 +405,20 @@ export default function OffersView({
                           ? "bg-blue-600 text-white"
                           : isSlab
                             ? "bg-purple-600 text-white"
-                            : "bg-amber-600 text-white"
+                            : isCashback
+                              ? "bg-emerald-600 text-white"
+                              : "bg-amber-600 text-white"
                       }`}>
                         {isBuyGet ? <Gift className="w-3.5 h-3.5" /> : <Percent className="w-3.5 h-3.5" />}
                         {isBuyGet
                           ? "Buy X Get Y"
                           : isSlab
                             ? "Bill Slab"
-                            : isPct
-                              ? `${offer.discountPercent}% OFF`
-                              : `₹${offer.discountAmount} OFF`}
+                            : isCashback
+                              ? (offer.cashbackPercent ? `${offer.cashbackPercent}% Cashback` : `₹${offer.cashbackAmount} Cashback`)
+                              : isPct
+                                ? `${offer.discountPercent}% OFF`
+                                : `₹${offer.discountAmount} OFF`}
                       </span>
                       {offer.targetType !== "all" && (
                         <span className="px-2 py-0.5 rounded-md bg-white/80 text-slate-700 text-[10px] font-bold border border-slate-200">
@@ -401,7 +431,7 @@ export default function OffersView({
                     <button
                       type="button"
                       onClick={() => onToggleOffer(offer.id)}
-                      className={`text-[11px] font-black px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 ${
+                      className={`text-[11px] font-black px-2.5 py-1 rounded-full transition-colors flex items-center gap-1 cursor-pointer ${
                         offer.isActive
                           ? "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200"
                           : "bg-slate-200 text-slate-600 hover:bg-slate-300"
@@ -438,7 +468,24 @@ export default function OffersView({
                     </div>
                   )}
 
-                  {!isBuyGet && !isSlab && (
+                  {isCashback && (
+                    <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100 text-xs text-emerald-900 font-medium space-y-1">
+                      <div>
+                        Cashback Reward:{" "}
+                        <strong>
+                          {offer.cashbackPercent ? `${offer.cashbackPercent}% Cashback` : `₹${offer.cashbackAmount} Flat Cashback`}
+                        </strong>
+                      </div>
+                      {offer.maxCashbackAmount ? (
+                        <div>Max Cashback Cap: <strong>₹{offer.maxCashbackAmount.toLocaleString("en-IN")}</strong></div>
+                      ) : null}
+                      {offer.minBillAmount ? (
+                        <div>Minimum Bill: <strong>₹{offer.minBillAmount.toLocaleString("en-IN")}</strong></div>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {!isBuyGet && !isSlab && !isCashback && (
                     <div className="bg-amber-50/50 p-2.5 rounded-xl border border-amber-100 text-xs text-amber-900 font-medium space-y-1">
                       {isPct ? (
                         <div>Discount: <strong>{offer.discountPercent}% Off</strong></div>
@@ -532,34 +579,41 @@ export default function OffersView({
                 <span className="text-[11px] font-black text-amber-900 uppercase tracking-wider block mb-2">
                   ⚡ Quick Presets:
                 </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                   <button
                     type="button"
                     onClick={() => applyPreset('krishi_free')}
-                    className="p-2 bg-white hover:bg-amber-100/60 text-amber-900 text-xs font-bold rounded-lg border border-amber-200 text-left transition-colors"
+                    className="p-2 bg-white hover:bg-amber-100/60 text-amber-900 text-xs font-bold rounded-lg border border-amber-200 text-left transition-colors cursor-pointer"
                   >
                     🌾 Buy 5 Get 1 Free
                   </button>
                   <button
                     type="button"
                     onClick={() => applyPreset('brand_pct')}
-                    className="p-2 bg-white hover:bg-amber-100/60 text-amber-900 text-xs font-bold rounded-lg border border-amber-200 text-left transition-colors"
+                    className="p-2 bg-white hover:bg-amber-100/60 text-amber-900 text-xs font-bold rounded-lg border border-amber-200 text-left transition-colors cursor-pointer"
                   >
                     🏷️ Brand 10% Off
                   </button>
                   <button
                     type="button"
                     onClick={() => applyPreset('bill_slab')}
-                    className="p-2 bg-white hover:bg-amber-100/60 text-amber-900 text-xs font-bold rounded-lg border border-amber-200 text-left transition-colors"
+                    className="p-2 bg-white hover:bg-amber-100/60 text-amber-900 text-xs font-bold rounded-lg border border-amber-200 text-left transition-colors cursor-pointer"
                   >
                     💰 ₹250 Off on ₹5000
                   </button>
                   <button
                     type="button"
                     onClick={() => applyPreset('bulk_flat')}
-                    className="p-2 bg-white hover:bg-amber-100/60 text-amber-900 text-xs font-bold rounded-lg border border-amber-200 text-left transition-colors"
+                    className="p-2 bg-white hover:bg-amber-100/60 text-amber-900 text-xs font-bold rounded-lg border border-amber-200 text-left transition-colors cursor-pointer"
                   >
                     📦 Wholesale Flat ₹50
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset('cashback_5')}
+                    className="p-2 bg-white hover:bg-emerald-100/60 text-emerald-900 text-xs font-bold rounded-lg border border-emerald-300 text-left transition-colors cursor-pointer"
+                  >
+                    💸 5% Cashback
                   </button>
                 </div>
               </div>
@@ -597,6 +651,7 @@ export default function OffersView({
                     <option value="buy_x_get_y">Buy X Get Y Free</option>
                     <option value="flat_discount">Flat Discount (Flat ₹ per unit)</option>
                     <option value="bill_slab_discount">Bill Value Slab Discount</option>
+                    <option value="cashback">Cashback Reward (% or Flat ₹)</option>
                   </select>
                 </div>
 
@@ -773,6 +828,66 @@ export default function OffersView({
                       min="0"
                       value={formData.minItemQty || ""}
                       onChange={(e) => setFormData({ ...formData, minItemQty: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Cashback Reward Configuration */}
+              {formData.type === "cashback" && (
+                <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-200 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-emerald-900 uppercase mb-1">
+                      Cashback Percentage (%)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.5"
+                      placeholder="e.g. 5"
+                      value={formData.cashbackPercent || ""}
+                      onChange={(e) => setFormData({ ...formData, cashbackPercent: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-lg text-sm font-bold text-emerald-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-emerald-900 uppercase mb-1">
+                      Or Flat Cashback (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 100"
+                      value={formData.cashbackAmount || ""}
+                      onChange={(e) => setFormData({ ...formData, cashbackAmount: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-lg text-sm font-bold text-emerald-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-emerald-900 uppercase mb-1">
+                      Max Cashback Cap (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 200"
+                      value={formData.maxCashbackAmount || ""}
+                      onChange={(e) => setFormData({ ...formData, maxCashbackAmount: Number(e.target.value) })}
+                      className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-emerald-900 uppercase mb-1">
+                      Minimum Bill Amount (₹)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="e.g. 500"
+                      value={formData.minBillAmount || ""}
+                      onChange={(e) => setFormData({ ...formData, minBillAmount: Number(e.target.value) })}
                       className="w-full px-3 py-2 bg-white border border-emerald-300 rounded-lg text-sm"
                     />
                   </div>

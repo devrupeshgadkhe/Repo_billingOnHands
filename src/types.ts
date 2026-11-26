@@ -85,24 +85,24 @@ export type SchemeType = 'loyalty_points' | 'instant_discount' | 'cashback' | 'b
 export interface InstantDiscountScheme {
   enabled: boolean;
   discountType: 'percentage' | 'flat';
-  discountValue: number; // e.g. 5% or ₹50
-  minBillAmount: number; // e.g. ₹1000
-  maxDiscountAmount?: number; // e.g. ₹500 cap
+  discountValue: number;
+  minBillAmount: number;
+  maxDiscountAmount?: number;
   autoApply: boolean;
 }
 
 export interface CashbackScheme {
   enabled: boolean;
-  cashbackPercent: number; // e.g. 5%
-  minBillAmount: number; // e.g. ₹500
-  maxCashbackPerBill: number; // e.g. ₹200
-  autoCreditToKhata: boolean; // Auto-credits customer ledger balance
+  cashbackPercent: number;
+  minBillAmount: number;
+  maxCashbackPerBill: number;
+  autoCreditToKhata: boolean;
 }
 
 export interface BogoScheme {
   enabled: boolean;
-  defaultBuyQty: number; // e.g. 1
-  defaultFreeQty: number; // e.g. 1
+  defaultBuyQty: number;
+  defaultFreeQty: number;
   appliesToAllItems: boolean;
   targetCategory?: string;
 }
@@ -189,8 +189,6 @@ export interface BusinessProfile {
   thermalConfig?: ThermalPrintConfig;
   loyaltyConfig?: LoyaltyConfig;
   schemeConfig?: StoreSchemeConfig;
-  securityPin?: string; // Admin 4-digit security PIN (Default: "1234")
-  requirePinForBusinessChange?: boolean; // If true, requires PIN confirmation when switching business vertical
   scheduledEmailConfig?: ScheduledEmailConfig;
   defaultBillingMode?: 'gst' | 'non_gst';
   defaultGstSlab?: number; // 0 for Non-GST / Exempt, or standard GST percentage (5, 12, 18, 28)
@@ -266,7 +264,7 @@ export interface Party {
 export interface OfferScheme {
   id: string;
   title: string;
-  type: 'buy_x_get_y' | 'percentage_discount' | 'flat_discount' | 'bill_slab_discount';
+  type: 'buy_x_get_y' | 'percentage_discount' | 'flat_discount' | 'bill_slab_discount' | 'cashback';
   targetType: 'all' | 'category' | 'brand' | 'item';
   targetValue?: string; // Brand name, Category name, or Item Name/ID
   buyQuantity?: number;
@@ -275,6 +273,9 @@ export interface OfferScheme {
   freeItemName?: string;
   discountPercent?: number;
   discountAmount?: number;
+  cashbackPercent?: number;
+  cashbackAmount?: number;
+  maxCashbackAmount?: number;
   minBillAmount?: number;
   minItemQty?: number;
   startDate?: string; // YYYY-MM-DD
@@ -337,6 +338,9 @@ export interface Invoice {
   sourceQuotationNumber?: string;
   isNonGst?: boolean; // True if created in Non-GST / Cash Memo / Bill of Supply mode
   billingMode?: 'gst' | 'non_gst';
+  tableId?: string;
+  tableNumber?: string;
+  orderType?: 'dine_in' | 'takeaway' | 'delivery';
 }
 
 export type QuotationStatus = 'draft' | 'sent' | 'accepted' | 'converted' | 'rejected' | 'expired';
@@ -533,10 +537,18 @@ export interface RestaurantTable {
   tableNumber: string;
   section?: string;
   capacity: number;
-  status: 'available' | 'occupied' | 'reserved';
+  status: 'available' | 'occupied' | 'reserved' | 'cleaning';
   currentOrderId?: string;
   currentOrderTotal?: number;
   runningItemsSummary?: string;
+}
+
+export interface InstallStatus {
+  businessModeLocked: boolean;
+  businessType: BusinessProfile['businessType'] | null;
+  installedAt?: string;
+  installedVersion?: string;
+  hasExistingData?: boolean;
 }
 
 export interface DatabaseState {
@@ -552,6 +564,7 @@ export interface DatabaseState {
   users?: UserAccount[];
   transactions: MiscTransaction[];
   tables?: RestaurantTable[];
+  installStatus?: InstallStatus;
 }
 
 export interface BarcodeEntry {

@@ -43,12 +43,16 @@ import {
   ChevronDown,
   ChevronUp,
   Printer,
-  Sliders
+  Sliders,
+  UtensilsCrossed,
+  Utensils
 } from "lucide-react";
 import { InvoiceUploadModal, ParsedInvoiceData } from "./InvoiceUploadModal.js";
 import EWayBillModal from "./EWayBillModal.js";
 import ThermalDesignerModal from "./ThermalDesignerModal.js";
+import KOTPrintModal from "./KOTPrintModal.js";
 import { matchItemByBarcode, getItemAllBarcodes } from "../utils/barcodeUtils.js";
+import { RestaurantTable } from "../types.js";
 
 interface InvoicingViewProps {
   key?: React.Key;
@@ -62,6 +66,10 @@ interface InvoicingViewProps {
   onNavigateTab: (tab: string) => void;
   onCancelEdit?: () => void;
   permissions?: any;
+  tables?: RestaurantTable[];
+  selectedTableForPOS?: RestaurantTable | null;
+  onClearTableForPOS?: () => void;
+  onSaveTable?: (table: RestaurantTable) => Promise<void>;
 }
 
 interface InvoiceLine {
@@ -129,9 +137,18 @@ export default function InvoicingView({
   onSaveInvoice,
   onNavigateTab,
   onCancelEdit,
-  permissions
+  permissions,
+  tables = [],
+  selectedTableForPOS = null,
+  onClearTableForPOS,
+  onSaveTable
 }: InvoicingViewProps) {
   const perms = permissions || { view: true, create: true, update: true, delete: true };
+
+  // Restaurant & Dining Order States
+  const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
+  const [selectedTableId, setSelectedTableId] = useState<string>(() => selectedTableForPOS?.id || "");
+  const [isKotModalOpen, setIsKotModalOpen] = useState(false);
 
   // Local additions from bill scanning
   const [addedItems, setAddedItems] = useState<Item[]>([]);
@@ -595,6 +612,16 @@ export default function InvoicingView({
     }
   }, [type, invoiceToEdit, isReturnMode, parties, relevantParties]);
 
+  // Synchronize incoming table selection from TablesView
+  useEffect(() => {
+    if (selectedTableForPOS) {
+      setSelectedTableId(selectedTableForPOS.id);
+      setOrderType('dine_in');
+      setPartySearchText(`Table ${selectedTableForPOS.tableNumber} (Dine-In)`);
+      setSelectedPartyId("walkin_customer");
+    }
+  }, [selectedTableForPOS]);
+
   // Subtype toggle handler
   const handleToggleSubtype = (newSub: 'sale' | 'purchase' | 'sale_return' | 'purchase_return') => {
     setTxSubtype(newSub);
@@ -727,7 +754,6 @@ export default function InvoicingView({
     let pointsEarned = 0;
 
     if (txSubtype === 'sale' && schemeConfig && schemeConfig.enabled) {
-      // 1. Instant Discount
       if (schemeConfig.instantDiscount?.enabled && subtotal >= (schemeConfig.instantDiscount.minBillAmount || 0)) {
         if (schemeConfig.instantDiscount.discountType === 'percentage') {
           const raw = (subtotal * (schemeConfig.instantDiscount.discountValue || 0)) / 100;
@@ -740,7 +766,6 @@ export default function InvoicingView({
         schemeTypeApplied = 'instant_discount';
       }
 
-      // 2. Tiered Slab Discount (if higher than instant discount)
       if (schemeConfig.slabDiscount?.enabled && schemeConfig.slabDiscount.slabs?.length > 0) {
         const sorted = [...schemeConfig.slabDiscount.slabs].sort((a, b) => b.minAmount - a.minAmount);
         const matched = sorted.find(s => subtotal >= s.minAmount);
@@ -755,7 +780,6 @@ export default function InvoicingView({
         }
       }
 
-      // 3. Khata Cashback (store balance credited on checkout)
       if (schemeConfig.cashback?.enabled && subtotal >= (schemeConfig.cashback.minBillAmount || 0)) {
         const rawCb = (subtotal * (schemeConfig.cashback.cashbackPercent || 0)) / 100;
         cashbackEarned = schemeConfig.cashback.maxCashbackPerBill
@@ -763,7 +787,6 @@ export default function InvoicingView({
           : rawCb;
       }
 
-      // 4. Loyalty points earned
       if (schemeConfig.loyalty?.enabled || business.loyaltyConfig?.enabled) {
         const rate = (schemeConfig.loyalty?.pointsPer100Rupees || business.loyaltyConfig?.pointsPer100Rupees || 1);
         const netBase = Math.max(0, subtotal - schemeDiscount);
@@ -1229,12 +1252,31 @@ export default function InvoicingView({
       sourceChallanId,
       sourceChallanNumber,
       sourceQuotationId,
-      sourceQuotationNumber
+      sourceQuotationNumber,
+      tableId: selectedTableId || undefined,
+      tableNumber: (tables.find(t => t.id === selectedTableId)?.tableNumber) || undefined,
+      orderType: (business?.businessType === "restaurant" || selectedTableId) ? orderType : undefined
     };
 
     try {
       await onSaveInvoice(processedInvoice);
       playPOSSound('success');
+
+      // If dining table was attached, mark table as Needs Cleaning after settlement
+      if (selectedTableId && onSaveTable) {
+        const tbl = tables.find(t => t.id === selectedTableId);
+        if (tbl) {
+          await onSaveTable({
+            ...tbl,
+            status: "cleaning",
+            currentOrderId: undefined,
+            currentOrderTotal: 0,
+            runningItemsSummary: "Bill Settled - Ready for Cleaning"
+          });
+        }
+        setSelectedTableId("");
+        if (onClearTableForPOS) onClearTableForPOS();
+      }
 
       // If we were editing, return to previous view
       if (invoiceToEdit) {
@@ -1259,6 +1301,8 @@ export default function InvoicingView({
           setExtraCharges([]);
           setNotes("");
           setCustomPaidAmount(false);
+          setSelectedTableId("");
+          if (onClearTableForPOS) onClearTableForPOS();
           setSourceChallanId(undefined);
           setSourceChallanNumber(undefined);
           setSourceQuotationId(undefined);
@@ -1273,6 +1317,41 @@ export default function InvoicingView({
     } catch (err: any) {
       setErrorText(err.message || "Failed to submit billing invoice transaction.");
     }
+  };
+
+  const handleOpenKOTModal = () => {
+    if (invoiceLines.length === 0) {
+      setErrorText("Please add at least 1 food item to generate a Kitchen Order Ticket (KOT).");
+      return;
+    }
+    setErrorText("");
+    setIsKotModalOpen(true);
+  };
+
+  const handleSaveRunningTableKOT = async () => {
+    if (!selectedTableId) {
+      setErrorText("Please select a dining table to attach this running kitchen order.");
+      return;
+    }
+    if (invoiceLines.length === 0) {
+      setErrorText("Please add items to save order to table.");
+      return;
+    }
+    const tbl = tables.find(t => t.id === selectedTableId);
+    if (!tbl || !onSaveTable) return;
+    const summary = invoiceLines.map(l => {
+      const it = items.find(i => i.id === l.itemId);
+      return `${l.quantity}x ${it?.name || 'Item'}`;
+    }).join(", ");
+    await onSaveTable({
+      ...tbl,
+      status: "occupied",
+      currentOrderTotal: computedInvoiceDetails.grandTotal,
+      runningItemsSummary: summary
+    });
+    playPOSSound('success');
+    setQuickNotification(`Table ${tbl.tableNumber} is now marked Occupied with ₹${computedInvoiceDetails.grandTotal.toFixed(2)} running kitchen order!`);
+    setTimeout(() => setQuickNotification(""), 3500);
   };
 
   // Safe checks if catalog registries are blank
@@ -1510,6 +1589,93 @@ export default function InvoicingView({
             ========================================================================= */}
         <div className="lg:col-span-8 space-y-4">
           
+          {/* Restaurant Dining & Table Selector Bar */}
+          {(business?.businessType === 'restaurant' || tables.length > 0) && (
+            <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5 font-bold text-amber-950">
+                  <UtensilsCrossed className="w-4 h-4 text-amber-700" />
+                  <span>Restaurant Dining Service:</span>
+                </div>
+                <div className="flex items-center bg-white border border-amber-300 rounded-xl p-0.5 font-bold text-[11px] shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setOrderType('dine_in')}
+                    className={`px-3 py-1 rounded-lg transition cursor-pointer ${
+                      orderType === 'dine_in'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-amber-900 hover:bg-amber-50'
+                    }`}
+                  >
+                    🍽️ Dine-In
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderType('takeaway');
+                      setSelectedTableId('');
+                    }}
+                    className={`px-3 py-1 rounded-lg transition cursor-pointer ${
+                      orderType === 'takeaway'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-amber-900 hover:bg-amber-50'
+                    }`}
+                  >
+                    🥡 Parcel / Takeaway
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderType('delivery');
+                      setSelectedTableId('');
+                    }}
+                    className={`px-3 py-1 rounded-lg transition cursor-pointer ${
+                      orderType === 'delivery'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-amber-900 hover:bg-amber-50'
+                    }`}
+                  >
+                    🛵 Home Delivery
+                  </button>
+                </div>
+              </div>
+
+              {orderType === 'dine_in' && (
+                <div className="flex items-center gap-2">
+                  <label className="font-bold text-amber-950">Table:</label>
+                  <select
+                    value={selectedTableId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedTableId(val);
+                      const found = tables.find(t => t.id === val);
+                      if (found) {
+                        setPartySearchText(`Table ${found.tableNumber} (Dine-In)`);
+                        setSelectedPartyId("walkin_customer");
+                      }
+                    }}
+                    className="bg-white border border-amber-300 rounded-xl px-3 py-1.5 font-bold text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+                  >
+                    <option value="">-- Choose Table --</option>
+                    {tables.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.tableNumber} ({t.section || 'Main Dining'} - {t.capacity} Seats) {t.status === 'occupied' ? '🔴 Occupied' : t.status === 'cleaning' ? '🧹 Needs Cleaning' : t.status === 'reserved' ? '🟡 Reserved' : '🟢 Free'}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => onNavigateTab("tables")}
+                    className="px-2.5 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-bold text-[11px] transition shadow-2xs cursor-pointer"
+                    title="View visual table map"
+                  >
+                    View Tables
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Customer & Invoice Meta Control Bar */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
@@ -2567,6 +2733,31 @@ export default function InvoicingView({
                 </button>
               </div>
 
+              {/* Restaurant Quick KOT & Running Order Action Buttons */}
+              {(business?.businessType === 'restaurant' || selectedTableId) && (
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleOpenKOTModal}
+                    className="py-2.5 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
+                    title="Print Kitchen Order Ticket for chef"
+                  >
+                    <Utensils className="w-3.5 h-3.5" />
+                    <span>Print KOT</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveRunningTableKOT}
+                    className="py-2.5 px-3 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
+                    title="Save running order to dining table"
+                  >
+                    <UtensilsCrossed className="w-3.5 h-3.5" />
+                    <span>Save to Table</span>
+                  </button>
+                </div>
+              )}
+
               {/* Secondary Actions Grid */}
               <div className="grid grid-cols-2 gap-2">
                 {/* E-Way Bill & E-Invoice Generator Button */}
@@ -2742,6 +2933,25 @@ export default function InvoicingView({
               body: JSON.stringify({ ...business, thermalConfig: updatedConfig })
             });
           }}
+        />
+      )}
+      {/* Kitchen Order Ticket (KOT) Thermal Slip Modal */}
+      {isKotModalOpen && (
+        <KOTPrintModal
+          isOpen={isKotModalOpen}
+          onClose={() => setIsKotModalOpen(false)}
+          business={business}
+          tableNumber={(tables.find(t => t.id === selectedTableId)?.tableNumber) || (orderType === "takeaway" ? "Takeaway" : "Dine-In")}
+          orderType={orderType}
+          items={invoiceLines.map(l => {
+            const it = items.find(i => i.id === l.itemId);
+            return {
+              name: it?.name || l.itemName || "Item",
+              quantity: l.quantity,
+              unit: it?.unit || l.unit || "PCS"
+            };
+          })}
+          notes={notes}
         />
       )}
 

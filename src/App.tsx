@@ -19,8 +19,10 @@ import DeliveryChallansView from "./components/DeliveryChallansView";
 import QuotationsView from "./components/QuotationsView";
 import GodownsView from "./components/GodownsView";
 import TablesView from "./components/TablesView";
-import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher, RestaurantTable, BUSINESS_TYPES } from "./types";
-import { RefreshCw, LayoutGrid, CheckCircle, LogOut, Menu } from "lucide-react";
+import OffersView from "./components/OffersView";
+import InstallSetupView from "./components/InstallSetupView";
+import { DatabaseState, Invoice, Item, Party, BusinessProfile, MiscTransaction, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher, RestaurantTable, OfferScheme } from "./types";
+import { RefreshCw, LogOut, Menu } from "lucide-react";
 import { APP_VERSION } from "./version";
 import MunimjiDrawer from "./components/MunimjiDrawer";
 import {
@@ -47,6 +49,7 @@ export default function App() {
     countdown?: number;
   } | null>(null);
   const [isMunimjiOpen, setIsMunimjiOpen] = useState<boolean>(false);
+  const [activeTableForPOS, setActiveTableForPOS] = useState<RestaurantTable | null>(null);
 
   // Autonomous Continuous Auto-Updater Engine (Desktop Electron & Web)
   useEffect(() => {
@@ -295,7 +298,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [dbState]);
 
-  // Update business profile
+  // Update business profile (business mode stays locked after installation)
   const handleSaveBusiness = async (profile: BusinessProfile) => {
     try {
       const res = await fetch("/api/business", {
@@ -357,41 +360,78 @@ export default function App() {
     }
   };
 
-  // Restaurant Tables Handlers
+  // Restaurant Tables Handlers (Atomic endpoints)
   const handleSaveTable = async (table: RestaurantTable) => {
-    try {
-      const existingTables = dbState?.tables || [];
-      const index = existingTables.findIndex(t => t.id === table.id);
-      let updatedTables = [];
-      if (index >= 0) {
-        updatedTables = existingTables.map(t => t.id === table.id ? table : t);
-      } else {
-        updatedTables = [...existingTables, table];
-      }
-      const res = await fetch("/api/tables", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tables: updatedTables })
-      });
-      if (res.ok) await fetchState();
-    } catch (err) {
-      console.error("Failed to save table", err);
+    const res = await fetch("/api/tables/item", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(table)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to save restaurant table.");
     }
+    await fetchState(true);
+  };
+
+  const handleSeedTables = async () => {
+    const res = await fetch("/api/tables/seed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to load sample tables.");
+    }
+    await fetchState(true);
   };
 
   const handleDeleteTable = async (tableId: string) => {
-    try {
-      const existingTables = dbState?.tables || [];
-      const updatedTables = existingTables.filter(t => t.id !== tableId);
-      const res = await fetch("/api/tables", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tables: updatedTables })
-      });
-      if (res.ok) await fetchState();
-    } catch (err) {
-      console.error("Failed to delete table", err);
+    const res = await fetch(`/api/tables/${encodeURIComponent(tableId)}`, {
+      method: "DELETE"
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to delete restaurant table.");
     }
+    await fetchState(true);
+  };
+
+  // Promotional Offers & Schemes Handlers
+  const handleSaveOffer = async (offer: OfferScheme) => {
+    const res = await fetch("/api/offers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(offer)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to save offer scheme.");
+    }
+    await fetchState(true);
+  };
+
+  const handleDeleteOffer = async (offerId: string) => {
+    const res = await fetch(`/api/offers/${encodeURIComponent(offerId)}`, {
+      method: "DELETE"
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to delete offer scheme.");
+    }
+    await fetchState(true);
+  };
+
+  const handleToggleOffer = async (offerId: string) => {
+    const res = await fetch(`/api/offers/${encodeURIComponent(offerId)}/toggle`, {
+      method: "PUT"
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to toggle offer status.");
+    }
+    await fetchState(true);
   };
 
   // Process Sales / Purchases Invoices
@@ -933,6 +973,19 @@ export default function App() {
     );
   }
 
+  // First-time installation business mode selection & permanent lock
+  if (dbState.installStatus && dbState.installStatus.businessModeLocked === false) {
+    return (
+      <InstallSetupView
+        existingBusiness={dbState.business}
+        hasExistingData={dbState.installStatus.hasExistingData}
+        onSetupComplete={async () => {
+          await fetchState(false);
+        }}
+      />
+    );
+  }
+
   // Authentication gate
   if (!session) {
     return <LoginView onLoginSuccess={(sess) => setSession(sess)} />;
@@ -982,9 +1035,8 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
             <span className="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 hidden sm:inline-block"></span>
-            <span className="text-xs font-semibold text-slate-600 font-sans truncate max-w-[200px] sm:max-w-none">
-              Online {dbState.business?.businessType ? `• ${BUSINESS_TYPES.find(b => b.id === dbState.business.businessType)?.label || dbState.business.businessType}` : ""}
-            </span>
+            
+
           </div>
 
           <div className="flex items-center space-x-3 sm:space-x-4">
@@ -1124,16 +1176,22 @@ export default function App() {
               items={dbState.items}
               parties={dbState.parties}
               business={dbState.business}
+              tables={dbState.tables || []}
+              selectedTableForPOS={activeTableForPOS}
+              onClearTableForPOS={() => setActiveTableForPOS(null)}
+              onSaveTable={handleSaveTable}
               invoiceToEdit={invoiceToEdit?.type.includes("sale") ? invoiceToEdit : null}
               isReturnMode={isReturnMode}
               onSaveInvoice={async (inv) => {
                 await handleSaveInvoice(inv);
                 setInvoiceToEdit(null);
                 setIsReturnMode(false);
+                setActiveTableForPOS(null);
               }}
               onCancelEdit={() => {
                 setInvoiceToEdit(null);
                 setIsReturnMode(false);
+                setActiveTableForPOS(null);
               }}
               onNavigateTab={(tab) => {
                 setActiveTab(tab);
@@ -1192,9 +1250,22 @@ export default function App() {
               tables={dbState.tables || []}
               onSaveTable={handleSaveTable}
               onDeleteTable={handleDeleteTable}
+              onSeedTables={handleSeedTables}
               onOpenTablePOS={(t) => {
+                setActiveTableForPOS(t);
                 setActiveTab("sales");
+                window.scrollTo({ top: 0, behavior: "smooth" });
               }}
+            />
+          )}
+
+          {activeTab === "offers" && (
+            <OffersView
+              offers={dbState.offers || []}
+              onSaveOffer={handleSaveOffer}
+              onDeleteOffer={handleDeleteOffer}
+              onToggleOffer={handleToggleOffer}
+              permissions={session?.permissions?.offers || session?.permissions?.sales}
             />
           )}
 
@@ -1236,6 +1307,11 @@ export default function App() {
               }}
               currentDb={dbState}
               onRestoreSuccess={fetchState}
+              installStatus={dbState.installStatus}
+              onNavigateTab={(tab) => {
+                setActiveTab(tab);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
             />
           )}
 
@@ -1281,6 +1357,8 @@ export default function App() {
           else if (["challans", "challan", "delivery_challans", "dc"].includes(t)) setActiveTab("challans");
           else if (["transactions", "transaction", "expenses", "expense", "income"].includes(t)) setActiveTab("transactions");
           else if (["reports", "report", "analytics", "daybook", "gstr"].includes(t)) setActiveTab("reports");
+          else if (["offers", "offer", "schemes", "scheme", "discounts", "cashback"].includes(t)) setActiveTab("offers");
+          else if (["tables", "table", "dining"].includes(t)) setActiveTab("tables");
           else if (["settings", "setting", "profile", "backup"].includes(t)) setActiveTab("settings");
           else if (["access_control", "users", "user", "permissions"].includes(t)) setActiveTab("access_control");
           else setActiveTab("dashboard");
