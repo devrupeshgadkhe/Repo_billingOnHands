@@ -10,10 +10,10 @@
     Delete "$APPDATA\${APP_FILENAME}\data\install-lock.json"
     !ifdef APP_PRODUCT_FILENAME
       Delete "$APPDATA\${APP_PRODUCT_FILENAME}\data\install-lock.json"
-    ${endif}
+    !endif
     !ifdef APP_PACKAGE_NAME
       Delete "$APPDATA\${APP_PACKAGE_NAME}\data\install-lock.json"
-    ${endif}
+    !endif
     ${if} $installMode == "all"
       SetShellVarContext all
     ${endif}
