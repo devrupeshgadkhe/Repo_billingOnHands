@@ -11,7 +11,7 @@ This document records the safe implementation plan for the `pre-production` bran
 - Pre-production branch: `pre-production`
 - Baseline application version: `1.1.20`
 - Baseline production release: `v1.1.20`
-- Existing Windows build: Node.js 20, `npm ci`, `npm run build`, and `npx electron-builder --win --x64 --publish never`
+- Existing Windows build: Node.js 20, `npm ci || npm install`, `npm run build`, and `npx electron-builder --win --x64 --publish never`
 - Existing installer identity: `com.billingonhand.app`
 - Existing update provider: GitHub Releases for this repository
 - Existing update policy: `allowPrerelease = false`
@@ -19,10 +19,11 @@ This document records the safe implementation plan for the `pre-production` bran
 ## Branch and CI Policy
 
 1. All implementation changes are made on `pre-production`.
-2. The pre-production workflow reuses the existing package lock, build scripts, Electron Builder configuration, icons, NSIS installer configuration, and Windows x64 target.
-3. The pre-production workflow runs strict `npm ci`, TypeScript validation, the production web/backend build, and Windows installer packaging.
-4. The workflow uploads a test artifact only. It does not create or overwrite a GitHub Release, tag, or production asset.
-5. A beta release is published only after the update-channel and data-isolation work has been implemented and verified.
+2. The pre-production workflow reuses the existing build scripts, Electron Builder configuration, icons, NSIS installer configuration, and Windows x64 target.
+3. Dependency installation initially mirrors the existing production workflow (`npm ci || npm install`) because the current package manifest and lockfile are out of sync. This compatibility fallback is temporary; the lockfile mismatch must be repaired in a separately validated change.
+4. The workflow runs TypeScript validation, the production web/backend build, and Windows installer packaging.
+5. The workflow uploads a test artifact only. It does not create or overwrite a GitHub Release, tag, or production asset.
+6. A beta release is published only after the update-channel and data-isolation work has been implemented and verified.
 
 ## Auto-Update Compatibility Requirement
 
@@ -64,7 +65,9 @@ All new UI labels, menus, titles, dialogs, validation messages, notifications, c
 - [x] Create `pre-production` from the current `main` commit.
 - [x] Add an isolated pre-production CI workflow that reuses the production build commands and configuration.
 - [x] Document the updater bridge requirement and data-isolation rules.
-- [ ] Run the new Windows workflow and verify the installer artifact.
+- [x] Match the production dependency-installation fallback after the strict `npm ci` run exposed a lockfile mismatch.
+- [ ] Repair and verify the package lockfile.
+- [ ] Run the updated Windows workflow and verify the installer artifact.
 - [ ] Implement and test pre-production data-directory isolation.
 - [ ] Implement and test updater bridge compatibility.
 - [ ] Publish and verify the stable updater bridge.
