@@ -648,9 +648,9 @@ export default function InvoicingView({
       // Backward compatibility: older Beta versions stored only a summary
       // such as "2x Tea, 1x Coffee", not the full cart snapshot.
       const legacyLines = selectedTableForPOS.runningItemsSummary
-        .split(/,\\s*(?=\\d+(?:\\.\\d+)?\\s*x\\s*)/i)
+        .split(/,\s*(?=\d+(?:\.\d+)?\s*x\s*)/i)
         .map(part => {
-          const match = part.trim().match(/^(\\d+(?:\\.\\d+)?)\\s*x\\s*(.+)$/i);
+          const match = part.trim().match(/^(\d+(?:\.\d+)?)\s*x\s*(.+)$/i);
           if (!match) return null;
           const quantity = Number(match[1]);
           const itemName = match[2].trim();
