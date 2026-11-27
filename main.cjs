@@ -8,7 +8,7 @@ const { app, BrowserWindow, Menu, ipcMain, shell, session, systemPreferences } =
 const path = require("path");
 const net = require("net");
 const { autoUpdater } = require("electron-updater");
-const { resolveUserDataPath, isPreProductionVersion } = require("./release-channel.cjs");
+const { resolveUserDataPath } = require("./release-channel.cjs");
 
 // Select an isolated data directory for prerelease builds before the backend starts.
 const productionUserDataPath = app.getPath("userData");
@@ -235,7 +235,7 @@ function createWindow(port) {
     height: 860,
     minWidth: 900,
     minHeight: 650,
-    title: "Billing On Hand - Offline Retail & GST ERP",
+    title: "Billing On Hand Beta - Pre-Release Testing",
     icon: appIcon,
     autoHideMenuBar: true,
     backgroundColor: "#0f172a", // Deep slate background matching the splash and dark theme (prevents white screen flash)
