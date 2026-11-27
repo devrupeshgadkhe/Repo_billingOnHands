@@ -229,6 +229,13 @@ export interface Item {
   mfgDate?: string; // Manufacturing date
   batches?: ItemBatch[]; // Multi-batch inventory tracking
   godownStock?: Record<string, number>; // Godown-wise stock breakdown (godownId -> qty)
+  // Optional Restaurant & Cafe Menu Fields (reusing existing items table)
+  dietaryType?: 'veg' | 'non_veg' | 'egg' | 'beverage';
+  halfPrice?: number;
+  kitchenStation?: string;
+  shortCode?: string;
+  isAvailable?: boolean;
+  trackStock?: boolean;
 }
 
 export interface LoyaltyLedgerEntry {
@@ -302,6 +309,7 @@ export interface InvoiceItem {
   sgst: number;
   igst: number;
   totalAmount: number;
+  portionLabel?: 'Full' | 'Half';
 }
 
 export interface Invoice {
@@ -634,3 +642,28 @@ export const INDIAN_STATES = [
 export const TAX_RATES = [0, 0.1, 0.25, 1.5, 3, 5, 6, 7.5, 12, 18, 28, 40];
 
 export const UNITS = ["PCS", "KGS", "BOX", "MTR", "LTR", "BAG", "NOS", "SET"];
+
+export const RESTAURANT_UNITS = ["PLATE", "BOWL", "CUP", "GLASS", "BTL", "PORTION", "THALI", "PCS"];
+
+export const RESTAURANT_CATEGORIES = [
+  "Starters",
+  "Main Course",
+  "Breads",
+  "Rice & Biryani",
+  "South Indian",
+  "Chinese",
+  "Fast Food & Snacks",
+  "Beverages",
+  "Desserts",
+  "Thali & Combos"
+];
+
+export const KITCHEN_STATIONS = [
+  "Indian Kitchen",
+  "Tandoor",
+  "Chinese Wok",
+  "South Indian",
+  "Cafe / Beverage",
+  "Bakery / Desserts",
+  "Counter / Packaged"
+];

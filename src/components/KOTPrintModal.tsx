@@ -12,6 +12,7 @@ interface KOTLineItem {
   quantity: number;
   unit?: string;
   notes?: string;
+  kitchenStation?: string;
 }
 
 interface KOTPrintModalProps {
@@ -125,6 +126,9 @@ export default function KOTPrintModal({
                     <span className="w-12 text-center font-black text-sm">{it.quantity}</span>
                     <div className="flex-1 pl-2">
                       <span className="font-bold uppercase text-[12px]">{it.name}</span>
+                      {it.kitchenStation && (
+                        <p className="text-[10px] text-slate-600 font-semibold">[{it.kitchenStation}]</p>
+                      )}
                       {it.notes && (
                         <p className="text-[10px] italic text-slate-600 mt-0.5">Note: {it.notes}</p>
                       )}

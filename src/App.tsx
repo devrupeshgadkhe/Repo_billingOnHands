@@ -910,7 +910,14 @@ export default function App() {
   // Derive warning tallies for sidebar notifications
   const lowStockCount = useMemo(() => {
     if (!dbState) return 0;
-    return dbState.items.filter(item => item.stockQuantity <= item.minStockAlert).length;
+    const isRestaurant = dbState.business?.businessType === "restaurant";
+    return dbState.items.filter(item => {
+      if (isRestaurant) {
+        return item.trackStock === true && item.stockQuantity <= item.minStockAlert;
+      }
+      if (item.trackStock === false) return false;
+      return item.stockQuantity <= item.minStockAlert;
+    }).length;
   }, [dbState]);
 
   const unpaidCount = useMemo(() => {

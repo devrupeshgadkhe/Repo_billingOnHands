@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   Truck,
   FileText,
+  Utensils,
   UtensilsCrossed,
   Tag,
   X
@@ -73,7 +74,12 @@ export default function Sidebar({
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard, badge: 0 },
     { id: "parties", label: "Parties", icon: Users, badge: unpaidCount },
-    { id: "items", label: "Items & Stock", icon: PackageCheck, badge: lowStockCount },
+    {
+      id: "items",
+      label: business?.businessType === "restaurant" ? "Menu Items" : "Items & Stock",
+      icon: business?.businessType === "restaurant" ? Utensils : PackageCheck,
+      badge: lowStockCount
+    },
     ...((business?.businessType === 'restaurant' || activeTab === 'tables') ? [
       { id: "tables", label: "Restaurant Tables", icon: UtensilsCrossed, badge: 0 }
     ] : []),

@@ -1,33 +1,27 @@
 # CURRENT_TASK.md — Live Development State
 
 ## Current Task Information
-- **Task ID**: TASK-002
-- **Objective**: Fix dev server startup, enforce installation-only Business Mode lock (preserved across updates, cleared only on uninstall), fix Restaurant Table creation & cleaning lifecycle, and wire Multi-Scheme Promotional Offers (Discounts, BOGO, Bill Slabs, Cashback).
-- **Status**: COMPLETED & VERIFIED (All changes compiled, linted, and pushed to `origin/main`)
-- **Last Safe Checkpoint Commit SHA**: Pending final commit on `main` (parent `5879682e0b70520a9b90fb24a06a9247b832f6fe`)
+- **Task ID**: TASK-003
+- **Objective**: Implement Option A for **Restaurant & Cafe Mode** Menu Items — reuse the existing `items` database collection with optional hotel/restaurant fields (`dietaryType`, `halfPrice`, `kitchenStation`, `shortCode`, `isAvailable`, `trackStock`) and deliver a clean, dedicated Hotel Menu UI across `ItemsView.tsx`, `Sidebar.tsx`, `InvoicingView.tsx`, `KOTPrintModal.tsx`, `App.tsx`, and `server.ts`.
+- **Status**: COMPLETED & VERIFIED (All changes compiled, linted, API-tested, ready for push & CI release)
 - **Current Branch**: `main`
-- **Synchronization Status**: Synchronized with `origin/main` (`https://github.com/devrupeshgadkhe/Repo_billingOnHands.git`).
+- **Synchronization Status**: Pushing to `origin/main` (`https://github.com/devrupeshgadkhe/Repo_billingOnHands.git`).
 
 ## Requirements & Acceptance Criteria
-1. Resolve merge conflict markers blocking TypeScript compilation and Express/Vite dev server startup.
-2. Implement installation-only business mode selector (`InstallSetupView.tsx`, `/api/install-status`, `/api/install/setup`) backed by persistent `data/install-lock.json` that survives auto-updates and is removed only on real Windows uninstall via NSIS hook (`scripts/installer.nsh`).
-3. Lock business mode read-only in Settings (`SettingsView.tsx`) and enforce backend guards (`server.ts`).
-4. Fix Restaurant Table creation, bulk seeding, empty-state deletion persistence, and add `'cleaning'` lifecycle (`TablesView.tsx`, `InvoicingView.tsx`, `/api/tables/item`, `/api/tables/seed`, `/api/tables/:id`).
-5. Wire `OffersView.tsx` into `Sidebar.tsx`, `App.tsx`, and `SettingsView.tsx`, add `'cashback'` reward scheme support, and integrate the Multi-Form Customer Schemes Hub (`StoreSchemeConfig` + Khata cashback crediting) in `SettingsView.tsx`, `InvoicingView.tsx`, and `server.ts`.
+1. Extend `Item` in `src/types.ts` (Option A — shared `items` table) with `dietaryType`, `halfPrice`, `kitchenStation`, `shortCode`, `isAvailable`, and `trackStock`, plus `RESTAURANT_UNITS`, `RESTAURANT_CATEGORIES`, and `KITCHEN_STATIONS`.
+2. Preserve all retail and restaurant fields cleanly in `server.ts` (`normalizeDatabaseState`, `/api/items` `sanitizeItem`, `generateTemplateData("restaurant")`), and skip stock deduction on cooked dishes where `trackStock === false`.
+3. Update `Sidebar.tsx` (`"Menu Items"` in restaurant mode) and `App.tsx` (`lowStockCount` excludes non-tracked restaurant dishes).
+4. Render a dedicated Hotel Menu UI in `ItemsView.tsx` (Veg/Non-Veg/Egg/Available/Sold-Out KPIs & filters, 7-column menu table with FSSAI dietary mark, Half/Full pricing, 1-click kitchen availability toggle, and streamlined Add/Edit Menu Dish drawer with collapsible optional stock/barcode section for packaged drinks) while keeping all non-restaurant modes unchanged.
+5. Adapt `InvoicingView.tsx` Quick-Pick Menu Board & Search Terminal (Veg/Non-Veg & Course chips, short code search, Half/Full portion quick-add, Sold-Out guard) and `KOTPrintModal.tsx` (kitchen station & portion label).
 
 ## Completed Work
-- Resolved Git merge conflict markers across affected files and restored dev server startup on port 3000.
-- Added `InstallStatus`, `'cleaning'` table status, `'cashback'` offer scheme fields, and `StoreSchemeConfig` / `Invoice` scheme fields in `src/types.ts`.
-- Created `src/components/InstallSetupView.tsx` and NSIS uninstall hook `scripts/installer.nsh` (wired into `package.json`).
-- Updated `server.ts` with `install-lock.json` enforcement across profile/backup/reset/restore routes, atomic `/api/tables/item`, `/api/tables/seed`, `/api/tables/:id` routes, and Khata cashback crediting on invoice creation.
-- Updated `App.tsx`, `SettingsView.tsx` (locked Business Mode card + Multi-Form Schemes Hub), `TablesView.tsx`, `InvoicingView.tsx`, `Sidebar.tsx`, and `OffersView.tsx`.
+- Updated `src/types.ts`, `src/utils/businessPersonaUtils.ts`, and `server.ts`.
+- Updated `src/App.tsx`, `src/components/Sidebar.tsx`, `src/components/ItemsView.tsx`, `src/components/InvoicingView.tsx`, and `src/components/KOTPrintModal.tsx`.
 
 ## Tests Executed & Results
-- `npm run build` / `compile_applet`: **PASSED** (Vite client bundle + esbuild server bundle succeeded).
-- `npm run lint` / `tsc --noEmit` / `lint_applet`: **PASSED** (Zero TypeScript errors).
-- Dev server restart & live API verification on port 3000: **PASSED** (`/api/install-status`, `/api/tables/item`, `/api/tables/:id`, `/api/offers`, `/api/business/switch-vertical` lock verified).
+- `compile_applet` (`npm run build`): **PASSED**
+- `lint_applet` (`tsc --noEmit`): **PASSED**
+- Dev server on port 3000 (`restart_dev_server`) + live `/api/items` & `/api/invoices` verification: **PASSED** (verified `shortCode`, `dietaryType`, `halfPrice`, `kitchenStation`, `isAvailable` toggle, and `trackStock: false` skipping stock deduction on sale).
 
 ## Pending / Blocked Work
-- None.
-
-
+- Push to `origin/main` and monitor GitHub Actions `.exe` release build.

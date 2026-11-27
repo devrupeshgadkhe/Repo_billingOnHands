@@ -141,6 +141,9 @@
   - Full status lifecycle (`available` → `occupied` → `cleaning` → `available`, plus `reserved`) with automatic transition to `cleaning` on POS dining bill settlement and 1-click "Mark Cleaned" action in `TablesView.tsx`.
 * **Promotional Offers & Cashback Multi-Scheme Engine (`OffersView.tsx`, `Sidebar.tsx`, `SettingsView.tsx`, `App.tsx`):**
   - Wired `OffersView.tsx` into `Sidebar` ("Offers & Schemes"), `App.tsx`, and `SettingsView` Loyalty/Schemes tab, expanding schemes to support Percentage Discounts, Flat Discounts, Buy X Get Y Free, Bill Value Slabs, and Cashback Rewards (`cashbackPercent`, `cashbackAmount`, `maxCashbackAmount`).
+* **Restaurant & Cafe Dedicated Menu Items (Option A on Shared `items` Table) (`ItemsView.tsx`, `InvoicingView.tsx`, `KOTPrintModal.tsx`, `Sidebar.tsx`, `server.ts`):**
+  - Reuses the existing `items` store with optional restaurant properties (`dietaryType`, `halfPrice`, `kitchenStation`, `shortCode`, `isAvailable`, `trackStock`) while keeping retail/medical/kirana modes untouched.
+  - Provides hotel-specific menu table, FSSAI dietary indicators, 1-click Available/Sold-Out toggling, Half/Full portion POS selection, kitchen station KOT tags, and automatic skipping of inventory stock deduction for cooked-to-order dishes (`trackStock === false`).
 
 ---
 

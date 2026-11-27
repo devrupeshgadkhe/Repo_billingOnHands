@@ -453,15 +453,21 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
   }) : [];
 
   const items = Array.isArray(raw.items) ? raw.items.map((it: any, idx: number) => {
+    const validDietary = ["veg", "non_veg", "egg", "beverage"].includes(it?.dietaryType) ? it.dietaryType : undefined;
     return {
       id: String(it?.id || `item_${idx + 1}`),
       name: String(it?.name || "Product Item"),
       hsn: String(it?.hsn || "0000"),
       purchasePrice: Number(it?.purchasePrice) || 0,
       salePrice: Number(it?.salePrice) || 0,
+      mrp: it?.mrp !== undefined ? Number(it.mrp) || 0 : undefined,
+      wholesalePrice: it?.wholesalePrice !== undefined ? Number(it.wholesalePrice) || 0 : undefined,
+      minWholesaleQty: it?.minWholesaleQty !== undefined ? Number(it.minWholesaleQty) || 5 : undefined,
+      boxPackingRatio: it?.boxPackingRatio !== undefined ? Number(it.boxPackingRatio) || 0 : undefined,
+      boxUnit: it?.boxUnit ? String(it.boxUnit) : undefined,
       stockQuantity: Number(it?.stockQuantity) || 0,
-      minStockAlert: Number(it?.minStockAlert) || 5,
-      gstRate: Number(it?.gstRate) || 18,
+      minStockAlert: it?.minStockAlert !== undefined ? Number(it.minStockAlert) || 0 : 5,
+      gstRate: it?.gstRate !== undefined && it?.gstRate !== null ? (Number(it.gstRate) || 0) : 18,
       unit: String(it?.unit || "PCS"),
       brand: it?.brand ? String(it.brand) : undefined,
       category: it?.category ? String(it.category) : undefined,
@@ -479,7 +485,14 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
         quantity: Number(b?.quantity) || 0
       })) : undefined,
       barcodes: Array.isArray(it?.barcodes) ? it.barcodes.map((b: any) => String(b || "")).filter(Boolean) : [],
-      godownStock: (it?.godownStock && typeof it.godownStock === "object") ? it.godownStock : { "godown_main": Number(it?.stockQuantity) || 0 }
+      barcodeEntries: Array.isArray(it?.barcodeEntries) ? it.barcodeEntries : undefined,
+      godownStock: (it?.godownStock && typeof it.godownStock === "object") ? it.godownStock : { "godown_main": Number(it?.stockQuantity) || 0 },
+      dietaryType: validDietary,
+      halfPrice: it?.halfPrice !== undefined && it?.halfPrice !== null && Number(it.halfPrice) > 0 ? Number(it.halfPrice) : undefined,
+      kitchenStation: it?.kitchenStation ? String(it.kitchenStation) : undefined,
+      shortCode: it?.shortCode ? String(it.shortCode) : undefined,
+      isAvailable: it?.isAvailable !== undefined ? Boolean(it.isAvailable) : undefined,
+      trackStock: it?.trackStock !== undefined ? Boolean(it.trackStock) : undefined
     };
   }) : [];
 
@@ -1159,11 +1172,12 @@ function generateTemplateData(businessType: NonNullable<BusinessProfile["busines
         defaultGstSlab: 5
       },
       items: [
-        { id: "food_1", name: "Paneer Butter Masala", category: "Main Course", hsn: "2106", purchasePrice: 110, salePrice: 220, stockQuantity: 50, minStockAlert: 10, gstRate: 5, unit: "PLATE" },
-        { id: "food_2", name: "Veg Dum Biryani", category: "Rice & Biryani", hsn: "2106", purchasePrice: 90, salePrice: 180, stockQuantity: 45, minStockAlert: 10, gstRate: 5, unit: "PLATE" },
-        { id: "food_3", name: "Butter Garlic Naan", category: "Breads", hsn: "1905", purchasePrice: 15, salePrice: 45, stockQuantity: 100, minStockAlert: 20, gstRate: 5, unit: "PCS" },
-        { id: "food_4", name: "Masala Dosa with Sambar", category: "Breakfast", hsn: "2106", purchasePrice: 35, salePrice: 90, stockQuantity: 60, minStockAlert: 15, gstRate: 5, unit: "PLATE" },
-        { id: "food_5", name: "Packaged Drinking Water 1L", category: "Beverages", hsn: "2201", purchasePrice: 12, salePrice: 20, stockQuantity: 120, minStockAlert: 24, gstRate: 18, unit: "BTL" }
+        { id: "food_1", name: "Paneer Butter Masala", shortCode: "PBM", category: "Main Course", dietaryType: "veg", kitchenStation: "Indian Kitchen", hsn: "2106", purchasePrice: 110, salePrice: 220, halfPrice: 140, stockQuantity: 0, minStockAlert: 0, gstRate: 5, unit: "PLATE", isAvailable: true, trackStock: false },
+        { id: "food_2", name: "Veg Dum Biryani", shortCode: "VDB", category: "Rice & Biryani", dietaryType: "veg", kitchenStation: "Indian Kitchen", hsn: "2106", purchasePrice: 90, salePrice: 180, halfPrice: 110, stockQuantity: 0, minStockAlert: 0, gstRate: 5, unit: "PLATE", isAvailable: true, trackStock: false },
+        { id: "food_3", name: "Butter Garlic Naan", shortCode: "BGN", category: "Breads", dietaryType: "veg", kitchenStation: "Tandoor", hsn: "1905", purchasePrice: 15, salePrice: 45, stockQuantity: 0, minStockAlert: 0, gstRate: 5, unit: "PCS", isAvailable: true, trackStock: false },
+        { id: "food_4", name: "Masala Dosa with Sambar", shortCode: "MDS", category: "South Indian", dietaryType: "veg", kitchenStation: "South Indian", hsn: "2106", purchasePrice: 35, salePrice: 90, stockQuantity: 0, minStockAlert: 0, gstRate: 5, unit: "PLATE", isAvailable: true, trackStock: false },
+        { id: "food_5", name: "Cold Coffee with Ice Cream", shortCode: "CCI", category: "Beverages", dietaryType: "beverage", kitchenStation: "Cafe / Beverage", hsn: "2202", purchasePrice: 30, salePrice: 85, stockQuantity: 0, minStockAlert: 0, gstRate: 5, unit: "GLASS", isAvailable: true, trackStock: false },
+        { id: "food_6", name: "Packaged Drinking Water 1L", shortCode: "WTR", category: "Beverages", dietaryType: "beverage", kitchenStation: "Counter / Packaged", hsn: "2201", purchasePrice: 12, salePrice: 20, stockQuantity: 120, minStockAlert: 24, gstRate: 18, unit: "BTL", barcodes: ["8901234005011", "WATER-1L-01"], isAvailable: true, trackStock: true }
       ],
       parties: [
         { id: "rp_1", name: "Walk-in Dining Guest", type: "customer", phone: "", email: "", address: "", state: "Maharashtra", gstin: "", initialBalance: 0, currentBalance: 0 },
@@ -2181,6 +2195,9 @@ app.post("/api/items", (req, res) => {
       cleanGst = isNaN(parsed) || parsed < 0 ? 0 : parsed;
     }
 
+    const validDietary = ["veg", "non_veg", "egg", "beverage"].includes(item.dietaryType) ? item.dietaryType : undefined;
+    const parsedHalfPrice = item.halfPrice !== undefined && item.halfPrice !== null && Number(item.halfPrice) > 0 ? Number(item.halfPrice) : undefined;
+
     return {
       ...item,
       id: item.id || "item_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
@@ -2194,12 +2211,18 @@ app.post("/api/items", (req, res) => {
       boxPackingRatio: Number(item.boxPackingRatio) || 0,
       boxUnit: item.boxUnit || "BOX",
       stockQuantity: Number(item.stockQuantity) || 0,
-      minStockAlert: Number(item.minStockAlert) || 5,
+      minStockAlert: item.minStockAlert !== undefined && item.minStockAlert !== null ? (Number(item.minStockAlert) || 0) : 5,
       gstRate: cleanGst,
       unit: (item.unit || "PCS").toUpperCase().trim(),
       brand: (item.brand || "").trim(),
       category: (item.category || "").trim(),
-      barcodes: Array.isArray(item.barcodes) ? item.barcodes : []
+      barcodes: Array.isArray(item.barcodes) ? item.barcodes : [],
+      dietaryType: validDietary,
+      halfPrice: parsedHalfPrice,
+      kitchenStation: item.kitchenStation ? String(item.kitchenStation).trim() : undefined,
+      shortCode: item.shortCode ? String(item.shortCode).trim().toUpperCase() : undefined,
+      isAvailable: item.isAvailable !== undefined ? Boolean(item.isAvailable) : undefined,
+      trackStock: item.trackStock !== undefined ? Boolean(item.trackStock) : undefined
     };
   };
 
@@ -2501,7 +2524,7 @@ app.post("/api/invoices", (req, res) => {
       if (!oldInvoice.sourceChallanId) {
         oldInvoice.items.forEach((invItem: any) => {
           const dbItem = db.items.find(i => i.id === invItem.itemId);
-          if (dbItem) {
+          if (dbItem && dbItem.trackStock !== false) {
             if (oldInvoice.type === "sale" || oldInvoice.type === "purchase_return") {
               dbItem.stockQuantity += invItem.quantity; // Put stock back
             } else {
@@ -2547,11 +2570,13 @@ app.post("/api/invoices", (req, res) => {
     invoice.items.forEach((invItem: any) => {
       let dbItem = db.items.find((i: any) => i.id === invItem.itemId || (invItem.itemName && i.name.toLowerCase() === invItem.itemName.toLowerCase()));
       if (dbItem) {
-        if (invoice.type === "sale" || invoice.type === "purchase_return") {
-          dbItem.stockQuantity = Math.max(0, (dbItem.stockQuantity || 0) - invItem.quantity);
-        } else {
-          // "purchase" or "sale_return"
-          dbItem.stockQuantity = (dbItem.stockQuantity || 0) + invItem.quantity;
+        if (dbItem.trackStock !== false) {
+          if (invoice.type === "sale" || invoice.type === "purchase_return") {
+            dbItem.stockQuantity = Math.max(0, (dbItem.stockQuantity || 0) - invItem.quantity);
+          } else {
+            // "purchase" or "sale_return"
+            dbItem.stockQuantity = (dbItem.stockQuantity || 0) + invItem.quantity;
+          }
         }
       } else if (invItem.itemName && invItem.itemName.trim()) {
         // Auto-register in db.items so inventory is ALWAYS in sync with sales
@@ -2685,7 +2710,7 @@ app.delete("/api/invoices/:id", (req, res) => {
   if (!invoice.sourceChallanId) {
     invoice.items.forEach((invItem: any) => {
       const dbItem = db.items.find(i => i.id === invItem.itemId);
-      if (dbItem) {
+      if (dbItem && dbItem.trackStock !== false) {
         if (invoice.type === "sale" || invoice.type === "purchase_return") {
           dbItem.stockQuantity += invItem.quantity; // Put stock back
         } else {

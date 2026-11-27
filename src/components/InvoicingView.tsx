@@ -51,6 +51,7 @@ import { InvoiceUploadModal, ParsedInvoiceData } from "./InvoiceUploadModal.js";
 import EWayBillModal from "./EWayBillModal.js";
 import ThermalDesignerModal from "./ThermalDesignerModal.js";
 import KOTPrintModal from "./KOTPrintModal.js";
+import { DietaryMark } from "./ItemsView.js";
 import { matchItemByBarcode, getItemAllBarcodes } from "../utils/barcodeUtils.js";
 import { RestaurantTable } from "../types.js";
 
@@ -82,6 +83,7 @@ interface InvoiceLine {
   discount: number;
   discountType?: 'percent' | 'amount';
   gstRate: number;
+  portionLabel?: 'Full' | 'Half';
 }
 
 interface ParkedBill {
@@ -144,6 +146,7 @@ export default function InvoicingView({
   onSaveTable
 }: InvoicingViewProps) {
   const perms = permissions || { view: true, create: true, update: true, delete: true };
+  const isRestaurantMode = business?.businessType === "restaurant";
 
   // Restaurant & Dining Order States
   const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
@@ -550,7 +553,8 @@ export default function InvoicingView({
             customPrice: item.price,
             discount: discVal,
             discountType: discType,
-            gstRate: item.gstRate
+            gstRate: item.gstRate,
+            portionLabel: item.portionLabel || (item.itemName?.toLowerCase().includes("(half)") ? "Half" : undefined)
           };
         }));
       }
@@ -663,7 +667,10 @@ export default function InvoicingView({
 
     const formattedLines: InvoiceItem[] = invoiceLines.map(line => {
       const originalItem = items.find(i => i.id === line.itemId || (line.itemName && i.name.toLowerCase() === line.itemName.toLowerCase()));
-      const itemName = originalItem?.name || line.itemName || (line.itemId ? "Item" : "");
+      const baseName = originalItem?.name || line.itemName || (line.itemId ? "Item" : "");
+      const itemName = line.portionLabel === 'Half' && baseName && !baseName.toLowerCase().includes("(half)")
+        ? `${baseName} (Half)`
+        : baseName;
       const hsn = originalItem?.hsn || line.hsn || "9999";
       const itemId = originalItem?.id || line.itemId || ("item_" + Date.now());
 
@@ -739,7 +746,8 @@ export default function InvoicingView({
         cgst: itemCgst,
         sgst: itemSgst,
         igst: itemIgst,
-        totalAmount: rowTotal
+        totalAmount: rowTotal,
+        portionLabel: line.portionLabel
       };
     }).filter(i => i.itemName.trim() !== "" && (i.quantity > 0 || i.price > 0));
 
@@ -964,9 +972,13 @@ export default function InvoicingView({
 
       const nameLower = (item.name || "").toLowerCase();
       const hsnLower = (item.hsn || "").toLowerCase();
-      
+      const shortCodeLower = (item.shortCode || "").toLowerCase();
+      const categoryLower = (item.category || "").toLowerCase();
+
       return queryWords.every(word =>
         nameLower.includes(word) ||
+        shortCodeLower.includes(word) ||
+        categoryLower.includes(word) ||
         hsnLower.includes(word) ||
         allBarcodes.some(b => (b || "").toLowerCase().includes(word))
       );
@@ -974,10 +986,31 @@ export default function InvoicingView({
   }, [items, parsedQuickTerminal]);
 
   // Add Item to cart helper
-  const handleAddItemToCart = (item: Item, qty: number = 1) => {
+  const handleAddItemToCart = (item: Item, qty: number = 1, portionLabel?: 'Full' | 'Half') => {
+    if (isRestaurantMode && type === "sale" && item.isAvailable === false) {
+      playPOSSound('alert');
+      setQuickNotification(`"${item.name}" is marked Sold Out on today's menu`);
+      setTimeout(() => {
+        setQuickNotification("");
+      }, 2200);
+      return;
+    }
+
+    const effectivePortion: 'Full' | 'Half' | undefined =
+      portionLabel === 'Half' && item.halfPrice && item.halfPrice > 0
+        ? 'Half'
+        : (isRestaurantMode && item.halfPrice && item.halfPrice > 0 ? 'Full' : portionLabel);
+
+    const effectivePrice =
+      effectivePortion === 'Half' && item.halfPrice && item.halfPrice > 0
+        ? item.halfPrice
+        : (type === "sale" ? item.salePrice : item.purchasePrice);
+
     setInvoiceLines(prev => {
-      const existingIdx = prev.findIndex(line => line.itemId === item.id);
-      
+      const existingIdx = prev.findIndex(
+        line => line.itemId === item.id && (line.portionLabel || 'Full') === (effectivePortion || 'Full')
+      );
+
       if (existingIdx > -1) {
         const copy = [...prev];
         copy[existingIdx] = {
@@ -989,10 +1022,11 @@ export default function InvoicingView({
         const newRow: InvoiceLine = {
           itemId: item.id,
           quantity: qty,
-          customPrice: type === "sale" ? item.salePrice : item.purchasePrice,
+          customPrice: effectivePrice,
           discount: 0,
           discountType: 'percent',
-          gstRate: getEffectiveItemGstRate(item.gstRate)
+          gstRate: getEffectiveItemGstRate(item.gstRate),
+          portionLabel: effectivePortion
         };
         // Clean up leading blank row if exists
         const cleaned = prev.filter(p => p.itemId);
@@ -1001,7 +1035,8 @@ export default function InvoicingView({
     });
 
     playPOSSound('beep');
-    setQuickNotification(`Added ${qty}x ${item.name}`);
+    const portionTag = effectivePortion === 'Half' ? ' (Half)' : '';
+    setQuickNotification(`Added ${qty}x ${item.name}${portionTag}`);
     setTimeout(() => {
       setQuickNotification("");
     }, 1800);
@@ -1024,13 +1059,31 @@ export default function InvoicingView({
       if (catalogSearch.trim()) {
         const q = catalogSearch.toLowerCase();
         const matchesName = (item.name || "").toLowerCase().includes(q);
+        const matchesShortCode = (item.shortCode || "").toLowerCase().includes(q);
+        const matchesCategory = (item.category || "").toLowerCase().includes(q);
         const matchesHsn = (item.hsn || "").toLowerCase().includes(q);
         const allBarcodes = getItemAllBarcodes(item);
         const matchesBarcode = allBarcodes.some(b => (b || "").toLowerCase().includes(q));
-        if (!matchesName && !matchesHsn && !matchesBarcode) return false;
+        if (!matchesName && !matchesShortCode && !matchesCategory && !matchesHsn && !matchesBarcode) return false;
       }
 
-      // Category filter
+      if (isRestaurantMode && type === "sale") {
+        if (catalogCategory === "veg_only") {
+          return !item.dietaryType || item.dietaryType === "veg";
+        }
+        if (catalogCategory === "non_veg") {
+          return item.dietaryType === "non_veg" || item.dietaryType === "egg";
+        }
+        if (catalogCategory === "available") {
+          return item.isAvailable !== false;
+        }
+        if (catalogCategory !== "all") {
+          return (item.category || "").toLowerCase() === (catalogCategory || "").toLowerCase();
+        }
+        return true;
+      }
+
+      // Standard retail category filter
       if (catalogCategory === "in_stock") {
         return (item.stockQuantity || 0) > 0;
       }
@@ -1043,18 +1096,28 @@ export default function InvoicingView({
 
       return true;
     });
-  }, [items, catalogSearch, catalogCategory]);
+  }, [items, catalogSearch, catalogCategory, isRestaurantMode, type]);
 
-  // Unique units for category filter chips
+  // Unique units for retail filter chips
   const itemUnits = useMemo(() => {
     const set = new Set(items.map(i => i.unit));
     return Array.from(set);
   }, [items]);
 
-  // Get quantity of an item currently in cart
+  // Unique menu categories for restaurant POS filter chips
+  const restaurantMenuCategories = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach(i => {
+      if (i.category && i.category.trim()) set.add(i.category.trim());
+    });
+    return Array.from(set);
+  }, [items]);
+
+  // Get quantity of an item currently in cart (across Full/Half variants)
   const getItemCartQuantity = (itemId: string) => {
-    const match = invoiceLines.find(l => l.itemId === itemId);
-    return match ? match.quantity : 0;
+    return invoiceLines
+      .filter(l => l.itemId === itemId)
+      .reduce((sum, l) => sum + (l.quantity || 0), 0);
   };
 
   // Park / Hold Current Bill
@@ -1939,19 +2002,37 @@ export default function InvoicingView({
                           mIdx === quickHighlightedIndex ? "bg-emerald-50 text-emerald-950 font-bold border-l-4 border-emerald-600" : "hover:bg-slate-50 text-slate-700"
                         }`}
                       >
-                        <div className="font-sans">
-                          <p className="font-semibold text-slate-900">{item.name}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">
-                            HSN: {item.hsn} • Barcode: {getItemAllBarcodes(item).join(", ") || "-"}
-                          </p>
+                        <div className="font-sans flex items-center gap-2">
+                          {isRestaurantMode && <DietaryMark type={item.dietaryType} />}
+                          <div>
+                            <p className="font-semibold text-slate-900">
+                              {item.name}
+                              {isRestaurantMode && item.shortCode ? (
+                                <span className="ml-1.5 text-[10px] font-mono text-slate-400">[{item.shortCode}]</span>
+                              ) : null}
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-mono">
+                              {isRestaurantMode
+                                ? `${item.category || "Menu"}${item.kitchenStation ? ` · ${item.kitchenStation}` : ""}`
+                                : `HSN: ${item.hsn} • Barcode: ${getItemAllBarcodes(item).join(", ") || "-"}`}
+                            </p>
+                          </div>
                         </div>
                         <div className="text-right shrink-0 font-mono">
                           <span className="text-xs font-bold text-slate-900 block">{formatINR(type === "purchase" ? item.purchasePrice : item.salePrice)}</span>
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
-                            item.stockQuantity <= item.minStockAlert ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"
-                          }`}>
-                            Stock: {item.stockQuantity} {item.unit}
-                          </span>
+                          {isRestaurantMode && type === "sale" && item.trackStock !== true ? (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                              item.isAvailable === false ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"
+                            }`}>
+                              {item.isAvailable === false ? "Sold Out" : item.unit || "PLATE"}
+                            </span>
+                          ) : (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                              item.stockQuantity <= item.minStockAlert ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"
+                            }`}>
+                              Stock: {item.stockQuantity} {item.unit}
+                            </span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1975,10 +2056,10 @@ export default function InvoicingView({
               <div className="flex items-center space-x-2">
                 <Grid className="w-4 h-4 text-slate-600" />
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-sans">
-                  Quick-Pick Catalog Tiles
+                  {isRestaurantMode && type === "sale" ? "Quick-Pick Menu Board" : "Quick-Pick Catalog Tiles"}
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono">
-                  ({filteredCatalogItems.length} items)
+                  ({filteredCatalogItems.length} {isRestaurantMode && type === "sale" ? "dishes" : "items"})
                 </span>
               </div>
 
@@ -1987,7 +2068,7 @@ export default function InvoicingView({
                 <div className="relative">
                   <input
                     type="text"
-                    placeholder="Filter catalog..."
+                    placeholder={isRestaurantMode ? "Filter menu or code..." : "Filter catalog..."}
                     value={catalogSearch}
                     onChange={(e) => setCatalogSearch(e.target.value)}
                     className="w-36 sm:w-48 pl-7 pr-2 py-1 text-xs border border-slate-200 rounded-lg outline-none bg-white focus:border-emerald-500"
@@ -2009,61 +2090,109 @@ export default function InvoicingView({
             {/* Category Chips Bar */}
             {showCatalog && (
               <>
-                <div className="px-3.5 py-2 border-b border-slate-100 flex flex-wrap items-center gap-1.5 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setCatalogCategory("all")}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      catalogCategory === "all" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    All Items
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCatalogCategory("in_stock")}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      catalogCategory === "in_stock" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    In Stock
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCatalogCategory("low_stock")}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      catalogCategory === "low_stock" ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                    }`}
-                  >
-                    Low Stock
-                  </button>
-                  {itemUnits.map(unit => (
+                {isRestaurantMode && type === "sale" ? (
+                  <div className="px-3.5 py-2 border-b border-slate-100 flex flex-wrap items-center gap-1.5 text-xs">
                     <button
-                      key={unit}
                       type="button"
-                      onClick={() => setCatalogCategory(unit)}
-                      className={`px-2 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
-                        catalogCategory === unit ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      onClick={() => setCatalogCategory("all")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        catalogCategory === "all" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
-                      {unit}
+                      All Menu
                     </button>
-                  ))}
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => setCatalogCategory("veg_only")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer inline-flex items-center gap-1 ${
+                        catalogCategory === "veg_only" ? "bg-emerald-700 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      Veg Only
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCatalogCategory("non_veg")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        catalogCategory === "non_veg" ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      Non-Veg / Egg
+                    </button>
+                    {restaurantMenuCategories.map(cat => (
+                      <button
+                        key={cat}
+                        type="button"
+                        onClick={() => setCatalogCategory(cat)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                          catalogCategory === cat ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3.5 py-2 border-b border-slate-100 flex flex-wrap items-center gap-1.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setCatalogCategory("all")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        catalogCategory === "all" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      All Items
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCatalogCategory("in_stock")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        catalogCategory === "in_stock" ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      In Stock
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCatalogCategory("low_stock")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        catalogCategory === "low_stock" ? "bg-rose-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      Low Stock
+                    </button>
+                    {itemUnits.map(unit => (
+                      <button
+                        key={unit}
+                        type="button"
+                        onClick={() => setCatalogCategory(unit)}
+                        className={`px-2 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                          catalogCategory === unit ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                        }`}
+                      >
+                        {unit}
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {/* Touch Item Tiles Grid */}
-                <div className="p-3.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-56 overflow-y-auto">
+                <div className="p-3.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5 max-h-60 overflow-y-auto">
                   {filteredCatalogItems.map(item => {
                     const inCartCount = getItemCartQuantity(item.id);
                     const isLowStock = item.stockQuantity <= item.minStockAlert;
+                    const isSoldOutMenu = isRestaurantMode && type === "sale" && item.isAvailable === false;
+                    const hasHalfPrice = isRestaurantMode && type === "sale" && Boolean(item.halfPrice && item.halfPrice > 0);
                     return (
                       <div
                         key={item.id}
-                        onClick={() => handleAddItemToCart(item, 1)}
-                        className={`p-2.5 rounded-xl border text-left cursor-pointer transition relative group flex flex-col justify-between select-none ${
-                          inCartCount > 0
-                            ? "border-emerald-500 bg-emerald-50/40 shadow-xs"
-                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 bg-white"
+                        onClick={() => !isSoldOutMenu && handleAddItemToCart(item, 1, hasHalfPrice ? 'Full' : undefined)}
+                        className={`p-2.5 rounded-xl border text-left transition relative group flex flex-col justify-between select-none ${
+                          isSoldOutMenu
+                            ? "border-slate-200 bg-slate-100/80 opacity-60 cursor-not-allowed"
+                            : inCartCount > 0
+                            ? "border-emerald-500 bg-emerald-50/40 shadow-xs cursor-pointer"
+                            : "border-slate-200 hover:border-slate-300 hover:bg-slate-50 bg-white cursor-pointer"
                         }`}
                       >
                         {inCartCount > 0 && (
@@ -2073,24 +2202,76 @@ export default function InvoicingView({
                         )}
 
                         <div>
-                          <p className="font-semibold text-xs text-slate-900 leading-tight line-clamp-2">
-                            {item.name}
-                          </p>
+                          <div className="flex items-start gap-1.5">
+                            {isRestaurantMode && (
+                              <div className="mt-0.5">
+                                <DietaryMark type={item.dietaryType} />
+                              </div>
+                            )}
+                            <p className="font-semibold text-xs text-slate-900 leading-tight line-clamp-2">
+                              {item.name}
+                            </p>
+                          </div>
                           <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-                            HSN: {item.hsn}
+                            {isRestaurantMode
+                              ? [item.shortCode, item.category || "Menu"].filter(Boolean).join(" · ")
+                              : `HSN: ${item.hsn}`}
                           </span>
                         </div>
 
-                        <div className="mt-2 pt-1 border-t border-slate-100/80 flex items-center justify-between">
-                          <span className="font-bold text-xs text-emerald-800 font-mono">
-                            {formatINR(type === "purchase" ? item.purchasePrice : item.salePrice)}
-                          </span>
-                          <span className={`text-[9.5px] px-1.5 py-0.2 rounded font-mono font-semibold ${
-                            isLowStock ? "text-rose-700 bg-rose-50" : "text-slate-500 bg-slate-100"
-                          }`}>
-                            {item.stockQuantity} {item.unit}
-                          </span>
-                        </div>
+                        {hasHalfPrice && !isSoldOutMenu ? (
+                          <div className="mt-2 pt-1.5 border-t border-slate-100/80 flex items-center justify-between gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddItemToCart(item, 1, 'Half');
+                              }}
+                              className="flex-1 py-1 px-1.5 rounded-md bg-slate-100 hover:bg-amber-100 text-slate-800 hover:text-amber-900 text-[10px] font-bold font-mono transition cursor-pointer text-center"
+                            >
+                              Half {formatINR(item.halfPrice || 0)}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddItemToCart(item, 1, 'Full');
+                              }}
+                              className="flex-1 py-1 px-1.5 rounded-md bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] font-bold font-mono transition cursor-pointer text-center"
+                            >
+                              Full {formatINR(item.salePrice)}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-2 pt-1 border-t border-slate-100/80 flex items-center justify-between">
+                            <span className="font-bold text-xs text-emerald-800 font-mono">
+                              {formatINR(type === "purchase" ? item.purchasePrice : item.salePrice)}
+                            </span>
+                            {isRestaurantMode && type === "sale" ? (
+                              isSoldOutMenu ? (
+                                <span className="text-[9.5px] px-1.5 py-0.5 rounded font-semibold bg-rose-100 text-rose-700">
+                                  Sold Out
+                                </span>
+                              ) : item.trackStock === true ? (
+                                <span className={`text-[9.5px] px-1.5 py-0.2 rounded font-mono font-semibold ${
+                                  isLowStock ? "text-rose-700 bg-rose-50" : "text-slate-500 bg-slate-100"
+                                }`}>
+                                  {item.stockQuantity} {item.unit}
+                                </span>
+                              ) : (
+                                <span className="text-[9.5px] text-slate-400 font-mono">
+                                  {item.unit || "PLATE"}
+                                </span>
+                              )
+                            ) : (
+                              <span className={`text-[9.5px] px-1.5 py-0.2 rounded font-mono font-semibold ${
+                                isLowStock ? "text-rose-700 bg-rose-50" : "text-slate-500 bg-slate-100"
+                              }`}>
+                                {item.stockQuantity} {item.unit}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -2182,9 +2363,20 @@ export default function InvoicingView({
                           <td className="py-2.5 px-2">
                             {line.itemId ? (
                               <div>
-                                <p className="font-bold text-slate-800 text-xs">{selectedItem?.name || "Item"}</p>
+                                <p className="font-bold text-slate-800 text-xs">
+                                  {selectedItem?.name || line.itemName || "Item"}
+                                  {line.portionLabel === 'Half' ? ' (Half)' : ''}
+                                </p>
                                 <span className="text-[10px] font-mono text-slate-400">
-                                  HSN: {selectedItem?.hsn || "-"} • Stock: {selectedItem?.stockQuantity} {selectedItem?.unit}
+                                  {isRestaurantMode && selectedItem?.trackStock !== true
+                                    ? [
+                                        selectedItem?.category || "Menu",
+                                        selectedItem?.kitchenStation,
+                                        line.portionLabel
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" · ")
+                                    : `HSN: ${selectedItem?.hsn || "-"} • Stock: ${selectedItem?.stockQuantity} ${selectedItem?.unit}`}
                                 </span>
                               </div>
                             ) : (
@@ -2945,10 +3137,12 @@ export default function InvoicingView({
           orderType={orderType}
           items={invoiceLines.map(l => {
             const it = items.find(i => i.id === l.itemId);
+            const baseName = it?.name || l.itemName || "Item";
             return {
-              name: it?.name || l.itemName || "Item",
+              name: l.portionLabel === 'Half' && !baseName.toLowerCase().includes("(half)") ? `${baseName} (Half)` : baseName,
               quantity: l.quantity,
-              unit: it?.unit || l.unit || "PCS"
+              unit: it?.unit || l.unit || "PCS",
+              kitchenStation: it?.kitchenStation
             };
           })}
           notes={notes}
