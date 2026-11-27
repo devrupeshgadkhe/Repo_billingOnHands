@@ -1,0 +1,81 @@
+name: Pre-Production Build and Validation
+
+on:
+  push:
+    branches:
+      - pre-production
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pre-production-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate-and-build:
+    name: Validate and Build Windows Installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: TypeScript validation
+        run: npm run lint
+
+      - name: Build web application and backend
+        run: npm run build
+
+      - name: Verify application icons
+        run: node scripts/ensure-icons.cjs
+
+      - name: Build Windows installer using existing production configuration
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Verify installer and update metadata
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "dist-desktop" -Filter "*.exe" | Where-Object { $_.Name -notlike "*unpacked*" } | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not generated." }
+          if ($installer.Length -lt 10MB) { throw "Windows installer is unexpectedly small: $($installer.Length) bytes." }
+
+          $metadata = Join-Path "dist-desktop" "latest.yml"
+          if (-not (Test-Path $metadata)) {
+            node scripts/ensure-latest-yml.cjs
+          }
+          if (-not (Test-Path $metadata)) { throw "latest.yml was not generated." }
+
+          $packageVersion = node -p "require('./package.json').version"
+          $metadataText = Get-Content $metadata -Raw
+          if ($metadataText -notmatch "(?m)^version: $([regex]::Escape($packageVersion))\s*$") {
+            throw "latest.yml version does not match package.json ($packageVersion)."
+          }
+
+          Write-Host "Installer: $($installer.Name) ($($installer.Length) bytes)"
+          Write-Host "Package version: $packageVersion"
+          Write-Host "Update metadata: verified"
+
+      - name: Upload pre-production build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: billing-on-hand-pre-production-${{ github.sha }}
+          path: |
+            dist-desktop/*.exe
+            dist-desktop/*.blockmap
+            dist-desktop/latest.yml
+          if-no-files-found: error
+          retention-days: 14
