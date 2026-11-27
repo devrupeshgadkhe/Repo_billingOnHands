@@ -19,7 +19,7 @@
 
 ## Verified Repository Findings
 - The current production release is `v1.1.20`; its installer is approximately 115 MB.
-- The existing workflow uses Node.js 20, `npm ci` (with a fallback to `npm install`), `npm run build`, and `npx electron-builder --win --x64 --publish never`.
+- The existing workflow uses Node.js 20, `npm ci || npm install`, `npm run build`, and `npx electron-builder --win --x64 --publish never`.
 - The production workflow auto-increments versions, pushes commits/tags, and publishes a stable GitHub Release. It must not be reused unchanged for beta publishing.
 - The existing updater uses the GitHub provider for this repository and sets `allowPrerelease = false`.
 - Electron `userData` is passed to the backend as `ELECTRON_USER_DATA`; the backend stores `data/db.json`, `install-lock.json`, and backups under that directory.
@@ -28,8 +28,9 @@
 
 ## Completed in This Task
 - Created `pre-production` from the current `main` head without modifying `main`.
-- Added `.github/workflows/pre-production.yml`. It reuses the production Node version, locked dependencies, build scripts, Electron Builder configuration, NSIS setup, and Windows x64 target. It uploads a test artifact and does not publish releases or tags.
+- Added `.github/workflows/pre-production.yml`. It reuses the production Node version, dependency installation fallback, build scripts, Electron Builder configuration, NSIS setup, and Windows x64 target. It uploads a test artifact and does not publish releases or tags.
 - Added `docs/PRE_PRODUCTION_AND_RELEASE_STRATEGY.md` documenting the branch policy, release bridge, data isolation, language requirements, and release safety.
+- The first CI attempt exposed an existing package manifest/lockfile mismatch: strict `npm ci` fails because many declared packages are missing from the lockfile. The workflow is being aligned with the production `npm ci || npm install` fallback; the lockfile must be repaired separately.
 
 ## Critical Compatibility Blocker
 The currently installed `v1.1.20` app has `allowPrerelease = false`. It cannot discover a GitHub prerelease. A small stable updater-bridge release must be built, tested, and published first. Existing installations can then receive the bridge through the current stable channel; only after that should beta prereleases be published.
@@ -42,18 +43,22 @@ The bridge must keep the production app identity and production data path. The p
 - Updater and data-path inspection: **COMPLETED**
 - Pre-production branch creation: **COMPLETED**
 - Pre-production workflow source added: **COMPLETED**
-- Windows CI run: **PENDING**
-- Local `npm ci`, lint, build, and installer verification: **PENDING**
+- Strict `npm ci` on current lockfile: **FAILED — manifest and lockfile out of sync**
+- Updated production-compatible dependency fallback: **COMMITTED; CI PENDING**
+- TypeScript validation: **PENDING**
+- Web/backend build: **PENDING**
+- Windows installer build: **PENDING**
 - Stable updater bridge: **NOT IMPLEMENTED**
 - Beta release: **NOT PUBLISHED**
 - Security remediation: **NOT STARTED**
 - Business Mode enhancements: **NOT STARTED**
-- Production deployment: **NOT AUTHORIZED / NOT READY**
+- Production deployment: **NOT READY**
 
 ## Next Actions
-1. Run and inspect the new pre-production GitHub Actions workflow.
-2. Verify the generated installer artifact and current production build parity.
-3. Implement isolated beta `userData` selection without changing the production data path.
-4. Implement the updater bridge in a separate, minimal change and validate the stable update path.
-5. Complete the stable bridge release before publishing beta releases.
-6. Continue security remediation and Business Mode improvements in separately testable milestones.
+1. Run and inspect the updated pre-production GitHub Actions workflow.
+2. Repair and validate the package lockfile without changing dependency versions unnecessarily.
+3. Verify the generated installer artifact and current production build parity.
+4. Implement isolated beta `userData` selection without changing the production data path.
+5. Implement the updater bridge in a separate, minimal change and validate the stable update path.
+6. Complete the stable bridge release before publishing beta releases.
+7. Continue security remediation and Business Mode improvements in separately testable milestones.
