@@ -35,6 +35,9 @@ jobs:
         shell: bash
         run: npm ci || npm install
 
+      - name: Verify release channel and data isolation rules
+        run: npm run test:release-channel
+
       - name: TypeScript validation
         run: npm run lint
 
