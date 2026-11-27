@@ -497,8 +497,13 @@ export default function InvoicingView({
     return "₹" + (val || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  // Sync / pre-populate form on editing or reset
+  // Sync / pre-populate form on editing or reset.
+  // When a restaurant table is being checked out, its persisted cart is the
+  // source of truth; do not let the generic new-sale reset clear that cart.
   useEffect(() => {
+    if (isRestaurantMode && selectedTableForPOS && !invoiceToEdit && !isReturnMode) {
+      return;
+    }
     if (invoiceToEdit) {
       setTxSubtype(invoiceToEdit.type as any);
       setSelectedPartyId(invoiceToEdit.partyId);
@@ -615,7 +620,7 @@ export default function InvoicingView({
         setInvoiceDate(new Date().toISOString().split("T")[0]);
       }
     }
-  }, [type, invoiceToEdit, isReturnMode, parties, relevantParties]);
+  }, [type, invoiceToEdit, isReturnMode, parties, relevantParties, isRestaurantMode, selectedTableForPOS]);
 
   // Restore the selected table's own persisted running order. Each table owns
   // a complete cart snapshot, so switching tables never mixes their items.
