@@ -3,7 +3,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const projectRoot = path.join(__dirname, '..');
-const distDesktop = path.join(projectRoot, 'dist-desktop');
+const outputDirectory = process.argv[2] || 'dist-desktop';
+const distDesktop = path.join(projectRoot, outputDirectory);
 
 if (!fs.existsSync(distDesktop)) {
   console.log('[ensure-latest-yml] dist-desktop does not exist yet.');
