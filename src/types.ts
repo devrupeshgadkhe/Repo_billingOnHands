@@ -540,6 +540,19 @@ export interface MiscTransaction {
   notes: string;
 }
 
+export interface RestaurantTableOrderLine {
+  itemId: string;
+  itemName?: string;
+  hsn?: string;
+  unit?: string;
+  quantity: number;
+  customPrice: number;
+  discount: number;
+  discountType?: 'percent' | 'amount';
+  gstRate: number;
+  portionLabel?: 'Full' | 'Half';
+}
+
 export interface RestaurantTable {
   id: string;
   tableNumber: string;
@@ -549,6 +562,10 @@ export interface RestaurantTable {
   currentOrderId?: string;
   currentOrderTotal?: number;
   runningItemsSummary?: string;
+  currentOrderItems?: RestaurantTableOrderLine[];
+  currentOrderExtraCharges?: Array<{ title: string; amount: number }>;
+  currentOrderNotes?: string;
+  currentOrderUpdatedAt?: string;
 }
 
 export interface InstallStatus {
