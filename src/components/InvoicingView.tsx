@@ -642,8 +642,31 @@ export default function InvoicingView({
     const savedOrderLines = Array.isArray(selectedTableForPOS.currentOrderItems)
       ? selectedTableForPOS.currentOrderItems
       : [];
-    if (savedOrderLines.length > 0) {
-      setInvoiceLines(savedOrderLines.map(line => ({ ...line })));
+    // Older persisted snapshots may contain rows that survived normalization
+    // but are not usable POS lines (for example, missing names/IDs or zero qty).
+    // Do not let a non-empty but invalid snapshot suppress summary recovery.
+    const restorableOrderLines = savedOrderLines
+      .filter(line => {
+        const quantity = Number(line?.quantity);
+        const catalogItem = items.find(item => item.id === line?.itemId);
+        return Number.isFinite(quantity) && quantity > 0 &&
+          Boolean(line?.itemName?.trim() || catalogItem?.name);
+      })
+      .map(line => {
+        const catalogItem = items.find(item => item.id === line.itemId);
+        return {
+          ...line,
+          itemName: line.itemName?.trim() || catalogItem?.name,
+          hsn: line.hsn || catalogItem?.hsn || "9999",
+          unit: line.unit || catalogItem?.unit || "PCS",
+          quantity: Number(line.quantity),
+          customPrice: Number.isFinite(Number(line.customPrice)) ? Number(line.customPrice) : (catalogItem?.salePrice || 0),
+          discount: Number.isFinite(Number(line.discount)) ? Number(line.discount) : 0,
+          gstRate: Number.isFinite(Number(line.gstRate)) ? Number(line.gstRate) : (catalogItem?.gstRate || 0)
+        };
+      });
+    if (restorableOrderLines.length > 0) {
+      setInvoiceLines(restorableOrderLines);
     } else if (selectedTableForPOS.runningItemsSummary?.trim()) {
       // Backward compatibility: older Beta versions stored only a summary
       // such as "2x Tea, 1x Coffee", not the full cart snapshot.
