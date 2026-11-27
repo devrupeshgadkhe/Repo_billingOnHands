@@ -8,11 +8,20 @@ const { app, BrowserWindow, Menu, ipcMain, shell, session, systemPreferences } =
 const path = require("path");
 const net = require("net");
 const { autoUpdater } = require("electron-updater");
+const { resolveUserDataPath, isPreProductionVersion } = require("./release-channel.cjs");
+
+// Select an isolated data directory for prerelease builds before the backend starts.
+const productionUserDataPath = app.getPath("userData");
+const selectedUserDataPath = resolveUserDataPath(app.getPath("appData"), app.getVersion(), productionUserDataPath);
+if (selectedUserDataPath !== productionUserDataPath) {
+  app.setPath("userData", selectedUserDataPath);
+  console.log("[Electron] Pre-production data isolation enabled.");
+}
 
 // Configure Auto-Updater
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
-autoUpdater.allowPrerelease = false;
+autoUpdater.allowPrerelease = isPreProductionVersion(app.getVersion());
 autoUpdater.allowDowngrade = true;
 autoUpdater.logger = console;
 // Disable differential download to avoid blockmap corruption/hangs
