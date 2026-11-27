@@ -35,6 +35,9 @@ jobs:
         shell: bash
         run: npm ci || npm install
 
+      - name: Install pinned Playwright runtime for Electron tests
+        run: npm install --no-save --no-package-lock playwright@1.58.2
+
       - name: Set unique Beta version
         run: node scripts/set-preproduction-version.cjs ${{ github.run_number }}
 
@@ -49,6 +52,20 @@ jobs:
 
       - name: Verify application icons
         run: node scripts/ensure-icons.cjs
+
+      - name: Run Playwright Electron desktop smoke test
+        run: npm run test:electron
+        env:
+          CI: "true"
+
+      - name: Upload Electron test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-smoke-test-results-${{ github.run_number }}
+          path: test-results/**
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Build isolated Beta Windows installer
         run: npx electron-builder --win --x64 --publish never
