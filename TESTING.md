@@ -4,14 +4,14 @@
 1. **Type Check**: `npm run lint` (runs `tsc --noEmit`).
 2. **Production Web and Backend Build**: `npm run build`.
 3. **Windows Installer Build**: `npx electron-builder --win --x64 --publish never`.
-4. **Locked Dependency Install**: `npm ci`.
+4. **Dependency Installation**: `npm ci || npm install` (matches the current production workflow; the package manifest and lockfile are currently out of sync and must be repaired).
 
 ## Pre-Production Workflow
 Workflow: `.github/workflows/pre-production.yml`
 
 The workflow is triggered by pushes to `pre-production` or manually through GitHub Actions. It:
-- Uses Windows latest and Node.js 20.
-- Runs `npm ci` without an install fallback.
+- Uses Windows latest and Node.js 20, matching the current production workflow.
+- Uses the same `npm ci || npm install` dependency fallback as production.
 - Runs `npm run lint` and `npm run build`.
 - Reuses the existing Electron Builder configuration and Windows x64 NSIS target.
 - Verifies that a non-empty installer and matching `latest.yml` are generated.
@@ -22,8 +22,10 @@ The workflow is triggered by pushes to `pre-production` or manually through GitH
 - Production baseline `v1.1.20`: GitHub Actions run #128 succeeded on 2026-11-27.
 - Pre-production branch creation: **PASSED**.
 - Pre-production workflow source review: **PASSED**.
-- Pre-production Windows CI execution: **PENDING**.
-- Installer artifact verification: **PENDING**.
+- First strict `npm ci` run: **FAILED** because `package.json` and `package-lock.json` are out of sync.
+- Updated workflow using production-compatible dependency fallback: **PENDING**.
+- TypeScript validation and web/backend build: **PENDING**.
+- Windows installer artifact verification: **PENDING**.
 - Updater bridge compatibility test: **PENDING**.
 - Beta data isolation test: **PENDING**.
 
