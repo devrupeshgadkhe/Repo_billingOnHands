@@ -151,6 +151,7 @@ export default function InvoicingView({
   // Restaurant & Dining Order States
   const [orderType, setOrderType] = useState<'dine_in' | 'takeaway' | 'delivery'>('dine_in');
   const [selectedTableId, setSelectedTableId] = useState<string>(() => selectedTableForPOS?.id || "");
+  const loadedTableIdRef = useRef<string>("");
   const [isKotModalOpen, setIsKotModalOpen] = useState(false);
 
   // Local additions from bill scanning
@@ -616,14 +617,23 @@ export default function InvoicingView({
     }
   }, [type, invoiceToEdit, isReturnMode, parties, relevantParties]);
 
-  // Synchronize incoming table selection from TablesView
+  // Restore the selected table's own persisted running order. Each table owns
+  // a complete cart snapshot, so switching tables never mixes their items.
   useEffect(() => {
-    if (selectedTableForPOS) {
-      setSelectedTableId(selectedTableForPOS.id);
-      setOrderType('dine_in');
-      setPartySearchText(`Table ${selectedTableForPOS.tableNumber} (Dine-In)`);
-      setSelectedPartyId("walkin_customer");
+    if (!selectedTableForPOS) {
+      loadedTableIdRef.current = "";
+      return;
     }
+    if (loadedTableIdRef.current === selectedTableForPOS.id) return;
+    loadedTableIdRef.current = selectedTableForPOS.id;
+    setSelectedTableId(selectedTableForPOS.id);
+    setOrderType('dine_in');
+    setPartySearchText(`Table ${selectedTableForPOS.tableNumber} (Dine-In)`);
+    setSelectedPartyId("walkin_customer");
+    setInvoiceLines((selectedTableForPOS.currentOrderItems || []).map(line => ({ ...line })));
+    setExtraCharges((selectedTableForPOS.currentOrderExtraCharges || []).map(charge => ({ ...charge })));
+    setNotes(selectedTableForPOS.currentOrderNotes || "");
+    setErrorText("");
   }, [selectedTableForPOS]);
 
   // Subtype toggle handler
@@ -1334,7 +1344,10 @@ export default function InvoicingView({
             status: "cleaning",
             currentOrderId: undefined,
             currentOrderTotal: 0,
-            runningItemsSummary: "Bill Settled - Ready for Cleaning"
+            runningItemsSummary: "Bill Settled - Ready for Cleaning",
+            currentOrderItems: [],
+            currentOrderExtraCharges: [],
+            currentOrderNotes: ""
           });
         }
         setSelectedTableId("");
@@ -1404,13 +1417,20 @@ export default function InvoicingView({
     if (!tbl || !onSaveTable) return;
     const summary = invoiceLines.map(l => {
       const it = items.find(i => i.id === l.itemId);
-      return `${l.quantity}x ${it?.name || 'Item'}`;
+      return `${l.quantity}x ${it?.name || l.itemName || 'Item'}`;
     }).join(", ");
+    // Save the complete current cart as this table's source of truth.
+    // Re-saving updates the snapshot; it never appends duplicate quantities.
     await onSaveTable({
       ...tbl,
       status: "occupied",
+      currentOrderId: tbl.currentOrderId || `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       currentOrderTotal: computedInvoiceDetails.grandTotal,
-      runningItemsSummary: summary
+      runningItemsSummary: summary,
+      currentOrderItems: invoiceLines.map(line => ({ ...line })),
+      currentOrderExtraCharges: extraCharges.filter(c => c.title.trim() && c.amount > 0).map(c => ({ ...c })),
+      currentOrderNotes: notes,
+      currentOrderUpdatedAt: new Date().toISOString()
     });
     playPOSSound('success');
     setQuickNotification(`Table ${tbl.tableNumber} is now marked Occupied with ₹${computedInvoiceDetails.grandTotal.toFixed(2)} running kitchen order!`);
