@@ -22,7 +22,8 @@
     "postinstall": "node patch-electron-builder.cjs || true",
     "electron:pack": "npm run clean && npm run build && node pack.cjs",
     "electron:build": "npm run clean && npm run build && electron-builder --win --x64",
-    "test:release-channel": "node scripts/test-release-channel.cjs"
+    "test:release-channel": "node scripts/test-release-channel.cjs",
+    "test:electron": "node scripts/electron-smoke-test.cjs"
   },
   "dependencies": {
     "@google/genai": "2.24.0",
