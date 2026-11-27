@@ -108,6 +108,7 @@
       "assets/**/*",
       "release-channel.cjs"
     ],
-    "asar": true
+    "asar": true,
+    "detectUpdateChannel": false
   }
 }
