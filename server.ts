@@ -2306,7 +2306,11 @@ app.post("/api/tables", (req, res) => {
       status: (["available", "occupied", "reserved", "cleaning"].includes(tbl?.status) ? tbl.status : "available") as RestaurantTable["status"],
       currentOrderId: tbl?.currentOrderId ? String(tbl.currentOrderId) : undefined,
       currentOrderTotal: Number(tbl?.currentOrderTotal) || 0,
-      runningItemsSummary: tbl?.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined
+      runningItemsSummary: tbl?.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
+      currentOrderItems: Array.isArray(tbl?.currentOrderItems) ? tbl.currentOrderItems : [],
+      currentOrderExtraCharges: Array.isArray(tbl?.currentOrderExtraCharges) ? tbl.currentOrderExtraCharges : [],
+      currentOrderNotes: tbl?.currentOrderNotes ? String(tbl.currentOrderNotes) : "",
+      currentOrderUpdatedAt: tbl?.currentOrderUpdatedAt ? String(tbl.currentOrderUpdatedAt) : undefined
     }));
     writeDb(db);
     res.json({ success: true, tables: db.tables });
@@ -2334,7 +2338,11 @@ app.post("/api/tables/item", (req, res) => {
       status: (["available", "occupied", "reserved", "cleaning"].includes(tbl.status) ? tbl.status : "available") as RestaurantTable["status"],
       currentOrderId: tbl.currentOrderId ? String(tbl.currentOrderId) : undefined,
       currentOrderTotal: Number(tbl.currentOrderTotal) || 0,
-      runningItemsSummary: tbl.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined
+      runningItemsSummary: tbl.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
+      currentOrderItems: Array.isArray(tbl.currentOrderItems) ? tbl.currentOrderItems : [],
+      currentOrderExtraCharges: Array.isArray(tbl.currentOrderExtraCharges) ? tbl.currentOrderExtraCharges : [],
+      currentOrderNotes: tbl.currentOrderNotes ? String(tbl.currentOrderNotes) : "",
+      currentOrderUpdatedAt: tbl.currentOrderUpdatedAt ? String(tbl.currentOrderUpdatedAt) : undefined
     };
 
     const existingIdx = db.tables.findIndex(t => t.id === sanitized.id);
