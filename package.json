@@ -55,17 +55,16 @@
     "typescript": "~5.8.2"
   },
   "build": {
-    "appId": "com.billingonhand.app",
-    "productName": "BillingOnHand",
+    "appId": "com.billingonhand.beta",
+    "productName": "BillingOnHand-Beta",
     "copyright": "Copyright © 2026 Rupesh Gadkhe. All rights reserved.",
     "icon": "build/icon.ico",
     "directories": {
-      "output": "dist-desktop"
+      "output": "dist-desktop-beta"
     },
     "publish": {
-      "provider": "github",
-      "owner": "devrupeshgadkhe",
-      "repo": "Repo_billingOnHands"
+      "provider": "generic",
+      "url": "https://github.com/devrupeshgadkhe/Repo_billingOnHands/releases/download/beta-latest/"
     },
     "win": {
       "icon": "build/icon.ico",
@@ -80,7 +79,7 @@
           ]
         }
       ],
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "BillingOnHand-Beta-Setup-${version}.${ext}"
     },
     "nsis": {
       "include": "scripts/installer.nsh",
@@ -91,12 +90,12 @@
       "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "BillingOnHand",
+      "shortcutName": "Billing On Hand Beta",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false,
-      "uninstallDisplayName": "BillingOnHand",
+      "uninstallDisplayName": "Billing On Hand Beta",
       "runAfterFinish": true
     },
     "files": [
