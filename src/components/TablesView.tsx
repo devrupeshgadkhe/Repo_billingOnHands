@@ -80,7 +80,10 @@ export default function TablesView({
         status: "available",
         currentOrderId: undefined,
         currentOrderTotal: 0,
-        runningItemsSummary: ""
+        runningItemsSummary: "",
+        currentOrderItems: [],
+        currentOrderExtraCharges: [],
+        currentOrderNotes: ""
       });
     } catch (err: any) {
       await showAlert({
@@ -121,7 +124,10 @@ export default function TablesView({
       status,
       currentOrderId: status === "available" || status === "cleaning" ? undefined : editingTable?.currentOrderId,
       currentOrderTotal: status === "available" || status === "cleaning" ? 0 : (editingTable?.currentOrderTotal || 0),
-      runningItemsSummary: status === "available" || status === "cleaning" ? "" : (editingTable?.runningItemsSummary || "")
+      runningItemsSummary: status === "available" || status === "cleaning" ? "" : (editingTable?.runningItemsSummary || ""),
+      currentOrderItems: status === "available" || status === "cleaning" ? [] : (editingTable?.currentOrderItems || []),
+      currentOrderExtraCharges: status === "available" || status === "cleaning" ? [] : (editingTable?.currentOrderExtraCharges || []),
+      currentOrderNotes: status === "available" || status === "cleaning" ? "" : (editingTable?.currentOrderNotes || "")
     };
 
     try {
