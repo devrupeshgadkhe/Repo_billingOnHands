@@ -68,7 +68,7 @@ All new UI labels, menus, titles, dialogs, validation messages, notifications, c
 - [x] Match the production dependency-installation fallback after the strict `npm ci` run exposed a lockfile mismatch.
 - [ ] Repair and verify the package lockfile.
 - [ ] Run the updated Windows workflow and verify the installer artifact.
-- [ ] Implement and test pre-production data-directory isolation.
+- [x] Implement prerelease-only data-directory selection and add automated tests; runtime CI validation is pending.
 - [ ] Implement and test updater bridge compatibility.
 - [ ] Publish and verify the stable updater bridge.
 - [ ] Publish and verify a beta prerelease.
