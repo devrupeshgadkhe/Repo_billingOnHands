@@ -29,7 +29,7 @@ assert.equal(packageConfig.build.appId, "com.billingonhand.beta");
 assert.equal(packageConfig.build.productName, "BillingOnHand-Beta");
 assert.equal(packageConfig.build.directories.output, "dist-desktop-beta");
 assert.equal(packageConfig.build.publish.provider, "generic");
-assert.match(packageConfig.build.publish.url, /releases\\/download\\/beta-latest\\/$/);
+assert.match(packageConfig.build.publish.url, /releases\/download\/beta-latest\/$/);
 assert.equal(packageConfig.build.detectUpdateChannel, false);
 assert.equal(packageConfig.build.nsis.shortcutName, "Billing On Hand Beta");
 assert.equal(packageConfig.build.nsis.uninstallDisplayName, "Billing On Hand Beta");
