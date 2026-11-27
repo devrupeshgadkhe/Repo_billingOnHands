@@ -87,7 +87,7 @@ jobs:
           }
           if ($LASTEXITCODE -ne 0) { throw "Unable to create or update the Beta prerelease." }
 
-          gh release upload $tag dist-desktop-beta/*.exe dist-desktop-beta/*.blockmap dist-desktop-beta/latest.yml --repo $env:GITHUB_REPOSITORY --clobber
+          gh release upload $tag dist-desktop-beta/*.exe dist-desktop-beta/latest.yml --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { throw "Unable to upload Beta installer and update metadata." }
 
       - name: Upload build artifact for manual installation and inspection
@@ -96,7 +96,6 @@ jobs:
           name: billing-on-hand-beta-${{ github.sha }}
           path: |
             dist-desktop-beta/*.exe
-            dist-desktop-beta/*.blockmap
             dist-desktop-beta/latest.yml
           if-no-files-found: error
           retention-days: 14
