@@ -620,6 +620,10 @@ export default function InvoicingView({
   // Restore the selected table's own persisted running order. Each table owns
   // a complete cart snapshot, so switching tables never mixes their items.
   useEffect(() => {
+    if (!isRestaurantMode) {
+      loadedTableIdRef.current = "";
+      return;
+    }
     if (!selectedTableForPOS) {
       loadedTableIdRef.current = "";
       return;
@@ -634,7 +638,7 @@ export default function InvoicingView({
     setExtraCharges((selectedTableForPOS.currentOrderExtraCharges || []).map(charge => ({ ...charge })));
     setNotes(selectedTableForPOS.currentOrderNotes || "");
     setErrorText("");
-  }, [selectedTableForPOS]);
+  }, [selectedTableForPOS, isRestaurantMode]);
 
   // Subtype toggle handler
   const handleToggleSubtype = (newSub: 'sale' | 'purchase' | 'sale_return' | 'purchase_return') => {
@@ -1326,9 +1330,9 @@ export default function InvoicingView({
       sourceChallanNumber,
       sourceQuotationId,
       sourceQuotationNumber,
-      tableId: selectedTableId || undefined,
-      tableNumber: (tables.find(t => t.id === selectedTableId)?.tableNumber) || undefined,
-      orderType: (business?.businessType === "restaurant" || selectedTableId) ? orderType : undefined
+      tableId: isRestaurantMode ? (selectedTableId || undefined) : undefined,
+      tableNumber: isRestaurantMode ? (tables.find(t => t.id === selectedTableId)?.tableNumber) : undefined,
+      orderType: isRestaurantMode ? orderType : undefined
     };
 
     try {
@@ -1336,7 +1340,7 @@ export default function InvoicingView({
       playPOSSound('success');
 
       // If dining table was attached, mark table as Needs Cleaning after settlement
-      if (selectedTableId && onSaveTable) {
+      if (isRestaurantMode && selectedTableId && onSaveTable) {
         const tbl = tables.find(t => t.id === selectedTableId);
         if (tbl) {
           await onSaveTable({
@@ -1405,6 +1409,7 @@ export default function InvoicingView({
   };
 
   const handleSaveRunningTableKOT = async () => {
+    if (!isRestaurantMode) return;
     if (!selectedTableId) {
       setErrorText("Please select a dining table to attach this running kitchen order.");
       return;
