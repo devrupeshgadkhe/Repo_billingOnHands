@@ -79,16 +79,39 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $tag = "beta-latest"
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release edit $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title "Billing On Hand Beta"
+          $releaseEndpoint = "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag"
+          $releaseJson = gh api $releaseEndpoint 2>$null
+          $releaseId = $null
+
+          if ($LASTEXITCODE -eq 0 -and $releaseJson) {
+            $release = $releaseJson | ConvertFrom-Json
+            $releaseId = $release.id
+            Write-Host "Updating existing Beta release ID: $releaseId"
+
+            gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$env:GITHUB_SHA" -F force=true
+            if ($LASTEXITCODE -ne 0) { throw "Unable to move the rolling Beta tag to the current build." }
+
+            gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$releaseId" -f name="Billing On Hand Beta" -F prerelease=true -f target_commitish="$env:GITHUB_SHA"
+            if ($LASTEXITCODE -ne 0) { throw "Unable to update the existing Beta release." }
           } else {
+            Write-Host "No existing Beta release found. Creating it."
             gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title "Billing On Hand Beta" --notes "Rolling Pre-Production Beta update channel. Not for production use."
+            if ($LASTEXITCODE -ne 0) { throw "Unable to create the Beta prerelease." }
           }
-          if ($LASTEXITCODE -ne 0) { throw "Unable to create or update the Beta prerelease." }
 
           gh release upload $tag dist-desktop-beta/*.exe dist-desktop-beta/latest.yml --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { throw "Unable to upload Beta installer and update metadata." }
+
+          $published = gh api $releaseEndpoint
+          if ($LASTEXITCODE -ne 0) { throw "Unable to verify the published Beta release." }
+          $publishedRelease = $published | ConvertFrom-Json
+          $requiredAssets = @("latest.yml")
+          foreach ($assetName in $requiredAssets) {
+            if (-not ($publishedRelease.assets | Where-Object { $_.name -eq $assetName })) {
+              throw "Published Beta release is missing required asset: $assetName"
+            }
+          }
+          Write-Host "Verified Beta release $tag (ID: $($publishedRelease.id)) and latest.yml."
 
       - name: Upload build artifact for manual installation and inspection
         uses: actions/upload-artifact@v4
