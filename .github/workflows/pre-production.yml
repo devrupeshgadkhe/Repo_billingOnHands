@@ -1,4 +1,4 @@
-name: Pre-Production Build and Validation
+name: Pre-Production Build, Beta Release and Validation
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pre-production-${{ github.ref }}
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   validate-and-build:
-    name: Validate and Build Windows Installer
+    name: Validate and Build Isolated Beta Installer
     runs-on: windows-latest
     timeout-minutes: 45
 
@@ -31,9 +31,12 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies using the existing production fallback
+      - name: Install dependencies
         shell: bash
         run: npm ci || npm install
+
+      - name: Set unique Beta version
+        run: node scripts/set-preproduction-version.cjs ${{ github.run_number }}
 
       - name: Verify release channel and data isolation rules
         run: npm run test:release-channel
@@ -47,39 +50,53 @@ jobs:
       - name: Verify application icons
         run: node scripts/ensure-icons.cjs
 
-      - name: Build Windows installer using existing production configuration
+      - name: Build isolated Beta Windows installer
         run: npx electron-builder --win --x64 --publish never
 
-      - name: Verify installer and update metadata
+      - name: Verify installer and generate update metadata
         shell: pwsh
         run: |
-          $installer = Get-ChildItem -Path "dist-desktop" -Filter "*.exe" | Where-Object { $_.Name -notlike "*unpacked*" } | Select-Object -First 1
-          if (-not $installer) { throw "Windows installer was not generated." }
-          if ($installer.Length -lt 10MB) { throw "Windows installer is unexpectedly small: $($installer.Length) bytes." }
+          $installer = Get-ChildItem -Path "dist-desktop-beta" -Filter "*.exe" | Where-Object { $_.Name -notlike "*unpacked*" } | Select-Object -First 1
+          if (-not $installer) { throw "Beta Windows installer was not generated." }
+          if ($installer.Length -lt 10MB) { throw "Beta installer is unexpectedly small: $($installer.Length) bytes." }
 
-          $metadata = Join-Path "dist-desktop" "latest.yml"
-          if (-not (Test-Path $metadata)) {
-            node scripts/ensure-latest-yml.cjs
-          }
-          if (-not (Test-Path $metadata)) { throw "latest.yml was not generated." }
+          node scripts/ensure-latest-yml.cjs dist-desktop-beta
+          $metadata = Join-Path "dist-desktop-beta" "latest.yml"
+          if (-not (Test-Path $metadata)) { throw "Beta latest.yml was not generated." }
 
           $packageVersion = node -p "require('./package.json').version"
           $metadataText = Get-Content $metadata -Raw
           if ($metadataText -notmatch "(?m)^version: $([regex]::Escape($packageVersion))\s*$") {
-            throw "latest.yml version does not match package.json ($packageVersion)."
+            throw "Beta latest.yml version does not match package.json ($packageVersion)."
           }
+          Write-Host "Beta installer: $($installer.Name) ($($installer.Length) bytes)"
+          Write-Host "Beta package version: $packageVersion"
+          Write-Host "Beta update metadata: verified"
 
-          Write-Host "Installer: $($installer.Name) ($($installer.Length) bytes)"
-          Write-Host "Package version: $packageVersion"
-          Write-Host "Update metadata: verified"
+      - name: Publish or update the rolling Beta prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "beta-latest"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title "Billing On Hand Beta"
+          } else {
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title "Billing On Hand Beta" --notes "Rolling Pre-Production Beta update channel. Not for production use."
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Unable to create or update the Beta prerelease." }
 
-      - name: Upload pre-production build artifact
+          gh release upload $tag dist-desktop-beta/*.exe dist-desktop-beta/*.blockmap dist-desktop-beta/latest.yml --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Unable to upload Beta installer and update metadata." }
+
+      - name: Upload build artifact for manual installation and inspection
         uses: actions/upload-artifact@v4
         with:
-          name: billing-on-hand-pre-production-${{ github.sha }}
+          name: billing-on-hand-beta-${{ github.sha }}
           path: |
-            dist-desktop/*.exe
-            dist-desktop/*.blockmap
-            dist-desktop/latest.yml
+            dist-desktop-beta/*.exe
+            dist-desktop-beta/*.blockmap
+            dist-desktop-beta/latest.yml
           if-no-files-found: error
           retention-days: 14
