@@ -639,11 +639,47 @@ export default function InvoicingView({
     setOrderType('dine_in');
     setPartySearchText(`Table ${selectedTableForPOS.tableNumber} (Dine-In)`);
     setSelectedPartyId("walkin_customer");
-    setInvoiceLines((selectedTableForPOS.currentOrderItems || []).map(line => ({ ...line })));
+    const savedOrderLines = Array.isArray(selectedTableForPOS.currentOrderItems)
+      ? selectedTableForPOS.currentOrderItems
+      : [];
+    if (savedOrderLines.length > 0) {
+      setInvoiceLines(savedOrderLines.map(line => ({ ...line })));
+    } else if (selectedTableForPOS.runningItemsSummary?.trim()) {
+      // Backward compatibility: older Beta versions stored only a summary
+      // such as "2x Tea, 1x Coffee", not the full cart snapshot.
+      const legacyLines = selectedTableForPOS.runningItemsSummary
+        .split(/,\\s*(?=\\d+(?:\\.\\d+)?\\s*x\\s*)/i)
+        .map(part => {
+          const match = part.trim().match(/^(\\d+(?:\\.\\d+)?)\\s*x\\s*(.+)$/i);
+          if (!match) return null;
+          const quantity = Number(match[1]);
+          const itemName = match[2].trim();
+          const catalogItem = items.find(item => item.name.trim().toLowerCase() === itemName.toLowerCase());
+          return {
+            itemId: catalogItem?.id || "",
+            itemName: catalogItem?.name || itemName,
+            hsn: catalogItem?.hsn || "9999",
+            unit: catalogItem?.unit || "PCS",
+            quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+            customPrice: catalogItem?.salePrice || 0,
+            discount: 0,
+            discountType: "percent" as const,
+            gstRate: catalogItem?.gstRate || 0
+          };
+        })
+        .filter((line): line is NonNullable<typeof line> => Boolean(line));
+      setInvoiceLines(legacyLines);
+      if (legacyLines.length > 0) {
+        setQuickNotification("Older table order recovered from its item summary. Please verify prices and discounts before checkout.");
+        setTimeout(() => setQuickNotification(""), 7000);
+      }
+    } else {
+      setInvoiceLines([]);
+    }
     setExtraCharges((selectedTableForPOS.currentOrderExtraCharges || []).map(charge => ({ ...charge })));
     setNotes(selectedTableForPOS.currentOrderNotes || "");
     setErrorText("");
-  }, [selectedTableForPOS, isRestaurantMode]);
+  }, [selectedTableForPOS, isRestaurantMode, items]);
 
   // Subtype toggle handler
   const handleToggleSubtype = (newSub: 'sale' | 'purchase' | 'sale_return' | 'purchase_return') => {
