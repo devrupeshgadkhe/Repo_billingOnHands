@@ -1,10 +1,11 @@
 # TESTING.md — Verification & Testing Guide
 
 ## Automated Verification Commands
-1. **Type Check**: `npm run lint` (runs `tsc --noEmit`).
-2. **Production Web and Backend Build**: `npm run build`.
-3. **Windows Installer Build**: `npx electron-builder --win --x64 --publish never`.
-4. **Dependency Installation**: `npm ci || npm install` (matches the current production workflow; the package manifest and lockfile are currently out of sync and must be repaired).
+1. **Release channel and data isolation**: `npm run test:release-channel`.
+2. **Type Check**: `npm run lint` (runs `tsc --noEmit`).
+3. **Production Web and Backend Build**: `npm run build`.
+4. **Windows Installer Build**: `npx electron-builder --win --x64 --publish never`.
+5. **Dependency Installation**: `npm ci || npm install` (matches the current production workflow; the package manifest and lockfile are currently out of sync and must be repaired).
 
 ## Pre-Production Workflow
 Workflow: `.github/workflows/pre-production.yml`
@@ -12,7 +13,7 @@ Workflow: `.github/workflows/pre-production.yml`
 The workflow is triggered by pushes to `pre-production` or manually through GitHub Actions. It:
 - Uses Windows latest and Node.js 20, matching the current production workflow.
 - Uses the same `npm ci || npm install` dependency fallback as production.
-- Runs `npm run lint` and `npm run build`.
+- Runs `npm run test:release-channel`, `npm run lint`, and `npm run build`.
 - Reuses the existing Electron Builder configuration and Windows x64 NSIS target.
 - Verifies that a non-empty installer and matching `latest.yml` are generated.
 - Uploads an artifact for manual testing.
@@ -21,15 +22,17 @@ The workflow is triggered by pushes to `pre-production` or manually through GitH
 ## Current Verification Status
 - Production baseline `v1.1.20`: GitHub Actions run #128 succeeded on 2026-11-27.
 - Pre-production branch creation: **PASSED**.
-- Pre-production workflow source review: **PASSED**.
 - First strict `npm ci` run: **FAILED** because `package.json` and `package-lock.json` are out of sync.
-- Updated workflow using production-compatible dependency fallback: **PENDING**.
-- TypeScript validation and web/backend build: **PENDING**.
+- Production-compatible dependency fallback: **PASSED**.
+- Initial baseline TypeScript validation: **PASSED**.
+- Initial baseline web/backend build: **PASSED**.
+- Initial baseline Windows installer packaging: **IN PROGRESS**.
+- Release-channel/data-isolation unit test on latest commit: **PENDING**.
 - Windows installer artifact verification: **PENDING**.
 - Updater bridge compatibility test: **PENDING**.
-- Beta data isolation test: **PENDING**.
+- Beta data isolation runtime test: **PENDING**.
 
-Do not report the pre-production build or deployment as successful until the GitHub Actions run and artifact have been inspected.
+Do not report the pre-production build or deployment as successful until the latest GitHub Actions run and artifact have been inspected.
 
 ## Existing Feature Regression Tests
 - Restaurant menu item creation/editing, availability toggle, Half/Full pricing, KOT kitchen station labels, and `trackStock === false` stock behavior.
