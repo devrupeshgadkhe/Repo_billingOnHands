@@ -1258,8 +1258,23 @@ export default function App() {
               onSaveTable={handleSaveTable}
               onDeleteTable={handleDeleteTable}
               onSeedTables={handleSeedTables}
-              onOpenTablePOS={(t) => {
-                setActiveTableForPOS(t);
+              onOpenTablePOS={async (t) => {
+                // Re-read the persisted table before opening checkout so the
+                // Sales screen always receives the latest saved order snapshot.
+                let tableToOpen = t;
+                try {
+                  const latestResponse = await fetch("/api/db");
+                  if (latestResponse.ok) {
+                    const latestDb: DatabaseState = await latestResponse.json();
+                    if (latestDb && Array.isArray(latestDb.tables)) {
+                      setDbState(latestDb);
+                      tableToOpen = latestDb.tables.find(table => table.id === t.id) || t;
+                    }
+                  }
+                } catch (error) {
+                  console.warn("Could not refresh table order before checkout; using current table data.", error);
+                }
+                setActiveTableForPOS(tableToOpen);
                 setActiveTab("sales");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
