@@ -28,9 +28,13 @@
 
 ## Completed in This Task
 - Created `pre-production` from the current `main` head without modifying `main`.
-- Added `.github/workflows/pre-production.yml`. It reuses the production Node version, dependency installation fallback, build scripts, Electron Builder configuration, NSIS setup, and Windows x64 target. It uploads a test artifact and does not publish releases or tags.
-- Added `docs/PRE_PRODUCTION_AND_RELEASE_STRATEGY.md` documenting the branch policy, release bridge, data isolation, language requirements, and release safety.
-- The first CI attempt exposed an existing package manifest/lockfile mismatch: strict `npm ci` fails because many declared packages are missing from the lockfile. The workflow is being aligned with the production `npm ci || npm install` fallback; the lockfile must be repaired separately.
+- Added `.github/workflows/pre-production.yml`. It mirrors the production dependency fallback, Node version, build scripts, Electron Builder configuration, NSIS setup, and Windows x64 target. It uploads a test artifact and does not publish releases or tags.
+- Added `docs/PRE_PRODUCTION_AND_RELEASE_STRATEGY.md`.
+- Updated `AGENTS.md`, `CURRENT_TASK.md`, and `TESTING.md` with English-only UI/code requirements and the pre-production branch policy.
+- Added `release-channel.cjs` to select a dedicated `BillingOnHand-PreProduction` user-data directory for prerelease versions while preserving the exact existing production user-data path for stable versions.
+- Added `scripts/test-release-channel.cjs` and the `test:release-channel` npm script to cover stable, beta, alpha, and release-candidate version behavior.
+- Added the release-channel/data-isolation test to the pre-production workflow.
+- The first strict `npm ci` run exposed a package manifest/lockfile mismatch. The workflow now mirrors the existing production `npm ci || npm install` fallback; lockfile repair remains tracked.
 
 ## Critical Compatibility Blocker
 The currently installed `v1.1.20` app has `allowPrerelease = false`. It cannot discover a GitHub prerelease. A small stable updater-bridge release must be built, tested, and published first. Existing installations can then receive the bridge through the current stable channel; only after that should beta prereleases be published.
@@ -38,16 +42,15 @@ The currently installed `v1.1.20` app has `allowPrerelease = false`. It cannot d
 The bridge must keep the production app identity and production data path. The prerelease build must use the same installer identity for in-place updating, but switch to a separate deterministic beta `userData` directory before the backend starts. Switching back to a stable build must restore the original production data path.
 
 ## Tests and Release Status
-- Repository inspection: **COMPLETED**
-- Production workflow source inspection: **COMPLETED**
-- Updater and data-path inspection: **COMPLETED**
-- Pre-production branch creation: **COMPLETED**
-- Pre-production workflow source added: **COMPLETED**
-- Strict `npm ci` on current lockfile: **FAILED — manifest and lockfile out of sync**
-- Updated production-compatible dependency fallback: **COMMITTED; CI PENDING**
-- TypeScript validation: **PENDING**
-- Web/backend build: **PENDING**
-- Windows installer build: **PENDING**
+- Repository and production workflow inspection: **COMPLETED**
+- Pre-production branch creation: **PASSED**
+- First strict `npm ci` attempt: **FAILED — manifest and lockfile out of sync**
+- Production-compatible dependency fallback: **PASSED** in the initial baseline CI run
+- Initial baseline TypeScript validation: **PASSED**
+- Initial baseline web/backend build: **PASSED**
+- Initial baseline Windows installer packaging: **IN PROGRESS**
+- Release-channel/data-isolation unit test: **ADDED; LATEST CI PENDING**
+- Windows installer artifact verification: **PENDING**
 - Stable updater bridge: **NOT IMPLEMENTED**
 - Beta release: **NOT PUBLISHED**
 - Security remediation: **NOT STARTED**
@@ -55,10 +58,9 @@ The bridge must keep the production app identity and production data path. The p
 - Production deployment: **NOT READY**
 
 ## Next Actions
-1. Run and inspect the updated pre-production GitHub Actions workflow.
-2. Repair and validate the package lockfile without changing dependency versions unnecessarily.
-3. Verify the generated installer artifact and current production build parity.
-4. Implement isolated beta `userData` selection without changing the production data path.
-5. Implement the updater bridge in a separate, minimal change and validate the stable update path.
-6. Complete the stable bridge release before publishing beta releases.
-7. Continue security remediation and Business Mode improvements in separately testable milestones.
+1. Complete and inspect the current Windows packaging run.
+2. Ensure the latest commit runs the new release-channel/data-isolation test and produces a valid Windows installer.
+3. Repair and validate the package lockfile without changing dependency versions unnecessarily.
+4. Implement and test updater bridge compatibility.
+5. Complete the stable bridge release before publishing beta releases.
+6. Continue security remediation and Business Mode improvements in separately testable milestones.
