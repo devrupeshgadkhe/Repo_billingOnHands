@@ -12,7 +12,12 @@ const { resolveUserDataPath, isPreProductionVersion } = require("./release-chann
 
 // Select an isolated data directory for prerelease builds before the backend starts.
 const productionUserDataPath = app.getPath("userData");
-const selectedUserDataPath = resolveUserDataPath(app.getPath("appData"), app.getVersion(), productionUserDataPath);
+const selectedUserDataPath = resolveUserDataPath(
+  app.getPath("appData"),
+  app.getVersion(),
+  productionUserDataPath,
+  app.getName()
+);
 if (selectedUserDataPath !== productionUserDataPath) {
   app.setPath("userData", selectedUserDataPath);
   console.log("[Electron] Pre-production data isolation enabled.");
@@ -21,8 +26,8 @@ if (selectedUserDataPath !== productionUserDataPath) {
 // Configure Auto-Updater
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
-autoUpdater.allowPrerelease = isPreProductionVersion(app.getVersion());
-autoUpdater.allowDowngrade = true;
+autoUpdater.allowPrerelease = true;
+autoUpdater.allowDowngrade = false;
 autoUpdater.logger = console;
 // Disable differential download to avoid blockmap corruption/hangs
 autoUpdater.disableDifferentialDownload = true;
@@ -30,9 +35,8 @@ autoUpdater.disableWebInstaller = true;
 // Explicitly set GitHub feed
 try {
   autoUpdater.setFeedURL({
-    provider: "github",
-    owner: "devrupeshgadkhe",
-    repo: "Repo_billingOnHands"
+    provider: "generic",
+    url: "https://github.com/devrupeshgadkhe/Repo_billingOnHands/releases/download/beta-latest/"
   });
 } catch {}
 // Bypass code signature check so unsigned releases install smoothly without hanging at 100%
