@@ -28,6 +28,7 @@ autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.allowPrerelease = true;
 autoUpdater.allowDowngrade = false;
+autoUpdater.channel = "latest";
 autoUpdater.logger = console;
 // Disable differential download to avoid blockmap corruption/hangs
 autoUpdater.disableDifferentialDownload = true;
