@@ -633,6 +633,10 @@ export default function InvoicingView({
       loadedTableIdRef.current = "";
       return;
     }
+    // The POS can mount before its item catalog has loaded. Do not mark this
+    // table as restored until catalog data is ready; otherwise the effect's
+    // items dependency reruns but the table-ID guard skips the actual restore.
+    if (items.length === 0) return;
     if (loadedTableIdRef.current === selectedTableForPOS.id) return;
     loadedTableIdRef.current = selectedTableForPOS.id;
     setSelectedTableId(selectedTableForPOS.id);
