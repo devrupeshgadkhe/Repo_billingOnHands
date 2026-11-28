@@ -660,7 +660,7 @@ export default function InvoicingView({
     setInvoiceNumber(tableBillNumber);
     setInvoiceDate(savedDraft?.invoiceDate || new Date().toISOString().split("T")[0]);
     setOrderType(savedDraft?.orderType || 'dine_in');
-    setPartySearchText(savedDraft?.partySearchText || savedDraft?.partyName || `Table ${selectedTableForPOS.tableNumber} (Dine-In)`);
+    setPartySearchText(savedDraft?.partySearchText || savedDraft?.partyName || "Walk-in Customer (Cash Sale)");
     setSelectedPartyId(savedDraft?.selectedPartyId || "walkin_customer");
     setPaymentType(savedDraft?.paymentType || "cash");
     setPaidAmt(Number(savedDraft?.paidAmount) || 0);
@@ -1386,7 +1386,16 @@ export default function InvoicingView({
 
     if (effectivePartyId === "walkin_customer") {
       const existingCash = (relevantParties || []).find(p => (p.name || "").toLowerCase().includes("cash") || (p.name || "").toLowerCase().includes("walk-in") || (p.name || "").toLowerCase().includes("counter"));
-      if (existingCash) {
+      const typedRestaurantCustomer = isRestaurantMode &&
+        partySearchText.trim() &&
+        !/^(walk[\s-]?in|cash sale|counter sale)/i.test(partySearchText.trim());
+      if (typedRestaurantCustomer) {
+        // In Restaurant mode a manually entered guest name must not be
+        // replaced by the generic Cash Customer record.
+        resolvedPartyId = "walkin_customer";
+        resolvedPartyName = partySearchText.trim();
+        resolvedPartyGstin = "";
+      } else if (existingCash) {
         resolvedPartyId = existingCash.id;
         resolvedPartyName = existingCash.name;
         resolvedPartyGstin = existingCash.gstin || "";
@@ -1541,7 +1550,9 @@ export default function InvoicingView({
         invoiceDate,
         selectedPartyId,
         partySearchText,
-        partyName: activeParty?.name || partySearchText || "",
+        partyName: selectedPartyId === "walkin_customer"
+          ? (partySearchText.trim() || activeParty?.name || "")
+          : (activeParty?.name || partySearchText || ""),
         partyGstin: activeParty?.gstin || "",
         notes,
         paymentType,
