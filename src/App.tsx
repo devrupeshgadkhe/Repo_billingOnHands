@@ -1087,7 +1087,8 @@ export default function App() {
             </button>
             <span className="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 hidden sm:inline-block"></span>
             
-
+            {/* Digital Munimji Launcher Slot */}
+            <div id="munimji-launcher-slot" className="flex items-center gap-2"></div>
           </div>
 
           <div className="flex items-center space-x-3 sm:space-x-4">

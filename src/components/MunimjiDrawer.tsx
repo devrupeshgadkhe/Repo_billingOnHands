@@ -8,6 +8,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   Mic,
   MicOff,
@@ -1364,64 +1365,82 @@ export default function MunimjiDrawer({
     reader.readAsDataURL(file);
   };
 
-  return (
-    <>
-      {/* 1. FLOATING LAUNCHER BUTTON WITH 3D MUNIMJI CLIPART */}
-      <div className="fixed bottom-5 right-6 z-40 flex items-center gap-2 select-none print:hidden">
-        {!isOpen && (
-          <div className="hidden sm:flex items-center gap-2 bg-white/95 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-lg border border-amber-200 text-xs font-semibold text-slate-700">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-200"></span>
-            <span>{t.floatingHint}</span>
+  const [mountedSlot, setMountedSlot] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const updateSlot = () => {
+      const slot = document.getElementById("munimji-launcher-slot");
+      setMountedSlot(slot);
+    };
+    updateSlot();
+    const interval = setInterval(updateSlot, 400);
+    return () => clearInterval(interval);
+  }, []);
+
+  const launcherContent = (
+    <div className="flex items-center gap-2 select-none print:hidden">
+      {!isOpen && (
+        <div className="hidden md:flex items-center gap-1.5 bg-white px-3 py-1 rounded-full shadow-xs border border-amber-200 text-xs font-semibold text-slate-700">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-200"></span>
+          <span>{t.floatingHint}</span>
+        </div>
+      )}
+
+      <button
+        onClick={() => {
+          if (isOpen) {
+            onClose();
+          } else {
+            onOpen();
+          }
+        }}
+        className={`relative p-1 rounded-xl shadow-md transition-all duration-300 flex items-center justify-center group ${
+          isOpen
+            ? "bg-slate-800 text-white hover:bg-slate-900"
+            : isRecording
+            ? "bg-rose-600 ring-4 ring-rose-200 scale-105 animate-bounce"
+            : "bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-500 hover:scale-105 hover:shadow-amber-500/30"
+        }`}
+        title={t.floatingHint}
+      >
+        {isOpen ? (
+          <div className="w-9 h-9 flex items-center justify-center">
+            <X className="w-5 h-5 text-white" />
+          </div>
+        ) : isRecording ? (
+          <div className="w-9 h-9 flex items-center justify-center">
+            <Mic className="w-6 h-6 text-white animate-pulse" />
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 px-0.5">
+            <img
+              src={munimji3DAvatar}
+              alt="3D Munimji"
+              className="w-9 h-9 rounded-lg object-cover border-2 border-white shadow-xs group-hover:scale-105 transition-transform"
+            />
+            <span className="text-xs font-extrabold text-white pr-1 tracking-wide hidden sm:inline-block">
+              {t.floatingBtn}
+            </span>
           </div>
         )}
 
-        <button
-          onClick={() => {
-            if (isOpen) {
-              onClose();
-            } else {
-              onOpen();
-            }
-          }}
-          className={`relative p-1.5 sm:p-2 rounded-2xl shadow-2xl transition-all duration-300 flex items-center justify-center group ${
-            isOpen
-              ? "bg-slate-800 text-white hover:bg-slate-900"
-              : isRecording
-              ? "bg-rose-600 ring-8 ring-rose-200 scale-110 animate-bounce"
-              : "bg-gradient-to-tr from-amber-600 via-amber-500 to-yellow-500 hover:scale-105 hover:shadow-amber-500/40"
-          }`}
-          title={t.floatingHint}
-        >
-          {isOpen ? (
-            <div className="w-12 h-12 flex items-center justify-center">
-              <X className="w-6 h-6 text-white" />
-            </div>
-          ) : isRecording ? (
-            <div className="w-12 h-12 flex items-center justify-center">
-              <Mic className="w-7 h-7 text-white animate-pulse" />
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-1">
-              <img
-                src={munimji3DAvatar}
-                alt="3D Munimji"
-                className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl object-cover border-2 border-white shadow-md group-hover:scale-105 transition-transform"
-              />
-              <span className="text-sm font-extrabold text-white pr-2 tracking-wide hidden sm:inline-block">
-                {t.floatingBtn}
-              </span>
-            </div>
-          )}
+        {/* Active status pip */}
+        {!isOpen && (
+          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white"></span>
+          </span>
+        )}
+      </button>
+    </div>
+  );
 
-          {/* Active status pip */}
-          {!isOpen && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-white"></span>
-            </span>
-          )}
-        </button>
-      </div>
+  return (
+    <>
+      {/* 1. FLOATING LAUNCHER BUTTON (Portaled to Top Toolbar or fallback) */}
+      {mountedSlot
+        ? createPortal(launcherContent, mountedSlot)
+        : <div className="fixed bottom-5 right-6 z-40">{launcherContent}</div>}
 
       {/* 2. SLIDE-OVER MUNIMJI DRAWER */}
       <div
