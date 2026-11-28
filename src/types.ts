@@ -553,6 +553,26 @@ export interface RestaurantTableOrderLine {
   portionLabel?: 'Full' | 'Half';
 }
 
+export interface RestaurantTableOrderDraft {
+  invoiceNumber?: string;
+  invoiceDate?: string;
+  selectedPartyId?: string;
+  partySearchText?: string;
+  partyName?: string;
+  partyGstin?: string;
+  paymentType?: 'cash' | 'bank' | 'unpaid';
+  paidAmount?: number;
+  cashTendered?: number;
+  customPaidAmount?: boolean;
+  billingMode?: 'gst' | 'non_gst';
+  originalInvoiceNumber?: string;
+  sourceChallanId?: string;
+  sourceChallanNumber?: string;
+  sourceQuotationId?: string;
+  sourceQuotationNumber?: string;
+  orderType?: 'dine_in' | 'takeaway' | 'delivery';
+}
+
 export interface RestaurantTable {
   id: string;
   tableNumber: string;
@@ -562,6 +582,8 @@ export interface RestaurantTable {
   currentOrderId?: string;
   /** Stable invoice number assigned to the active restaurant table order. */
   currentOrderInvoiceNumber?: string;
+  /** Customer and invoice form data for the unsettled running bill. */
+  currentOrderDraft?: RestaurantTableOrderDraft;
   currentOrderTotal?: number;
   runningItemsSummary?: string;
   currentOrderItems?: RestaurantTableOrderLine[];
