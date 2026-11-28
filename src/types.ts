@@ -560,6 +560,7 @@ export interface RestaurantTableOrderDraft {
   partySearchText?: string;
   partyName?: string;
   partyGstin?: string;
+  notes?: string;
   paymentType?: 'cash' | 'bank' | 'unpaid';
   paidAmount?: number;
   cashTendered?: number;
