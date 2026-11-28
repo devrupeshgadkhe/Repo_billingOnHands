@@ -2335,6 +2335,9 @@ app.post("/api/tables", (req, res) => {
       status: (["available", "occupied", "reserved", "cleaning"].includes(tbl?.status) ? tbl.status : "available") as RestaurantTable["status"],
       currentOrderId: tbl?.currentOrderId ? String(tbl.currentOrderId) : undefined,
       currentOrderInvoiceNumber: tbl?.currentOrderInvoiceNumber ? String(tbl.currentOrderInvoiceNumber) : undefined,
+      currentOrderDraft: tbl?.currentOrderDraft && typeof tbl.currentOrderDraft === "object"
+        ? { ...tbl.currentOrderDraft }
+        : undefined,
       currentOrderTotal: Number(tbl?.currentOrderTotal) || 0,
       runningItemsSummary: tbl?.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
       currentOrderItems: Array.isArray(tbl?.currentOrderItems) ? tbl.currentOrderItems : [],
@@ -2399,6 +2402,32 @@ app.post("/api/tables/item", (req, res) => {
 
     const existingIdx = db.tables.findIndex(t => t.id === sanitized.id);
     if (existingIdx >= 0) {
+      const existingTable = db.tables[existingIdx];
+      const sameActiveOrder =
+        existingTable.status === "occupied" &&
+        sanitized.status === "occupied" &&
+        (!sanitized.currentOrderId || sanitized.currentOrderId === existingTable.currentOrderId);
+      const incomingHasItems = sanitized.currentOrderItems.some(line => line.quantity > 0);
+      const existingHasItems = (existingTable.currentOrderItems || []).some(line => Number(line.quantity) > 0);
+
+      // A stale table-card/editor payload must never erase a saved running bill.
+      // An intentionally cleared table changes status to available/cleaning;
+      // a new active order has a different order ID. Only merge when the same
+      // occupied order is being updated with an accidentally empty snapshot.
+      if (sameActiveOrder && !incomingHasItems && existingHasItems) {
+        sanitized.currentOrderItems = existingTable.currentOrderItems || [];
+        sanitized.currentOrderTotal = Number(sanitized.currentOrderTotal) > 0
+          ? sanitized.currentOrderTotal
+          : Number(existingTable.currentOrderTotal) || 0;
+        sanitized.runningItemsSummary = sanitized.runningItemsSummary || existingTable.runningItemsSummary;
+        sanitized.currentOrderExtraCharges = sanitized.currentOrderExtraCharges?.length
+          ? sanitized.currentOrderExtraCharges
+          : (existingTable.currentOrderExtraCharges || []);
+        sanitized.currentOrderNotes = sanitized.currentOrderNotes || existingTable.currentOrderNotes || "";
+        sanitized.currentOrderInvoiceNumber = sanitized.currentOrderInvoiceNumber || existingTable.currentOrderInvoiceNumber;
+        sanitized.currentOrderDraft = sanitized.currentOrderDraft || existingTable.currentOrderDraft;
+        sanitized.currentOrderUpdatedAt = sanitized.currentOrderUpdatedAt || existingTable.currentOrderUpdatedAt;
+      }
       db.tables[existingIdx] = sanitized;
     } else {
       const dupNumber = db.tables.some(t => t.tableNumber.toLowerCase() === cleanNumber.toLowerCase());
