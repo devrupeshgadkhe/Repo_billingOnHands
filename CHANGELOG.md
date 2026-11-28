@@ -1,5 +1,13 @@
 # CHANGELOG.md — Important Development History
 
+## [1.1.25] - 2026-11-28
+- **Milestone**: Digital Munimji Multi-Entity Looping & AI Common-Sense Fix (`ADD_TABLES`, Multi-Table `DELETE_TABLE`).
+- **Summary of Changes**:
+  - Fixed bug where asking Munimji to create multiple tables (e.g., `"चार टेबल क्रिएट कर"` / `"Create 4 tables"`) could collapse all requested names or counts into a single `RestaurantTable` record.
+  - Added `expandMultiTableCreatePayload()` and `expandMultiTableDeleteTargets()` (`src/server/munimjiPool.ts`) supporting Devanagari & English count words (`एक`–`वीस`, `one`–`twenty`), numeric counts, ranges (`T-7 to T-10` / `T-7 ते T-10`), delimiter-joined strings (`T-1, T-2, T-3, T-4`), capacity stripping (`6 seater`), and sequential non-colliding table numbering (`T-{n}`).
+  - Added explicit AI common-sense & multi-entity looping guidelines (`ADD_TABLES` array schema + multi-target `DELETE_TABLE`) in `processMunimjiCommand()`, sanitized AI responses in `enrichMunimjiResponseWithStoreData()`, upgraded Marathi voice transliteration detection (`क्रिएट`, `अॅड`, `बनव`), and updated `executeMunimjiUniversalCrud()` (`server.ts`) to loop cleanly and create separate database records per table.
+  - Extended `scripts/test-munimji-restaurant.cjs` Step `3B` verifying `"चार टेबल क्रिएट कर"`, `"Create 4 new AC Dining 6 seater tables"`, comma-joined sanitizer protection, and multi-table range deletion.
+
 ## [1.1.24] - 2026-11-28
 - **Milestone**: Digital Munimji Training for Restaurant Tables, Menu Catalog, Sales Billing & Pre-Production Documentation Sync.
 - **Summary of Changes**:

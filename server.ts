@@ -13,7 +13,7 @@ const appDir = typeof __dirname !== "undefined" ? __dirname : process.cwd();
 import { GoogleGenAI, Type } from "@google/genai";
 import { DatabaseState, Item, Party, Invoice, DeliveryChallan, Quotation, QuotationStatus, Godown, StockTransferVoucher, StockTransferItem, RestaurantTable, InstallStatus, BusinessProfile } from "./src/types.js";
 import { APP_VERSION } from "./src/version.js";
-import { munimjiPool, processMunimjiCommand } from "./src/server/munimjiPool.js";
+import { munimjiPool, processMunimjiCommand, expandMultiTableCreatePayload, expandMultiTableDeleteTargets } from "./src/server/munimjiPool.js";
 import { generateEodSummary, sendEodEmailReport, checkScheduledEodEmailJob } from "./src/server/eodReportService.js";
 
 const app = express();
@@ -4640,22 +4640,42 @@ function executeMunimjiUniversalCrud(
     }
     else if (act.includes("ADD_TABLE") || act.includes("CREATE_TABLE") || act.includes("TABLE_CREATE")) {
       if (!Array.isArray(db.tables)) db.tables = [];
-      const rawNum = String(payload?.tableNumber || `T-${db.tables.length + 1}`).trim();
-      const dup = db.tables.find((t: any) => t.tableNumber.toLowerCase() === rawNum.toLowerCase());
-      if (dup) {
-        return { success: false, message: `Table '${rawNum}' already exists (${dup.section}, ${dup.capacity} seats).` };
+      const specs = expandMultiTableCreatePayload("", payload || {}, db.tables);
+      const created: RestaurantTable[] = [];
+      const skipped: string[] = [];
+
+      for (const spec of specs) {
+        const dup = db.tables.find((t: any) => t.tableNumber.toLowerCase() === spec.tableNumber.toLowerCase());
+        if (dup) {
+          skipped.push(spec.tableNumber);
+          continue;
+        }
+        const newTable: RestaurantTable = {
+          id: `tbl_${Date.now()}_${created.length}_${Math.random().toString(36).slice(2, 6)}`,
+          tableNumber: spec.tableNumber,
+          section: String(spec.section || "Main Dining").trim() || "Main Dining",
+          capacity: Math.max(1, Number(spec.capacity) || 4),
+          status: spec.status === "reserved" ? "reserved" : "available",
+          currentOrderTotal: 0
+        };
+        db.tables.push(newTable);
+        created.push(newTable);
       }
-      const newTable: RestaurantTable = {
-        id: `tbl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        tableNumber: rawNum,
-        section: String(payload?.section || "Main Dining").trim() || "Main Dining",
-        capacity: Math.max(1, Number(payload?.capacity) || 4),
-        status: payload?.status === "reserved" ? "reserved" : "available",
-        currentOrderTotal: 0
-      };
-      db.tables.push(newTable);
-      message = `Table '${newTable.tableNumber}' (${newTable.capacity} seats, ${newTable.section}) created successfully.`;
-      resultData = newTable;
+
+      if (created.length === 0) {
+        const dupList = skipped.join(", ");
+        return { success: false, message: `Table(s) '${dupList}' already exist.` };
+      }
+
+      if (created.length === 1) {
+        const t = created[0];
+        message = `Table '${t.tableNumber}' (${t.capacity} seats, ${t.section}) created successfully.`;
+        resultData = t;
+      } else {
+        const names = created.map(c => c.tableNumber).join(", ");
+        message = `Created ${created.length} tables successfully: ${names}${skipped.length > 0 ? ` (skipped existing: ${skipped.join(", ")})` : ""}.`;
+        resultData = { createdCount: created.length, tables: created, skipped };
+      }
       modified = true;
     }
     else if (
@@ -4706,25 +4726,31 @@ function executeMunimjiUniversalCrud(
     }
     else if (act.includes("DELETE_TABLE") || act.includes("TABLE_DELETE") || intent === "TABLE_DELETE") {
       if (!Array.isArray(db.tables)) db.tables = [];
-      const normTok = (v: string) => {
-        const c = String(v || "").trim().toUpperCase().replace(/^TABLE\s*/i, "").replace(/\s+/g, "");
-        return /^\d+$/.test(c) ? `T-${c}` : (/^T\d+$/.test(c) ? `T-${c.slice(1)}` : c);
-      };
-      const tNum = String(payload?.tableNumber || "").trim();
-      const idx = db.tables.findIndex((t: any) =>
-        (payload?.tableId && t.id === payload.tableId) ||
-        (tNum && (t.tableNumber.toLowerCase() === tNum.toLowerCase() || normTok(t.tableNumber) === normTok(tNum)))
-      );
-      if (idx === -1) {
+      const targets = expandMultiTableDeleteTargets("", payload || {}, db.tables);
+      if (targets.length === 0) {
+        const tNum = String(payload?.tableNumber || "").trim();
         return { success: false, message: `Table '${tNum || payload?.tableId || ""}' not found.` };
       }
-      const removed = db.tables[idx];
-      if (removed.status === "occupied" && (removed.currentOrderItems?.length || 0) > 0 && !payload?.force) {
-        return { success: false, message: `Table '${removed.tableNumber}' currently has an active running bill (₹${removed.currentOrderTotal || 0}). Please settle or clear it first.` };
+      const removedList: RestaurantTable[] = [];
+      const blockedList: string[] = [];
+      for (const target of targets) {
+        if (target.status === "occupied" && (target.currentOrderItems?.length || 0) > 0 && !payload?.force) {
+          blockedList.push(`${target.tableNumber} (₹${target.currentOrderTotal || 0})`);
+          continue;
+        }
+        const idx = db.tables.findIndex((t: any) => t.id === target.id);
+        if (idx !== -1) {
+          db.tables.splice(idx, 1);
+          removedList.push(target);
+        }
       }
-      db.tables.splice(idx, 1);
-      message = `Table '${removed.tableNumber}' removed from floor layout.`;
-      resultData = removed;
+      if (removedList.length === 0) {
+        return { success: false, message: `Table(s) ${blockedList.join(", ")} currently have active running bills. Please settle or clear them first.` };
+      }
+      message = removedList.length === 1
+        ? `Table '${removedList[0].tableNumber}' removed from floor layout.`
+        : `Removed ${removedList.length} tables (${removedList.map(r => r.tableNumber).join(", ")}) from floor layout.`;
+      resultData = removedList.length === 1 ? removedList[0] : { removedCount: removedList.length, tables: removedList, blocked: blockedList };
       modified = true;
     }
     else if (act.includes("SAVE_TABLE_ORDER") || act.includes("ADD_TO_TABLE") || act.includes("TAKE_TABLE_ORDER")) {

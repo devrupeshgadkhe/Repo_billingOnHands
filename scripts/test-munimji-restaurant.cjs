@@ -79,6 +79,50 @@ async function callMunimji(text, language = "en") {
     assert.equal(Number(t7Created.capacity), 6, "T-7 capacity must be 6");
     assert.equal(t7Created.status, "available");
 
+    console.log("3B. Testing Multi-Table Creation in a Loop (Marathi count + English count + comma-joined AI guard)...");
+    const countBeforeMulti = db.tables.length;
+    const marathiFourRes = await callMunimji("चार टेबल क्रिएट कर", "mr");
+    assert.equal(marathiFourRes.status, 200);
+    assert.equal(marathiFourRes.json.intent, "TABLE_CREATE");
+    db = (await fetchJson(`${BASE_URL}/api/db`)).json;
+    assert.equal(db.tables.length, countBeforeMulti + 4, "Marathi 'चार टेबल क्रिएट कर' MUST create 4 separate tables (T-8..T-11), never 1 table!");
+    for (const expectedNum of ["T-8", "T-9", "T-10", "T-11"]) {
+      assert.ok(db.tables.some((t) => t.tableNumber === expectedNum), `Missing separate table ${expectedNum}`);
+    }
+
+    const engFourRes = await callMunimji("Create 4 new AC Dining 6 seater tables", "en");
+    assert.equal(engFourRes.status, 200);
+    db = (await fetchJson(`${BASE_URL}/api/db`)).json;
+    assert.equal(db.tables.length, countBeforeMulti + 8, "English 'Create 4 new AC Dining 6 seater tables' MUST create 4 separate tables (T-12..T-15)");
+    for (const expectedNum of ["T-12", "T-13", "T-14", "T-15"]) {
+      const t = db.tables.find((x) => x.tableNumber === expectedNum);
+      assert.ok(t, `Missing AC table ${expectedNum}`);
+      assert.equal(Number(t.capacity), 6);
+      assert.equal(t.section, "AC Dining");
+    }
+
+    // Defensive guard against comma-joined single tableNumber payload on /api/munimji/execute-action
+    const commaExecRes = await fetchJson(`${BASE_URL}/api/munimji/execute-action`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actionType: "ADD_TABLE",
+        payload: { tableNumber: "T-16, T-17, T-18", capacity: 4, section: "VIP Lounge" }
+      })
+    });
+    assert.equal(commaExecRes.status, 200);
+    db = (await fetchJson(`${BASE_URL}/api/db`)).json;
+    assert.equal(db.tables.length, countBeforeMulti + 11, "Comma-joined payload MUST split & loop into T-16, T-17, T-18");
+    for (const expectedNum of ["T-16", "T-17", "T-18"]) {
+      assert.ok(db.tables.some((t) => t.tableNumber === expectedNum), `Comma-split table ${expectedNum} missing`);
+    }
+
+    // Multi-delete T-8 to T-18 cleanly via Munimji
+    const multiDelRes = await callMunimji("Delete tables T-8 to T-18", "en");
+    assert.equal(multiDelRes.status, 200);
+    db = (await fetchJson(`${BASE_URL}/api/db`)).json;
+    assert.equal(db.tables.length, countBeforeMulti, "Multi-delete T-8 to T-18 must clean up all 11 test tables");
+
     console.log("4. Testing Munimji SAVE_TABLE_ORDER onto table T-7...");
     const orderRes = await callMunimji(`Add 2 ${dosaDish.name} to table T-7`, "en");
     assert.equal(orderRes.status, 200);

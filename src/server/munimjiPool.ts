@@ -1027,6 +1027,328 @@ async function processMunimjiVoiceCommand(
   };
 }
 
+export interface TableCreateSpec {
+  tableNumber: string;
+  section: string;
+  capacity: number;
+  status: "available" | "reserved";
+}
+
+const SPOKEN_TABLE_COUNT_WORDS: Record<string, number> = {
+  "एक": 1, "ek": 1, "one": 1,
+  "दोन": 2, "दो": 2, "don": 2, "two": 2,
+  "तीन": 3, "teen": 3, "three": 3,
+  "चार": 4, "char": 4, "chaar": 4, "four": 4,
+  "पाच": 5, "पांच": 5, "pach": 5, "paach": 5, "five": 5,
+  "सहा": 6, "छह": 6, "छ": 6, "saha": 6, "chhah": 6, "six": 6,
+  "सात": 7, "sat": 7, "saat": 7, "seven": 7,
+  "आठ": 8, "aath": 8, "eight": 8,
+  "नऊ": 9, "नौ": 9, "nau": 9, "nine": 9,
+  "दहा": 10, "दस": 10, "daha": 10, "das": 10, "ten": 10,
+  "अकरा": 11, "ग्यारह": 11, "eleven": 11,
+  "बारा": 12, "बारह": 12, "twelve": 12,
+  "पंधरा": 15, "पंद्रह": 15, "fifteen": 15,
+  "वीस": 20, "बीस": 20, "twenty": 20
+};
+
+function normalizeDevDigits(str: string): string {
+  const devMap: { [k: string]: string } = {
+    '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+    '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'
+  };
+  return String(str || "").replace(/[०-९]/g, ch => devMap[ch] || ch);
+}
+
+export function normalizeTableNumberToken(raw: string): string {
+  const cleaned = normalizeDevDigits(raw)
+    .trim()
+    .toUpperCase()
+    .replace(/^(?:TABLE|TABLES|टेबल|टेबल्स|NO\.?|NUMBER|क्रमांक|#)\s*/i, "")
+    .replace(/\s+/g, "");
+  if (!cleaned) return "";
+  if (/^\d+$/.test(cleaned)) return `T-${cleaned}`;
+  if (/^T\d+$/.test(cleaned)) return `T-${cleaned.slice(1)}`;
+  return cleaned;
+}
+
+function detectSectionFromText(text: string, fallbackSection = "Main Dining"): string {
+  const q = String(text || "").toLowerCase();
+  if (/\bac\b|एसी|air\s*cond/i.test(q)) return "AC Dining";
+  if (q.includes("family") || q.includes("फॅमिली") || q.includes("फैमिली")) return "Family Section";
+  if (q.includes("garden") || q.includes("terrace") || q.includes("गार्डन") || q.includes("टेरेस")) return "Garden / Terrace";
+  if (q.includes("vip")) return "VIP Lounge";
+  return fallbackSection;
+}
+
+function detectCapacityFromText(text: string, fallbackCap = 4): number {
+  const norm = normalizeDevDigits(String(text || "").toLowerCase());
+  const capMatch = norm.match(/(\d+)\s*(?:seater|seat|seats|capacity|सीटर|लोक|खुर्च्या|खुरच्या)/i);
+  return capMatch ? Math.max(1, parseInt(capMatch[1], 10)) : fallbackCap;
+}
+
+function stripCapacityPhrases(text: string): string {
+  return normalizeDevDigits(String(text || ""))
+    .replace(/(?:^|[\s,])\d+\s*(?:seater|seat|seats|capacity|सीटर|लोक|खुर्च्या|खुरच्या)(?=$|[\s,.;:!?])/gi, " ")
+    .replace(/\bcapacity\s*(?:of|:)?\s*\d+\b/gi, " ");
+}
+
+function parseSpokenTableCount(text: string): number | null {
+  const stripped = stripCapacityPhrases(text).toLowerCase();
+  // Digit count BEFORE "table/टेबल" (e.g. "4 tables", "4 नवीन टेबल्स", "4 ac tables")
+  const digitCountMatch = stripped.match(/(?:^|[\s,])(\d{1,2})\s*(?:नवीन|नवे|नए|अजून|और|new|more|extra|additional|ac|vip|family|garden|terrace|main)?\s*(?:tables|table|टेबल्स|टेबले|टेबल)(?=$|[\s,.;:!?])/i);
+  if (digitCountMatch && digitCountMatch[1]) {
+    const n = parseInt(digitCountMatch[1], 10);
+    if (n >= 2 && n <= 50) return n;
+  }
+  // Marathi/Hindi/English word count BEFORE "table/टेबल" (e.g. "चार टेबल क्रिएट कर", "four tables")
+  const wordKeys = Object.keys(SPOKEN_TABLE_COUNT_WORDS).join("|");
+  const wordRegex = new RegExp(`(?:^|[\\s,])(${wordKeys})\\s*(?:नवीन|नवे|नए|अजून|और|new|more|extra|additional|ac|vip|family|garden|terrace|main)?\\s*(?:tables|table|टेबल्स|टेबले|टेबल)(?=$|[\\s,.;:!?])`, "i");
+  const wordMatch = stripped.match(wordRegex);
+  if (wordMatch && wordMatch[1]) {
+    const n = SPOKEN_TABLE_COUNT_WORDS[wordMatch[1].toLowerCase()];
+    if (n && n >= 2 && n <= 50) return n;
+  }
+  return null;
+}
+
+function expandRangeFromString(text: string): string[] {
+  const stripped = stripCapacityPhrases(text);
+  const rangeMatch = stripped.match(/(?:^|[\s,])(?:table|टेबल)?\s*(t\s*-?\s*)?(\d{1,3})\s*(?:to|ते|से|till|-|–)\s*(t\s*-?\s*)?(\d{1,3})(?=$|[\s,.;:!?])/i);
+  if (!rangeMatch) return [];
+  const start = parseInt(rangeMatch[2], 10);
+  const end = parseInt(rangeMatch[4], 10);
+  if (Number.isFinite(start) && Number.isFinite(end) && end > start && end - start <= 50) {
+    // Only treat pure numeric ranges like "1 to 4" as tables when T-prefix or table keyword is present
+    const hasTPrefix = Boolean(rangeMatch[1] || rangeMatch[3] || /table|टेबल/i.test(stripped));
+    if (hasTPrefix) {
+      const out: string[] = [];
+      for (let n = start; n <= end; n++) out.push(`T-${n}`);
+      return out;
+    }
+  }
+  return [];
+}
+
+function splitExplicitTableString(rawStr: string): string[] {
+  const s = normalizeDevDigits(rawStr).trim();
+  if (!s) return [];
+  const rangeExpanded = expandRangeFromString(s);
+  if (rangeExpanded.length > 1) return rangeExpanded;
+
+  if (/[,\/&\n]|\band\b|(?:^|\s)(?:आणि|व)(?=$|\s)/i.test(s)) {
+    const parts = s.split(/\s*(?:,|\/|&|\band\b|\n)\s*|\s+(?:आणि|व)\s+/i)
+      .map(p => normalizeTableNumberToken(p))
+      .filter(p => p && !/^\d+\s*(?:TABLES?|टेबल्स?)$/i.test(p));
+    const unique: string[] = [];
+    for (const p of parts) {
+      if (!unique.includes(p)) unique.push(p);
+    }
+    if (unique.length > 0) return unique;
+  }
+  return [];
+}
+
+function generateSequentialTableNames(count: number, existingTables: RestaurantTable[]): string[] {
+  const used = new Set(existingTables.map(t => normalizeTableNumberToken(t.tableNumber).toLowerCase()));
+  let maxNum = 0;
+  for (const t of existingTables) {
+    const m = normalizeDevDigits(String(t.tableNumber || "")).match(/(\d+)/);
+    if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+  }
+  const names: string[] = [];
+  let cursor = maxNum + 1;
+  while (names.length < count && cursor < maxNum + 500) {
+    const candidate = `T-${cursor}`;
+    if (!used.has(candidate.toLowerCase())) {
+      names.push(candidate);
+      used.add(candidate.toLowerCase());
+    }
+    cursor++;
+  }
+  return names;
+}
+
+/**
+ * Common-sense expander ensuring requests like "create 4 tables", "चार टेबल क्रिएट कर",
+ * "T-7 to T-10", or comma-joined "T-1, T-2, T-3, T-4" ALWAYS yield individual Table objects in a loop
+ * rather than combining multiple table names or a count into a single RestaurantTable!
+ */
+export function expandMultiTableCreatePayload(
+  spokenText: string,
+  payload: any,
+  existingTables: RestaurantTable[] = []
+): TableCreateSpec[] {
+  const combinedText = `${spokenText || ""} ${typeof payload?.tableNumber === "string" ? payload.tableNumber : ""}`.trim();
+  const defaultSection = String(payload?.section || "").trim() || detectSectionFromText(combinedText, "Main Dining");
+  const defaultCapacity = Math.max(1, Number(payload?.capacity) || detectCapacityFromText(combinedText, 4));
+  const defaultStatus: "available" | "reserved" =
+    (payload?.status === "reserved" || /\breserve|reserved|रिझर्व्ह/i.test(combinedText)) ? "reserved" : "available";
+
+  // Check explicit array payload?.tables
+  if (Array.isArray(payload?.tables) && payload.tables.length > 0) {
+    const flattened: TableCreateSpec[] = [];
+    for (const entry of payload.tables) {
+      const rawName = String(entry?.tableNumber || entry?.name || entry?.label || "").trim();
+      const splitNames = splitExplicitTableString(rawName);
+      const sec = String(entry?.section || "").trim() || defaultSection;
+      const cap = Math.max(1, Number(entry?.capacity) || defaultCapacity);
+      const st: "available" | "reserved" = entry?.status === "reserved" ? "reserved" : defaultStatus;
+      if (splitNames.length > 1) {
+        for (const n of splitNames) flattened.push({ tableNumber: n, section: sec, capacity: cap, status: st });
+      } else if (rawName) {
+        const countWordCheck = parseSpokenTableCount(rawName);
+        if (countWordCheck && countWordCheck > 1 && payload.tables.length === 1) {
+          return generateSequentialTableNames(countWordCheck, existingTables).map(n => ({
+            tableNumber: n, section: sec, capacity: cap, status: st
+          }));
+        }
+        flattened.push({ tableNumber: normalizeTableNumberToken(rawName), section: sec, capacity: cap, status: st });
+      }
+    }
+    const spokenCount = parseSpokenTableCount(spokenText);
+    const spokenHasExplicitTokens = (normalizeDevDigits(spokenText).match(/\bt\s*-?\s*\d+\b/gi) || []).length >= 2;
+    if (flattened.length === 1 && spokenCount && spokenCount > 1 && !spokenHasExplicitTokens) {
+      return generateSequentialTableNames(spokenCount, existingTables).map(n => ({
+        tableNumber: n, section: defaultSection, capacity: defaultCapacity, status: defaultStatus
+      }));
+    }
+    if (flattened.length > 0) return flattened;
+  }
+
+  // Check payload?.tableNumbers array
+  if (Array.isArray(payload?.tableNumbers) && payload.tableNumbers.length > 0) {
+    const specs: TableCreateSpec[] = [];
+    for (const raw of payload.tableNumbers) {
+      const tok = normalizeTableNumberToken(String(raw || ""));
+      if (tok) specs.push({ tableNumber: tok, section: defaultSection, capacity: defaultCapacity, status: defaultStatus });
+    }
+    if (specs.length > 0) return specs;
+  }
+
+  // Check explicit range in spoken text or tableNumber ("T-7 to T-10", "T-7 ते T-10")
+  const spokenRange = expandRangeFromString(spokenText) || [];
+  if (spokenRange.length > 1) {
+    return spokenRange.map(n => ({ tableNumber: n, section: defaultSection, capacity: defaultCapacity, status: defaultStatus }));
+  }
+  if (typeof payload?.tableNumber === "string") {
+    const payloadRange = expandRangeFromString(payload.tableNumber);
+    if (payloadRange.length > 1) {
+      return payloadRange.map(n => ({ tableNumber: n, section: defaultSection, capacity: defaultCapacity, status: defaultStatus }));
+    }
+  }
+
+  // Check multiple explicit T-X tokens directly in user prompt (e.g., "Create tables T-7, T-8, T-9, T-10")
+  const explicitPromptTokens = (normalizeDevDigits(spokenText).match(/\bt\s*-?\s*\d+\b/gi) || [])
+    .map(tok => normalizeTableNumberToken(tok));
+  const uniquePromptTokens = Array.from(new Set(explicitPromptTokens));
+  if (uniquePromptTokens.length > 1) {
+    return uniquePromptTokens.map(n => ({ tableNumber: n, section: defaultSection, capacity: defaultCapacity, status: defaultStatus }));
+  }
+
+  // Check requested numeric/spoken count BEFORE checking hallucinated colliding names
+  const requestedCount =
+    (Number(payload?.count) > 1 ? Math.min(50, Math.floor(Number(payload.count))) : null) ||
+    parseSpokenTableCount(spokenText) ||
+    (typeof payload?.tableNumber === "string" ? parseSpokenTableCount(payload.tableNumber) : null);
+
+  // Check comma/delimiter-joined list in payload.tableNumber
+  if (typeof payload?.tableNumber === "string") {
+    const splitPayloadNames = splitExplicitTableString(payload.tableNumber);
+    if (splitPayloadNames.length > 1) {
+      // If user did NOT name specific tables (just said "4 tables") and AI guessed colliding T-1..T-4, allocate next free T-{n}
+      const usedLower = new Set(existingTables.map(t => normalizeTableNumberToken(t.tableNumber).toLowerCase()));
+      const allCollide = splitPayloadNames.every(n => usedLower.has(n.toLowerCase()));
+      if (uniquePromptTokens.length === 0 && allCollide && requestedCount && requestedCount > 1) {
+        return generateSequentialTableNames(requestedCount, existingTables).map(n => ({
+          tableNumber: n, section: defaultSection, capacity: defaultCapacity, status: defaultStatus
+        }));
+      }
+      return splitPayloadNames.map(n => ({ tableNumber: n, section: defaultSection, capacity: defaultCapacity, status: defaultStatus }));
+    }
+  }
+
+  // Count-based expansion (e.g. "चार टेबल क्रिएट कर", "create 4 tables")
+  if (requestedCount && requestedCount > 1 && uniquePromptTokens.length <= 1) {
+    return generateSequentialTableNames(requestedCount, existingTables).map(n => ({
+      tableNumber: n, section: defaultSection, capacity: defaultCapacity, status: defaultStatus
+    }));
+  }
+
+  // Single table fallback: check if single explicit token or count-word trap ("4 tables" / "4")
+  const singleRaw = String(payload?.tableNumber || "").trim();
+  const numericOnlyAsCount =
+    !singleRaw ||
+    /^\d+\s*(?:tables|टेबल्स|टेबल|table)$/i.test(normalizeDevDigits(singleRaw)) ||
+    Boolean(SPOKEN_TABLE_COUNT_WORDS[singleRaw.toLowerCase()]);
+
+  if (!numericOnlyAsCount && singleRaw) {
+    return [{
+      tableNumber: normalizeTableNumberToken(singleRaw),
+      section: defaultSection,
+      capacity: defaultCapacity,
+      status: defaultStatus
+    }];
+  }
+
+  // Explicit single name inside user prompt like "Create table T-7" or "टेबल #7 बनव"
+  const normSpoken = stripCapacityPhrases(spokenText);
+  const singleNumMatch =
+    normSpoken.match(/(?:^|[\s,])(?:table|टेबल)\s*(?:no\.?|number|क्रमांक|#)?\s*([a-z]*\s*-?\s*\d+)(?=$|[\s,.;:!?])/i) ||
+    normSpoken.match(/\b(t\s*-?\s*\d+)\b/i);
+  if (singleNumMatch && singleNumMatch[1]) {
+    return [{
+      tableNumber: normalizeTableNumberToken(singleNumMatch[1]),
+      section: defaultSection,
+      capacity: defaultCapacity,
+      status: defaultStatus
+    }];
+  }
+
+  // Otherwise pick the next available T-{n}
+  const nextOne = generateSequentialTableNames(1, existingTables)[0] || `T-${existingTables.length + 1}`;
+  return [{
+    tableNumber: nextOne,
+    section: defaultSection,
+    capacity: defaultCapacity,
+    status: defaultStatus
+  }];
+}
+
+export function expandMultiTableDeleteTargets(
+  spokenText: string,
+  payload: any,
+  existingTables: RestaurantTable[] = []
+): RestaurantTable[] {
+  const candidates = new Set<string>();
+  if (Array.isArray(payload?.tableNumbers)) {
+    for (const raw of payload.tableNumbers) candidates.add(normalizeTableNumberToken(String(raw || "")));
+  }
+  if (typeof payload?.tableNumber === "string") {
+    const split = splitExplicitTableString(payload.tableNumber);
+    if (split.length > 0) split.forEach(s => candidates.add(s));
+    else candidates.add(normalizeTableNumberToken(payload.tableNumber));
+  }
+  const spokenRange = expandRangeFromString(spokenText);
+  spokenRange.forEach(s => candidates.add(s));
+  const explicitPromptTokens = (normalizeDevDigits(spokenText).match(/\bt\s*-?\s*\d+\b/gi) || [])
+    .map(tok => normalizeTableNumberToken(tok));
+  explicitPromptTokens.forEach(s => candidates.add(s));
+
+  const matched: RestaurantTable[] = [];
+  if (payload?.tableId) {
+    const byId = existingTables.find(t => t.id === payload.tableId);
+    if (byId) matched.push(byId);
+  }
+  for (const tok of candidates) {
+    if (!tok) continue;
+    const found = existingTables.find(
+      t => normalizeTableNumberToken(t.tableNumber).toLowerCase() === tok.toLowerCase() || t.tableNumber.toLowerCase() === tok.toLowerCase()
+    );
+    if (found && !matched.some(m => m.id === found.id)) matched.push(found);
+  }
+  return matched;
+}
+
 /**
  * Ensures that responses for product listings, inventory queries, or catalog requests
  * are fully grounded in the live store database and never return empty cards.
@@ -1071,6 +1393,43 @@ export function enrichMunimjiResponseWithStoreData(
     Boolean(response.actionPayload?.tableNumber) ||
     /(?:नवीन|ॲड|जोडा|करा|वाढव|कमी|बदल|डिलीट|काढून|टेबल|table|add|create|new\s*product|new\s*item|delete|update)/i.test(spokenQuery);
 
+  const actUpper = String(response.actionPayload?.action || "").toUpperCase();
+  const isTableCreateAction =
+    (intentStr === "TABLE_CREATE" || actUpper.includes("ADD_TABLE") || actUpper.includes("CREATE_TABLE")) &&
+    !actUpper.includes("SEED_TABLES");
+
+  if (isTableCreateAction && dbState) {
+    const existingTables = Array.isArray(dbState.tables) ? dbState.tables : [];
+    const sourceText = [spokenQuery, response.userTranscript].filter(Boolean).join(" ").trim();
+    const expandedTables = expandMultiTableCreatePayload(sourceText, response.actionPayload || {}, existingTables);
+    if (expandedTables.length > 1) {
+      response.intent = "TABLE_CREATE";
+      response.actionPayload = {
+        action: "ADD_TABLES",
+        tables: expandedTables
+      };
+      const namesList = expandedTables.map(t => t.tableNumber).join(", ");
+      const cap = expandedTables[0].capacity;
+      const sec = expandedTables[0].section;
+      const hasAnyListed = expandedTables.every(t => String(response.replyText || "").toUpperCase().includes(t.tableNumber.toUpperCase()));
+      if (!hasAnyListed) {
+        const isEnglish = /^[a-z0-9\s.,!?'":;\-\/()]+$/i.test(spokenQuery.trim());
+        response.replyText = isEnglish
+          ? `Sir, created ${expandedTables.length} separate tables (${namesList} — ${cap} seats each, ${sec}).`
+          : `मालक, ${expandedTables.length} वेगळे टेबल्स (${namesList} — प्रत्येकी ${cap} सीटर, ${sec}) तयार केले आहेत.`;
+      }
+    } else if (expandedTables.length === 1) {
+      response.intent = "TABLE_CREATE";
+      response.actionPayload = {
+        action: "ADD_TABLE",
+        tableNumber: expandedTables[0].tableNumber,
+        section: expandedTables[0].section,
+        capacity: expandedTables[0].capacity,
+        status: expandedTables[0].status
+      };
+    }
+  }
+
   const isTableIntent =
     intentStr === "TABLE_LIST" ||
     intentStr === "TABLE_CREATE" ||
@@ -1091,6 +1450,35 @@ export function enrichMunimjiResponseWithStoreData(
       itemCount: Array.isArray(t.currentOrderItems) ? t.currentOrderItems.length : 0,
       customerName: t.currentOrderDraft?.partyName || ""
     }));
+    if (isTableCreateAction) {
+      const pendingList: TableCreateSpec[] = Array.isArray(response.actionPayload?.tables)
+        ? response.actionPayload.tables
+        : response.actionPayload?.tableNumber
+          ? [{
+              tableNumber: String(response.actionPayload.tableNumber),
+              section: String(response.actionPayload.section || "Main Dining"),
+              capacity: Number(response.actionPayload.capacity || 4),
+              status: response.actionPayload.status === "reserved" ? "reserved" : "available"
+            }]
+          : [];
+      for (const sp of pendingList) {
+        const exists = tables.some(t => normalizeTableNumberToken(t.tableNumber).toLowerCase() === normalizeTableNumberToken(sp.tableNumber).toLowerCase());
+        if (!exists) {
+          tables.push({
+            id: `pending_${sp.tableNumber}`,
+            tableNumber: sp.tableNumber,
+            section: sp.section,
+            capacity: sp.capacity,
+            status: sp.status,
+            currentOrderInvoiceNumber: undefined,
+            currentOrderTotal: 0,
+            runningItemsSummary: "",
+            itemCount: 0,
+            customerName: ""
+          });
+        }
+      }
+    }
     if (!response.displayCards) response.displayCards = [];
     response.displayCards = response.displayCards.filter((c) => c.type !== "table_list");
     response.displayCards.unshift({
@@ -1181,6 +1569,12 @@ export async function processMunimjiCommand(
   const systemInstruction = `You are 'डिजिटल मुनीमजी' (Digital Munimji), the ultra-smart, respectful, and highly competent business advisor, accountant, and POS operator for Indian retail, wholesale merchants, and Restaurants / Cafes.
 You understand spoken Marathi, Hindi, and English (including colloquial phrases and mixed Hinglish/Marathi terms).
 
+Your core AI Common Sense & Multi-Entity Looping Rules:
+- ALWAYS think step-by-step about what the merchant wants as REAL DATABASE RECORDS:
+  * Never merge multiple requested records into a single field! For example, if the merchant asks to "create 4 tables" / "चार टेबल क्रिएट कर" / "4 tables तयार कर", NEVER put "T-1, T-2, T-3, T-4" or "4 tables" into a single table's tableNumber! ALWAYS create 4 SEPARATE table objects in "ADD_TABLES" with distinct tableNumber values (continuing sequentially after the highest existing table in STORE CONTEXT, e.g., T-7, T-8, T-9, T-10).
+  * Distinguish a COUNT ("4 tables" / "चार टेबल क्रिएट कर" -> create 4 separate tables) vs a TABLE NAME ("table 4 तयार कर" / "create table T-4" -> create 1 table named T-4).
+  * Same applies to menu items/products ("add 3 dishes" -> "ADD_ITEMS" array of 3 objects) and multi-line bills ("2 dosa and 3 tea" -> 2 distinct line objects in "items").
+
 Your responsibilities across all store modules:
 1. 'ITEM_ADD' / 'ADD_ITEMS': When the user asks to add one or MULTIPLE new products or restaurant menu dishes to inventory (e.g., "नवीन प्रॉडक्ट ॲड कर: बासमती तांदूळ ६० रुपये भाव १०० किलो स्टॉक", "नवीन डिश ॲड कर: पनीर टिक्का २२० रुपये, हाफ १३०, व्हेज, तंदूर स्टेशन", "Add 3 dishes: Masala Dosa 90 veg South Indian, Paneer Butter Masala 260 half 150 veg").
    CRITICAL ANTI-DEFAULT-NAME & MULTI-ITEM RULES:
@@ -1233,19 +1627,23 @@ Your responsibilities across all store modules:
     - If user asks to create a bill WITHOUT specifying items (e.g., "बिल कर", "नवीन बिल बनवायचे आहे"):
       Extract: actionPayload: { "action": "OPEN_NEW_BILL", "targetTab": "sales" }
 13. RESTAURANT TABLES MANAGEMENT (For Cafe / Restaurant Mode):
-    - 'TABLE_CREATE': Create a new table or seed sample tables.
-      Single table (e.g., "नवीन टेबल T-7 तयार कर 6 सीटर AC Dining", "Create table T-8 capacity 4 Main Hall"):
-      Extract: actionPayload: { "action": "ADD_TABLE", "tableNumber": string, "section": string, "capacity": number, "status": "available"|"reserved" }
-      Seed defaults (e.g., "सॅम्पल टेबल्स तयार कर", "create sample restaurant tables", "seed tables"):
-      Extract: actionPayload: { "action": "SEED_TABLES" }
+    - 'TABLE_CREATE': Create one OR MULTIPLE tables, or seed sample tables.
+      * Single named table (e.g., "नवीन टेबल T-7 तयार कर 6 सीटर AC Dining", "Create table T-8 capacity 4 Main Hall"):
+        Extract: actionPayload: { "action": "ADD_TABLE", "tableNumber": string, "section": string, "capacity": number, "status": "available"|"reserved" }
+      * MULTIPLE tables / Count / Range / List (e.g., "चार टेबल क्रिएट कर", "4 नवीन टेबल्स तयार कर AC मध्ये 6 सीटर", "create 4 tables", "create tables T-7, T-8, T-9, T-10", "T-7 ते T-10 टेबल्स बनव"):
+        Inspect 'Restaurant Dining Tables' in STORE CONTEXT, find the highest existing number (e.g., T-6 -> start from T-7), and emit N separate entries inside "tables":
+        Extract: actionPayload: { "action": "ADD_TABLES", "tables": Array<{ "tableNumber": string, "section": string, "capacity": number, "status": "available"|"reserved" }> }
+        (NEVER combine 4 names like "T-1, T-2, T-3, T-4" into one single ADD_TABLE!)
+      * Seed defaults (e.g., "सॅम्पल टेबल्स तयार कर", "create sample restaurant tables", "seed tables"):
+        Extract: actionPayload: { "action": "SEED_TABLES" }
       Include a 'table_list' displayCard.
     - 'TABLE_LIST': Query table layout, vacant tables, occupied tables, or running bills (e.g., "सर्व टेबल्स दाखव", "कोणते टेबल्स रिकामे आहेत?", "चालू टेबल्सचे बिल किती आहे?", "show all tables status").
       Look at 'Restaurant Dining Tables' in STORE CONTEXT, summarize counts and occupied bills, set intent: 'TABLE_LIST', and include a 'table_list' displayCard.
     - 'TABLE_UPDATE': Mark cleaned, reserve, free, or edit table info (e.g., "टेबल T-2 साफ झाला", "mark table T-2 cleaned", "टेबल T-5 रिझर्व्ह कर", "T-3 मोकळा कर", "T-4 ची क्षमता 6 कर").
       Extract: actionPayload: { "action": "UPDATE_TABLE_STATUS", "tableNumber": string, "status"?: "available"|"cleaning"|"reserved", "section"?: string, "capacity"?: number, "newTableNumber"?: string }
       Include a 'table_list' displayCard.
-    - 'TABLE_DELETE': Remove a table ("टेबल T-8 डिलीट कर", "delete table T-8").
-      Extract: actionPayload: { "action": "DELETE_TABLE", "tableNumber": string }
+    - 'TABLE_DELETE': Remove one or multiple tables ("टेबल T-8 डिलीट कर", "delete table T-8", "delete tables T-7, T-8, T-9, T-10").
+      Extract: actionPayload: { "action": "DELETE_TABLE", "tableNumber"?: string, "tableNumbers"?: string[] }
       Include a 'table_list' displayCard.
     - 'TABLE_ORDER': Open table POS, add/save running items onto a table, or settle/checkout an occupied table!
       - To OPEN a table in Sales POS ("टेबल T-1 उघड", "open table T-1 for order", "T-2 वर ऑर्डर घ्यायची आहे / POS उघड"):
@@ -1722,7 +2120,7 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
 
   const extractTableRef = (): RestaurantTable | undefined => {
     const tables = db.tables || [];
-    const directMatch = normQuery.match(/\b(?:table|टेबल)\s*#?\s*([a-z]*\s*-?\s*\d+|[a-z0-9-]+)\b/i) ||
+    const directMatch = normQuery.match(/(?:^|[\s,])(?:table|टेबल)\s*#?\s*([a-z]*\s*-?\s*\d+|[a-z0-9-]+)(?=$|[\s,.;:!?])/i) ||
       normQuery.match(/\b(t-?\d+)\b/i);
     if (directMatch && directMatch[1]) {
       const targetNorm = normalizeTableToken(directMatch[1]);
@@ -1781,9 +2179,20 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
       };
     }
 
-    // B. Delete table
-    if (query.includes("डिलीट") || query.includes("काढून") || query.includes("delete") || query.includes("remove")) {
-      const tbl = extractTableRef();
+    // B. Delete one or multiple tables
+    if (query.includes("डिलीट") || query.includes("काढून") || query.includes("हटव") || query.includes("delete") || query.includes("remove")) {
+      const targets = expandMultiTableDeleteTargets(rawQuery, {}, tables);
+      if (targets.length > 1) {
+        const names = targets.map(t => t.tableNumber).join(", ");
+        return {
+          intent: "TABLE_DELETE",
+          replyText: lang === "en"
+            ? `Removing ${targets.length} tables (${names}) from floor layout.`
+            : `मालक, ${targets.length} टेबल्स (${names}) काढून टाकत आहे.`,
+          actionPayload: { action: "DELETE_TABLE", tableNumbers: targets.map(t => t.tableNumber) }
+        };
+      }
+      const tbl = targets[0] || extractTableRef();
       if (tbl) {
         return {
           intent: "TABLE_DELETE",
@@ -1795,44 +2204,52 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
       }
     }
 
-    // C. Create new table
+    // C. Create one or multiple new tables (with full count/range/list looping awareness)
     const isTableCreate =
-      (query.includes("नवीन") || query.includes("add") || query.includes("create") || query.includes("new") || query.includes("तयार") || query.includes("ॲड") || query.includes("बनव")) &&
+      (query.includes("नवीन") || query.includes("add") || query.includes("create") || query.includes("new") ||
+       query.includes("तयार") || query.includes("क्रिएट") || query.includes("क्रियेट") ||
+       query.includes("ॲड") || query.includes("अॅड") || query.includes("एड") || query.includes("बनव") || query.includes("बना") || query.includes("जोड")) &&
       !query.includes("ऑर्डर") && !query.includes("order") && !query.includes("बिल") && !query.includes("bill") &&
       (extractMatchedDishes().length === 0);
 
     if (isTableCreate) {
-      const capMatch = normQuery.match(/(\d+)\s*(?:seater|seat|seats|capacity|सीटर|लोक|खुर्च्या|खुरच्या)/i);
-      const capacity = capMatch ? Math.max(1, parseInt(capMatch[1], 10)) : 4;
-      const numMatch = normQuery.match(/\b(?:table|टेबल)\s*#?\s*([a-z]*\s*-?\s*\d+|[a-z0-9-]+)\b/i) || normQuery.match(/\b(t-?\d+)\b/i);
-      const candidateRaw = numMatch?.[1] || `T-${tables.length + 1}`;
-      const tableNumber = normalizeTableToken(candidateRaw);
-      let section = "Main Dining";
-      if (query.includes("ac")) section = "AC Dining";
-      else if (query.includes("family") || query.includes("फॅमिली")) section = "Family Section";
-      else if (query.includes("garden") || query.includes("terrace") || query.includes("गार्डन")) section = "Garden / Terrace";
-      else if (query.includes("vip")) section = "VIP Lounge";
+      const specs = expandMultiTableCreatePayload(rawQuery, {}, tables);
+      const pendingEntries = specs.map((sp, i) => ({
+        id: `pending_${i + 1}`,
+        tableNumber: sp.tableNumber,
+        section: sp.section,
+        capacity: sp.capacity,
+        status: sp.status,
+        currentOrderTotal: 0
+      }));
+      const namesJoined = specs.map(sp => sp.tableNumber).join(", ");
 
       return {
         intent: "TABLE_CREATE",
-        replyText: lang === "en"
-          ? `Sir, added table ${tableNumber} (${capacity} seats, ${section}) to your floor plan.`
-          : `मालक, नवीन टेबल ${tableNumber} (${capacity} सीटर, ${section}) डेटाबेसमध्ये तयार केले आहे.`,
+        replyText: specs.length > 1
+          ? (lang === "en"
+            ? `Sir, created ${specs.length} separate tables (${namesJoined} — ${specs[0].capacity} seats each, ${specs[0].section}).`
+            : `मालक, ${specs.length} वेगळे टेबल्स (${namesJoined} — प्रत्येकी ${specs[0].capacity} सीटर, ${specs[0].section}) तयार केले आहेत.`)
+          : (lang === "en"
+            ? `Sir, added table ${specs[0].tableNumber} (${specs[0].capacity} seats, ${specs[0].section}) to your floor plan.`
+            : `मालक, नवीन टेबल ${specs[0].tableNumber} (${specs[0].capacity} सीटर, ${specs[0].section}) डेटाबेसमध्ये तयार केले आहे.`),
         displayCards: [{
           type: "table_list",
-          title: `New Table: ${tableNumber}`,
+          title: specs.length > 1 ? `Created ${specs.length} Tables: ${namesJoined}` : `New Table: ${specs[0].tableNumber}`,
           data: {
-            totalCount: tables.length + 1,
-            tables: [...tables, { id: "pending", tableNumber, section, capacity, status: "available", currentOrderTotal: 0 }]
+            totalCount: tables.length + specs.length,
+            tables: [...tables, ...pendingEntries]
           }
         }],
-        actionPayload: {
-          action: "ADD_TABLE",
-          tableNumber,
-          section,
-          capacity,
-          status: query.includes("reserve") || query.includes("रिझर्व्ह") ? "reserved" : "available"
-        }
+        actionPayload: specs.length > 1
+          ? { action: "ADD_TABLES", tables: specs }
+          : {
+              action: "ADD_TABLE",
+              tableNumber: specs[0].tableNumber,
+              section: specs[0].section,
+              capacity: specs[0].capacity,
+              status: specs[0].status
+            }
       };
     }
 

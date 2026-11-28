@@ -19,12 +19,12 @@ Triggered on pushes to `pre-production` or `workflow_dispatch`. It:
 - Runs the Playwright Electron desktop smoke test (`npm run test:electron`) gating installer generation.
 - Packages the isolated `BillingOnHand-Beta` Windows x64 NSIS installer, verifies `latest.yml`, and updates the rolling `beta-latest` GitHub Prerelease.
 
-## Latest Verification Results (`v1.1.24` on `pre-production`)
+## Latest Verification Results (`v1.1.25` on `pre-production`)
 - `npm run test:release-channel`: **PASSED** (Beta identity, installer isolation, update feed, and data isolation verified)
 - `npm run lint`: **PASSED** (`tsc --noEmit` exited with code 0)
 - `npm run build`: **PASSED** (Vite client bundle + `esbuild` `dist/server.cjs` built cleanly)
 - `node scripts/test-restaurant-table-persistence.cjs`: **PASSED** (all restaurant table persistence, KOT, schema recovery, HTTP 500 resilience, checkout-to-cleaning, and Kirana retail non-regression checks passed)
-- `node scripts/test-munimji-restaurant.cjs`: **PASSED** (Munimji table seed/create/order/list/settle/clean/delete, `invoice.type === "sale"`, `tableNumber` preservation, `trackStock: false` protection, and interactive `MunimjiDrawer` -> POS T-2 flow passed)
+- `node scripts/test-munimji-restaurant.cjs`: **PASSED** (Munimji table seed/create/multi-table Marathi & English looping/comma-joined payload guard/range delete/order/list/settle/clean/delete, `invoice.type === "sale"`, `tableNumber` preservation, `trackStock: false` protection, and interactive `MunimjiDrawer` -> POS T-2 flow passed)
 - GitHub Actions `pre-production` run & `beta-latest` release asset check: **PENDING PUSH**
 
 ## Coverage Matrix
@@ -34,5 +34,5 @@ Triggered on pushes to `pre-production` or `workflow_dispatch`. It:
   - Recovery of legacy `runningItemsSummary`, alternate schemas (`{name,qty,rate}`, `{title,count,price}`), deleted catalog items, and total-only occupied tables.
   - HTTP 500 persistence error resilience without clearing UI cart, Checkout -> `cleaning`, Mark Cleaned -> `available`, and Kirana retail non-regression.
 - **Digital Munimji Restaurant & Sales Training (`test-munimji-restaurant.cjs`)**:
-  - Table CRUD via `/api/munimji/process`: seed tables, create table (`T-7` 6-seater VIP), list tables + interactive `table_list` card, add running dishes (`SAVE_TABLE_ORDER`), settle table bill (`SETTLE_TABLE_BILL`) verifying `invoice.type === "sale"`, `trackStock === false` stock preservation, and `cleaning` status, mark cleaned (`available`), and delete table (`DELETE_TABLE`).
+  - Table CRUD via `/api/munimji/process`: seed tables, create single table (`T-7` 6-seater VIP), multi-table loop (`"चार टेबल क्रिएट कर"` -> 4 distinct tables, `"Create 4 new AC Dining 6 seater tables"` -> 4 distinct 6-seater AC Dining tables, comma-joined `ADD_TABLE` sanitizer guard, and `"Delete tables T-8 to T-18"` range deletion), list tables + interactive `table_list` card, add running dishes (`SAVE_TABLE_ORDER`), settle table bill (`SETTLE_TABLE_BILL`) verifying `invoice.type === "sale"`, `trackStock === false` stock preservation, and `cleaning` status, mark cleaned (`available`), and delete table (`DELETE_TABLE`).
   - Direct Munimji sales billing (`"Create cash bill 2 Masala Dosa"`) verifying `invoice.type === "sale"` and UI `MunimjiDrawer` rendering `table_list` cards + 1-click **Open Bill / Take Order** navigation into Sales POS.
