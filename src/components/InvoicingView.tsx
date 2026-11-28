@@ -682,14 +682,17 @@ export default function InvoicingView({
       .filter(line => {
         const quantity = Number(line?.quantity);
         const catalogItem = items.find(item => item.id === line?.itemId);
+        // Preserve a saved positive-quantity line even if its menu item
+        // was later removed/renamed in the catalog. The bill snapshot, not
+        // the current catalog lookup, is authoritative for an open table.
         return Number.isFinite(quantity) && quantity > 0 &&
-          Boolean(line?.itemName?.trim() || catalogItem?.name);
+          Boolean(line?.itemId || line?.itemName?.trim() || catalogItem?.name);
       })
       .map(line => {
         const catalogItem = items.find(item => item.id === line.itemId);
         return {
           ...line,
-          itemName: line.itemName?.trim() || catalogItem?.name,
+          itemName: line.itemName?.trim() || catalogItem?.name || "Unavailable Menu Item",
           hsn: line.hsn || catalogItem?.hsn || "9999",
           unit: line.unit || catalogItem?.unit || "PCS",
           quantity: Number(line.quantity),
