@@ -560,6 +560,8 @@ export interface RestaurantTable {
   capacity: number;
   status: 'available' | 'occupied' | 'reserved' | 'cleaning';
   currentOrderId?: string;
+  /** Stable invoice number assigned to the active restaurant table order. */
+  currentOrderInvoiceNumber?: string;
   currentOrderTotal?: number;
   runningItemsSummary?: string;
   currentOrderItems?: RestaurantTableOrderLine[];
