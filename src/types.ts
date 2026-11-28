@@ -566,6 +566,7 @@ export interface RestaurantTableOrderDraft {
   cashTendered?: number;
   customPaidAmount?: boolean;
   billingMode?: 'gst' | 'non_gst';
+  transactionType?: 'sale' | 'purchase' | 'sale_return' | 'purchase_return';
   originalInvoiceNumber?: string;
   sourceChallanId?: string;
   sourceChallanNumber?: string;
