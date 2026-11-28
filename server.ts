@@ -680,12 +680,14 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
         // dropped saved order lines before the POS checkout could restore them.
         currentOrderItems: Array.isArray(tbl?.currentOrderItems)
           ? tbl.currentOrderItems.map((line: any) => ({
-              itemId: String(line?.itemId || ""),
-              itemName: (line?.itemName || line?.name) ? String(line?.itemName || line?.name) : undefined,
+              itemId: String(line?.itemId ?? line?.id ?? ""),
+              itemName: (line?.itemName || line?.name || line?.title || line?.dishName)
+                ? String(line?.itemName || line?.name || line?.title || line?.dishName)
+                : undefined,
               hsn: line?.hsn ? String(line.hsn) : undefined,
               unit: line?.unit ? String(line.unit) : undefined,
-              quantity: Math.max(0, Number(line?.quantity) || 0),
-              customPrice: Number(line?.customPrice ?? line?.price) || 0,
+              quantity: Math.max(0, Number(line?.quantity ?? line?.qty ?? line?.count) || 0),
+              customPrice: Number(line?.customPrice ?? line?.price ?? line?.rate ?? line?.unitPrice ?? line?.salePrice) || 0,
               discount: Number(line?.discount) || 0,
               discountType: line?.discountType === "amount" ? "amount" as const : "percent" as const,
               gstRate: Math.max(0, Number(line?.gstRate) || 0),
@@ -2378,12 +2380,14 @@ app.post("/api/tables/item", (req, res) => {
       runningItemsSummary: tbl.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
       currentOrderItems: Array.isArray(tbl.currentOrderItems)
         ? tbl.currentOrderItems.map((line: any) => ({
-            itemId: String(line?.itemId || ""),
-            itemName: (line?.itemName || line?.name) ? String(line?.itemName || line?.name) : undefined,
+            itemId: String(line?.itemId ?? line?.id ?? ""),
+            itemName: (line?.itemName || line?.name || line?.title || line?.dishName)
+              ? String(line?.itemName || line?.name || line?.title || line?.dishName)
+              : undefined,
             hsn: line?.hsn ? String(line.hsn) : undefined,
             unit: line?.unit ? String(line.unit) : undefined,
-            quantity: Math.max(0, Number(line?.quantity) || 0),
-            customPrice: Number(line?.customPrice ?? line?.price) || 0,
+            quantity: Math.max(0, Number(line?.quantity ?? line?.qty ?? line?.count) || 0),
+            customPrice: Number(line?.customPrice ?? line?.price ?? line?.rate ?? line?.unitPrice ?? line?.salePrice) || 0,
             discount: Number(line?.discount) || 0,
             discountType: line?.discountType === "amount" ? "amount" as const : "percent" as const,
             gstRate: Math.max(0, Number(line?.gstRate) || 0),

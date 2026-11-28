@@ -480,6 +480,17 @@ export default function InvoicingView({
   // DOM Refs
   const quickInputRef = useRef<HTMLInputElement>(null);
   const partyInputRef = useRef<HTMLInputElement>(null);
+  const savedTableCartSigRef = useRef<{ tableId: string; signature: string } | null>(null);
+  const getTableCartSignature = (
+    lines: Array<{ itemId?: string; itemName?: string; quantity?: number; customPrice?: number; discount?: number }>
+  ) =>
+    lines
+      .filter(l => Number(l.quantity) > 0 && Boolean(l.itemId || l.itemName?.trim()))
+      .map(
+        l =>
+          `${String(l.itemId || "")}|${String(l.itemName || "").trim()}|${Number(l.quantity) || 0}|${Number(l.customPrice || 0)}|${Number(l.discount || 0)}`
+      )
+      .join(";;");
 
   // Resolve active selected party (including Walk-in Cash Customer fallback)
   const activeParty = useMemo(() => {
@@ -532,30 +543,39 @@ export default function InvoicingView({
     const savedOrderLines = Array.isArray(table.currentOrderItems)
       ? table.currentOrderItems
       : [];
+    const lookupCatalogItem = (itemId?: string, rawName?: string) => {
+      const cleanName = String(rawName || "").trim().toLowerCase();
+      const baseName = cleanName.replace(/\s*\(half\)$/i, "").trim();
+      return (
+        (itemId ? items.find(item => item.id === itemId) : undefined) ||
+        (cleanName ? items.find(item => item.name.trim().toLowerCase() === cleanName) : undefined) ||
+        (baseName ? items.find(item => item.name.trim().toLowerCase() === baseName) : undefined)
+      );
+    };
     // Older persisted snapshots may contain rows that survived normalization
-    // but are not usable POS lines (for example, missing names/IDs or zero qty).
-    // Do not let a non-empty but invalid snapshot suppress summary recovery.
+    // or came from older schemas (`qty`, `name`, `price`, `rate`).
     const restorableOrderLines = savedOrderLines
       .filter(line => {
-        const quantity = Number(line?.quantity);
-        const lineName = String(line?.itemName ?? (line as any)?.name ?? "").trim();
-        const catalogItem = items.find(item => item.id === line?.itemId);
-        // Preserve a saved positive-quantity line even if its menu item
-        // was later removed/renamed in the catalog. The bill snapshot, not
-        // the current catalog lookup, is authoritative for an open table.
+        const quantity = Number(line?.quantity ?? (line as any)?.qty ?? (line as any)?.count);
+        const lineName = String(line?.itemName ?? (line as any)?.name ?? (line as any)?.title ?? (line as any)?.dishName ?? "").trim();
+        const rawItemId = String(line?.itemId ?? (line as any)?.id ?? "").trim();
+        const catalogItem = lookupCatalogItem(rawItemId, lineName);
         return Number.isFinite(quantity) && quantity > 0 &&
-          Boolean(line?.itemId || lineName || catalogItem?.name);
+          Boolean(rawItemId || lineName || catalogItem?.name);
       })
-      .map(line => {
-        const catalogItem = items.find(item => item.id === line.itemId);
-        const lineName = String(line?.itemName ?? (line as any)?.name ?? "").trim();
-        const rawCustomPrice = line?.customPrice ?? (line as any)?.price;
+      .map((line, idx) => {
+        const rawItemId = String(line?.itemId ?? (line as any)?.id ?? "").trim();
+        const lineName = String(line?.itemName ?? (line as any)?.name ?? (line as any)?.title ?? (line as any)?.dishName ?? "").trim();
+        const catalogItem = lookupCatalogItem(rawItemId, lineName);
+        const quantity = Number(line?.quantity ?? (line as any)?.qty ?? (line as any)?.count);
+        const rawCustomPrice = line?.customPrice ?? (line as any)?.price ?? (line as any)?.rate ?? (line as any)?.unitPrice ?? (line as any)?.salePrice;
         return {
           ...line,
+          itemId: rawItemId || catalogItem?.id || `recovered_${table.id}_${idx}`,
           itemName: lineName || catalogItem?.name || "Unavailable Menu Item",
           hsn: line.hsn || catalogItem?.hsn || "9999",
           unit: line.unit || catalogItem?.unit || "PCS",
-          quantity: Number(line.quantity),
+          quantity,
           customPrice: rawCustomPrice !== undefined && rawCustomPrice !== null && Number.isFinite(Number(rawCustomPrice))
             ? Number(rawCustomPrice)
             : (catalogItem?.salePrice || 0),
@@ -565,62 +585,133 @@ export default function InvoicingView({
             : (effectiveBillingMode === "non_gst" ? 0 : (catalogItem?.gstRate || 0))
         };
       });
+
+    const cleanSummary = table.runningItemsSummary?.trim() || "";
+    const hasActiveSummaryText = Boolean(cleanSummary && !/^bill settled/i.test(cleanSummary));
+    const parseSummaryToken = (part: string, idx: number) => {
+      const trimmed = part.trim();
+      if (!trimmed) return null;
+      let quantity = 1;
+      let rawName = trimmed;
+
+      const prefixQtyMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*(?:x|\*)\s*(.+)$/i);
+      const suffixQtyMatch = !prefixQtyMatch ? trimmed.match(/^(.+?)\s*(?:x|\*)\s*(\d+(?:\.\d+)?)$/i) : null;
+      const parenQtyMatch = !prefixQtyMatch && !suffixQtyMatch ? trimmed.match(/^(.+?)\s*\((\d+(?:\.\d+)?)\)$/i) : null;
+
+      if (prefixQtyMatch) {
+        const parsedQty = Number(prefixQtyMatch[1]);
+        quantity = Number.isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 1;
+        rawName = prefixQtyMatch[2].trim();
+      } else if (suffixQtyMatch) {
+        const parsedQty = Number(suffixQtyMatch[2]);
+        quantity = Number.isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 1;
+        rawName = suffixQtyMatch[1].trim();
+      } else if (parenQtyMatch) {
+        const parsedQty = Number(parenQtyMatch[2]);
+        quantity = Number.isFinite(parsedQty) && parsedQty > 0 ? parsedQty : 1;
+        rawName = parenQtyMatch[1].trim();
+      }
+
+      if (!rawName) return null;
+      const isHalf = /\(half\)$/i.test(rawName);
+      const baseName = rawName.replace(/\s*\(half\)$/i, "").trim();
+      const catalogItem = lookupCatalogItem(undefined, rawName) || lookupCatalogItem(undefined, baseName);
+      const resolvedPrice = isHalf && catalogItem?.halfPrice && catalogItem.halfPrice > 0
+        ? catalogItem.halfPrice
+        : (catalogItem?.salePrice || 0);
+      return {
+        itemId: catalogItem?.id || `summary_${table.id}_${idx}`,
+        itemName: catalogItem?.name || baseName || rawName,
+        hsn: catalogItem?.hsn || "9999",
+        unit: catalogItem?.unit || "PCS",
+        quantity,
+        customPrice: resolvedPrice,
+        discount: 0,
+        discountType: "percent" as const,
+        gstRate: effectiveBillingMode === "non_gst" ? 0 : (catalogItem?.gstRate || 0),
+        portionLabel: isHalf ? ("Half" as const) : undefined
+      };
+    };
+
+    const fallbackTotal = Number(table.currentOrderTotal) || 0;
+    let noticeBanner = "";
+    let restoredErrorBanner = "";
+
+    let resolvedRestoredLines: InvoiceLine[] = [];
     if (restorableOrderLines.length > 0) {
+      resolvedRestoredLines = restorableOrderLines;
       setInvoiceLines(restorableOrderLines);
-    } else if (table.runningItemsSummary?.trim() && !table.runningItemsSummary.trim().startsWith("Bill Settled")) {
-      // Backward compatibility: older Beta versions stored only a summary
-      // such as "2x Tea, 1x Coffee" or "1x Paneer (Half)", not the full cart snapshot.
-      const legacyLines = table.runningItemsSummary
-        .split(/,\s*(?=\d+(?:\.\d+)?\s*x\s*)/i)
-        .map(part => {
-          const match = part.trim().match(/^(\d+(?:\.\d+)?)\s*x\s*(.+)$/i);
-          if (!match) return null;
-          const rawQty = Number(match[1]);
-          const quantity = Number.isFinite(rawQty) && rawQty > 0 ? rawQty : 1;
-          const rawName = match[2].trim();
-          const isHalf = /\(half\)$/i.test(rawName);
-          const baseName = rawName.replace(/\s*\(half\)$/i, "").trim();
-          const catalogItem =
-            items.find(item => item.name.trim().toLowerCase() === rawName.toLowerCase()) ||
-            items.find(item => item.name.trim().toLowerCase() === baseName.toLowerCase());
-          const resolvedPrice = isHalf && catalogItem?.halfPrice && catalogItem.halfPrice > 0
-            ? catalogItem.halfPrice
-            : (catalogItem?.salePrice || 0);
-          return {
-            itemId: catalogItem?.id || "",
-            itemName: catalogItem?.name || baseName || rawName,
-            hsn: catalogItem?.hsn || "9999",
-            unit: catalogItem?.unit || "PCS",
-            quantity,
-            customPrice: resolvedPrice,
-            discount: 0,
-            discountType: "percent" as const,
-            gstRate: effectiveBillingMode === "non_gst" ? 0 : (catalogItem?.gstRate || 0),
-            portionLabel: isHalf ? ("Half" as const) : undefined
-          };
-        })
+    } else if (hasActiveSummaryText) {
+      const legacyLines = cleanSummary
+        .split(/\s*,\s*/)
+        .map((part, idx) => parseSummaryToken(part, idx))
         .filter((line): line is NonNullable<typeof line> => Boolean(line));
 
       const pricedSubtotal = legacyLines.reduce((sum, l) => sum + (l.customPrice > 0 ? l.customPrice * l.quantity : 0), 0);
       const unpricedUnits = legacyLines.reduce((sum, l) => sum + (l.customPrice === 0 ? l.quantity : 0), 0);
-      const fallbackTotal = Number(table.currentOrderTotal) || 0;
       if (unpricedUnits > 0 && fallbackTotal > pricedSubtotal) {
         const unitFallbackPrice = parseFloat(((fallbackTotal - pricedSubtotal) / unpricedUnits).toFixed(2));
         legacyLines.forEach(l => {
           if (l.customPrice === 0) {
             l.customPrice = unitFallbackPrice;
+            // Fallback price is derived from the saved grand total; keep 0% extra tax to avoid double-taxing.
+            l.gstRate = 0;
           }
         });
       }
 
-      setInvoiceLines(legacyLines);
       if (legacyLines.length > 0) {
-        setQuickNotification("Older table order recovered from its item summary. Please verify prices and discounts before checkout.");
-        setTimeout(() => setQuickNotification(""), 7000);
+        resolvedRestoredLines = legacyLines;
+        setInvoiceLines(legacyLines);
+        noticeBanner = "Table order recovered from its running item summary. Please verify prices before checkout.";
+      } else if (fallbackTotal > 0) {
+        resolvedRestoredLines = [
+          {
+            itemId: `running_${table.id}`,
+            itemName: cleanSummary || `Table ${table.tableNumber} Running Order`,
+            hsn: "2106",
+            unit: "BILL",
+            quantity: 1,
+            customPrice: fallbackTotal,
+            discount: 0,
+            discountType: "percent",
+            gstRate: 0
+          }
+        ];
+        setInvoiceLines(resolvedRestoredLines);
+        noticeBanner = `Restored Table ${table.tableNumber} running bill total (${formatINR(fallbackTotal)}). Add or adjust menu items if needed.`;
+      } else {
+        setInvoiceLines([]);
       }
+    } else if (fallbackTotal > 0) {
+      // Occupied table has a persisted running bill total without itemized lines:
+      // never show an empty ₹0 cart.
+      resolvedRestoredLines = [
+        {
+          itemId: `running_${table.id}`,
+          itemName: `Table ${table.tableNumber} Running Order`,
+          hsn: "2106",
+          unit: "BILL",
+          quantity: 1,
+          customPrice: fallbackTotal,
+          discount: 0,
+          discountType: "percent",
+          gstRate: 0
+        }
+      ];
+      setInvoiceLines(resolvedRestoredLines);
+      noticeBanner = `Restored Table ${table.tableNumber} running bill total (${formatINR(fallbackTotal)}).`;
     } else {
       setInvoiceLines([]);
+      if (table.status === "occupied") {
+        restoredErrorBanner = `Table ${table.tableNumber} is marked Occupied with no saved items yet. Add menu items below and click Save to Table.`;
+      }
     }
+    savedTableCartSigRef.current = {
+      tableId: table.id,
+      signature: getTableCartSignature(resolvedRestoredLines)
+    };
+
     const restoredExtraCharges = (table.currentOrderExtraCharges || []).map(charge => ({ ...charge }));
     setExtraCharges(restoredExtraCharges);
     setShowExtraChargesSection(restoredExtraCharges.length > 0);
@@ -628,7 +719,11 @@ export default function InvoicingView({
     setNotes(restoredNotes);
     setShowNotes(Boolean(restoredNotes.trim()));
     setErrorText("");
-    setTableActionError("");
+    setTableActionError(restoredErrorBanner);
+    if (noticeBanner) {
+      setQuickNotification(noticeBanner);
+      setTimeout(() => setQuickNotification(""), 7000);
+    }
   };
 
   // Sync / pre-populate form on editing or mode switch ONLY.
@@ -790,9 +885,10 @@ export default function InvoicingView({
     }
     const tableHasSavedLines = Boolean(
       (Array.isArray(selectedTableForPOS.currentOrderItems) &&
-        selectedTableForPOS.currentOrderItems.some(l => Number(l?.quantity) > 0)) ||
+        selectedTableForPOS.currentOrderItems.some(l => Number(l?.quantity ?? (l as any)?.qty) > 0)) ||
       (selectedTableForPOS.runningItemsSummary?.trim() &&
-        !selectedTableForPOS.runningItemsSummary.trim().startsWith("Bill Settled"))
+        !selectedTableForPOS.runningItemsSummary.trim().startsWith("Bill Settled")) ||
+      Number(selectedTableForPOS.currentOrderTotal || 0) > 0
     );
     // If catalog hasn't loaded yet AND the table has no saved line snapshot,
     // wait for catalog before marking restored; otherwise restore immediately.
@@ -1678,6 +1774,10 @@ export default function InvoicingView({
         currentOrderNotes: notes,
         currentOrderUpdatedAt: new Date().toISOString()
       });
+      savedTableCartSigRef.current = {
+        tableId: tbl.id,
+        signature: getTableCartSignature(snapshotLines)
+      };
     } catch (err: any) {
       setTableActionError(err?.message || "Failed to save the complete restaurant running bill. Please retry.");
       setIsSavingTable(false);
@@ -1979,6 +2079,7 @@ export default function InvoicingView({
                     onClick={() => {
                       setOrderType('takeaway');
                       setSelectedTableId('');
+                      if (onClearTableForPOS) onClearTableForPOS();
                     }}
                     className={`px-3 py-1 rounded-lg transition cursor-pointer ${
                       orderType === 'takeaway'
@@ -1993,6 +2094,7 @@ export default function InvoicingView({
                     onClick={() => {
                       setOrderType('delivery');
                       setSelectedTableId('');
+                      if (onClearTableForPOS) onClearTableForPOS();
                     }}
                     className={`px-3 py-1 rounded-lg transition cursor-pointer ${
                       orderType === 'delivery'
@@ -2017,27 +2119,53 @@ export default function InvoicingView({
                   if (!found) return;
                   const hasRunningOrder = Boolean(
                     found.status === "occupied" ||
-                    (found.currentOrderItems && found.currentOrderItems.some(line => Number(line.quantity) > 0)) ||
+                    (found.currentOrderItems && found.currentOrderItems.some(line => Number(line.quantity ?? (line as any)?.qty) > 0)) ||
                     found.currentOrderDraft ||
                     found.currentOrderInvoiceNumber ||
+                    Number(found.currentOrderTotal || 0) > 0 ||
                     (found.runningItemsSummary?.trim() && !found.runningItemsSummary.trim().startsWith("Bill Settled"))
                   );
-                  const hasCartContent = invoiceLines.some(
+                  const activeCartLines = invoiceLines.filter(
                     line => Number(line.quantity) > 0 && Boolean(line.itemId || line.itemName?.trim())
                   );
+                  const hasCartContent = activeCartLines.length > 0;
                   const prevTable = selectedTableId ? tables.find(t => t.id === selectedTableId) : undefined;
+                  // Allow seamless 1-click switching between saved occupied tables when
+                  // the current table cart matches its already-saved snapshot.
+                  const prevSavedLines = Array.isArray(prevTable?.currentOrderItems)
+                    ? prevTable.currentOrderItems.filter(l => Number(l.quantity ?? (l as any)?.qty) > 0)
+                    : [];
+                  const currentCartSig = getTableCartSignature(activeCartLines);
+                  const cartMatchesPrevSavedTable = Boolean(
+                    prevTable && (
+                      (savedTableCartSigRef.current?.tableId === prevTable.id &&
+                        savedTableCartSigRef.current.signature === currentCartSig) ||
+                      (prevSavedLines.length > 0 &&
+                        activeCartLines.length === prevSavedLines.length &&
+                        activeCartLines.every((cl, i) => {
+                          const sl = prevSavedLines[i];
+                          return (
+                            String(cl.itemId || "") === String(sl.itemId || "") &&
+                            Number(cl.quantity) === Number(sl.quantity ?? (sl as any)?.qty) &&
+                            Number(cl.customPrice || 0) === Number(sl.customPrice ?? (sl as any)?.price ?? 0)
+                          );
+                        }))
+                    )
+                  );
                   const switchingFromOccupiedTable = Boolean(
                     prevTable &&
                     prevTable.id !== found.id &&
                     (prevTable.status === "occupied" || Boolean(prevTable.currentOrderId) || Boolean(prevTable.currentOrderInvoiceNumber))
                   );
-                  if (hasRunningOrder && !hasCartContent) {
+                  if (hasRunningOrder && (!hasCartContent || cartMatchesPrevSavedTable || selectedTableId === found.id)) {
                     setOrderType('dine_in');
                     loadedTableIdRef.current = [found.id, tablePOSOpenKey].join("::");
                     restoreTableOrderToPOS(found);
                     if (onSelectTableForPOS) onSelectTableForPOS(found);
                   } else if (hasRunningOrder && hasCartContent && selectedTableId !== found.id) {
-                    setErrorText(`Table ${found.tableNumber} already has an active running bill. Clear the current cart or open ${found.tableNumber} from Restaurant Tables so its saved items are not overwritten.`);
+                    const guardMsg = `Table ${found.tableNumber} already has an active running bill. Save or clear your current cart first so neither order is lost.`;
+                    setErrorText(guardMsg);
+                    setTableActionError(guardMsg);
                   } else {
                     setErrorText("");
                     setOrderType('dine_in');
@@ -2764,7 +2892,7 @@ export default function InvoicingView({
 
                           {/* Item Selector */}
                           <td className="py-2.5 px-2">
-                            {line.itemId ? (
+                            {(line.itemId || line.itemName?.trim()) ? (
                               <div>
                                 <p className="font-bold text-slate-800 text-xs">
                                   {selectedItem?.name || line.itemName || "Item"}
@@ -2779,7 +2907,7 @@ export default function InvoicingView({
                                       ]
                                         .filter(Boolean)
                                         .join(" · ")
-                                    : `HSN: ${selectedItem?.hsn || "-"} • Stock: ${selectedItem?.stockQuantity} ${selectedItem?.unit}`}
+                                    : `HSN: ${selectedItem?.hsn || line.hsn || "-"} • ${selectedItem ? `Stock: ${selectedItem.stockQuantity} ${selectedItem.unit}` : `Unit: ${line.unit || "PCS"}`}`}
                                 </span>
                               </div>
                             ) : (
@@ -2921,7 +3049,7 @@ export default function InvoicingView({
             RIGHT COLUMN (lg:col-span-4): THE PURE POS SIDE REGISTER CONTAINER
             Side container displaying all calculated amounts, taxes, and payment summary
             ========================================================================= */}
-        <div className="lg:col-span-4 sticky top-20 space-y-4">
+        <div className="lg:col-span-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto space-y-4">
           
           <div id="pos-amounts-register-container" className="bg-white border-2 border-slate-300/80 rounded-2xl shadow-lg p-5 space-y-4 font-sans">
             
@@ -3114,6 +3242,41 @@ export default function InvoicingView({
                 {formatINR(computedInvoiceDetails.grandTotal)}
               </div>
             </div>
+
+            {/* Restaurant Quick KOT & Running Order Action Buttons (kept above the fold right below Total) */}
+            {isRestaurantMode && type === "sale" && (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    disabled={isSavingTable}
+                    onClick={handleOpenKOTModal}
+                    className="py-2.5 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
+                    title="Save & Print Kitchen Order Ticket for chef"
+                  >
+                    <Utensils className="w-3.5 h-3.5" />
+                    <span>{isSavingTable ? "Saving..." : "Print KOT"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isSavingTable}
+                    onClick={handleSaveRunningTableKOT}
+                    className="py-2.5 px-3 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
+                    title="Save running order to dining table"
+                  >
+                    <UtensilsCrossed className="w-3.5 h-3.5" />
+                    <span>{isSavingTable ? "Saving..." : "Save to Table"}</span>
+                  </button>
+                </div>
+                {tableActionError && (
+                  <div id="pos-table-error-banner" className="p-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-[11px] font-semibold flex items-center gap-1.5">
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    <span>{tableActionError}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Payment Method Fast Buttons */}
             <div className="space-y-2">
@@ -3331,41 +3494,6 @@ export default function InvoicingView({
                   <span>Reset Cart</span>
                 </button>
               </div>
-
-              {/* Restaurant Quick KOT & Running Order Action Buttons */}
-              {isRestaurantMode && type === "sale" && (
-                <div className="space-y-2 pt-1">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      disabled={isSavingTable}
-                      onClick={handleOpenKOTModal}
-                      className="py-2.5 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
-                      title="Save & Print Kitchen Order Ticket for chef"
-                    >
-                      <Utensils className="w-3.5 h-3.5" />
-                      <span>{isSavingTable ? "Saving..." : "Print KOT"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={isSavingTable}
-                      onClick={handleSaveRunningTableKOT}
-                      className="py-2.5 px-3 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
-                      title="Save running order to dining table"
-                    >
-                      <UtensilsCrossed className="w-3.5 h-3.5" />
-                      <span>{isSavingTable ? "Saving..." : "Save to Table"}</span>
-                    </button>
-                  </div>
-                  {tableActionError && (
-                    <div id="pos-table-error-banner" className="p-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-[11px] font-semibold flex items-center gap-1.5">
-                      <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                      <span>{tableActionError}</span>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* Secondary Actions Grid */}
               <div className="grid grid-cols-2 gap-2">

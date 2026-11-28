@@ -246,11 +246,15 @@ async function fetchApiDb(page) {
     assert.equal((await page.locator("#pos-grand-total-amount").innerText()).trim(), t2TotalBeforeSave);
     assert.equal(await page.locator("#pos-invoice-number-input").inputValue(), t2InvBeforeSave);
 
-    // Try switching dropdown to occupied T-1 while T-2 cart has items -> must block & protect T-1
+    // Add an unsaved item on T-2, then try switching dropdown to occupied T-1 -> must block & protect both tables
+    await page.locator("#pos-barcode-scanner-input").fill(dish1.name);
+    await page.locator("#pos-barcode-scanner-input").press("Enter");
+    await page.locator("tbody tr").nth(1).waitFor({ state: "visible" });
     await page.locator("#pos-table-select").selectOption("tbl_1");
-    await page.getByText(/already has an active running bill/i).waitFor({ state: "visible" });
+    await page.locator("#pos-table-error-banner").getByText(/already has an active running bill/i).waitFor({ state: "visible" });
     apiDb = await fetchApiDb(page);
     assert.equal(apiDb.tables.find((t) => t.id === "tbl_1").currentOrderItems.length, expectedLinesAfterEdit, "T-1 order must stay untouched");
+    assert.equal(apiDb.tables.find((t) => t.id === "tbl_2").currentOrderItems.length, 1, "T-2 saved snapshot must stay intact until saved");
 
     // ---------------------------------------------------------------
     // TEST 5B: Running Tables Quick-Load Pills & Inline Table Validation
@@ -394,7 +398,7 @@ async function fetchApiDb(page) {
     await t1CleaningCard.getByRole("button", { name: /Mark Cleaned/i }).click();
     await t1CleaningCard.getByText(/available/i).waitFor({ state: "visible" });
 
-    // Empty-catalog + legacy runningItemsSummary recovery test on T-3
+    // Empty-catalog + legacy runningItemsSummary recovery + seamless occupied-table switching test
     await page.evaluate(async () => {
       const db = await (await fetch("/api/db", { cache: "no-store" })).json();
       for (const item of db.items || []) {
@@ -409,7 +413,38 @@ async function fetchApiDb(page) {
           status: "occupied",
           currentOrderInvoiceNumber: "INV-2026-LEGACY",
           currentOrderTotal: 380,
-          runningItemsSummary: "2x Paneer Chilli, 1x Veg Biryani",
+          runningItemsSummary: "2x Paneer Chilli, Veg Biryani x 1",
+          currentOrderItems: []
+        })
+      });
+
+      const t4 = (db.tables || []).find((t) => t.id === "tbl_4") || { id: "tbl_4", tableNumber: "T-4", capacity: 4, section: "Garden" };
+      await fetch("/api/tables/item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...t4,
+          status: "occupied",
+          currentOrderInvoiceNumber: "INV-2026-ALT",
+          currentOrderTotal: 520,
+          runningItemsSummary: "",
+          currentOrderItems: [
+            { name: "Masala Papad", qty: 2, rate: 60 },
+            { title: "Butter Chicken", count: 1, price: 400 }
+          ]
+        })
+      });
+
+      const t5 = (db.tables || []).find((t) => t.id === "tbl_5") || { id: "tbl_5", tableNumber: "T-5", capacity: 4, section: "Main Hall" };
+      await fetch("/api/tables/item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...t5,
+          status: "occupied",
+          currentOrderInvoiceNumber: "INV-2026-TOTALONLY",
+          currentOrderTotal: 550,
+          runningItemsSummary: "",
           currentOrderItems: []
         })
       });
@@ -420,10 +455,38 @@ async function fetchApiDb(page) {
     await t3LegacyCard.getByRole("button", { name: /View Order \/ Bill/i }).click();
     await page.locator("#pos-terminal-root").waitFor({ state: "visible" });
     await page.locator("tbody tr").first().waitFor({ state: "visible" });
+
+    // Check Save to Table and Print KOT are visible above the fold inside the POS register
+    const saveTableBtnBox = await page.getByRole("button", { name: /Save to Table/i }).boundingBox();
+    const printKotBtnBox = await page.getByRole("button", { name: /Print KOT/i }).boundingBox();
+    assert.ok(saveTableBtnBox && saveTableBtnBox.y < 900, "Save to Table button should be visible above the fold");
+    assert.ok(printKotBtnBox && printKotBtnBox.y < 900, "Print KOT button should be visible above the fold");
     assert.equal(await page.locator("#invoice-setup-warning").count(), 0, "Empty catalog must NOT block opening occupied table T-3");
     assert.equal(await page.locator("tbody tr").count(), 2, "Legacy summary must restore 2 items on T-3");
+    const t3Row0Text = await page.locator("tbody tr").nth(0).innerText();
+    const t3Row1Text = await page.locator("tbody tr").nth(1).innerText();
+    assert.ok(t3Row0Text.includes("Paneer Chilli"), `T-3 row 0 should show Paneer Chilli, got: ${t3Row0Text}`);
+    assert.ok(t3Row1Text.includes("Veg Biryani"), `T-3 row 1 should show Veg Biryani, got: ${t3Row1Text}`);
+    assert.ok(!t3Row0Text.includes("-- Choose Item --") && !t3Row1Text.includes("-- Choose Item --"), "Recovered items must NOT fall back to Choose Item dropdown");
     const t3TotalText = (await page.locator("#pos-grand-total-amount").innerText()).trim();
     assert.notEqual(t3TotalText, "₹0.00", "Legacy summary recovery must derive non-zero item prices totaling currentOrderTotal");
+
+    // 1-click switch from saved T-3 to legacy-schema T-4 (and total-only T-5) without blocking when no unsaved edits
+    await page.locator('#pos-running-tables-bar [data-running-table-id="tbl_4"]').click();
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator("#pos-table-select").inputValue(), "tbl_4", "Should seamlessly switch to T-4 when T-3 has no unsaved edits");
+    assert.equal(await page.locator("tbody tr").count(), 2, "Legacy {name,qty,rate}/{title,count,price} items on T-4 must restore");
+    const t4Row0Text = await page.locator("tbody tr").nth(0).innerText();
+    const t4Row1Text = await page.locator("tbody tr").nth(1).innerText();
+    assert.ok(t4Row0Text.includes("Masala Papad") && t4Row1Text.includes("Butter Chicken"), "T-4 alternate schema dish names must display");
+    assert.equal((await page.locator("#pos-grand-total-amount").innerText()).trim(), "₹520.00", "T-4 legacy total must restore cleanly");
+
+    await page.locator('#pos-running-tables-bar [data-running-table-id="tbl_5"]').click();
+    await page.waitForTimeout(300);
+    assert.equal(await page.locator("#pos-table-select").inputValue(), "tbl_5");
+    assert.equal(await page.locator("tbody tr").count(), 1, "Total-only occupied table T-5 must synthesize a Running Order line instead of an empty cart");
+    assert.ok((await page.locator("tbody tr").first().innerText()).includes("Running Order"));
+    assert.equal((await page.locator("#pos-grand-total-amount").innerText()).trim(), "₹550.00", "T-5 total must match currentOrderTotal ₹550.00");
 
     // Non-Restaurant Mode Regression Check (Kirana retail flow via clean uninstall + setup)
     if (fs.existsSync(LOCK_PATH)) fs.unlinkSync(LOCK_PATH);

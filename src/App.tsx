@@ -1291,6 +1291,8 @@ export default function App() {
                 } catch (error) {
                   console.warn("Could not refresh table order before checkout; using current table data.", error);
                 }
+                setInvoiceToEdit(null);
+                setIsReturnMode(false);
                 setActiveTableForPOS(tableToOpen);
                 setTablePOSOpenKey(previous => previous + 1);
                 setActiveTab("sales");
