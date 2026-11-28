@@ -23,7 +23,7 @@ export default function TablesView({
   onSeedTables,
   onOpenTablePOS
 }: TablesViewProps) {
-  const { showAlert } = useDialog();
+  const { showAlert, showConfirm } = useDialog();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingTable, setEditingTable] = useState<RestaurantTable | null>(null);
   const [selectedSection, setSelectedSection] = useState<string>("all");
@@ -73,6 +73,17 @@ export default function TablesView({
   };
 
   const handleMarkCleaned = async (t: RestaurantTable) => {
+    const hasUnsettledItems = (t.currentOrderItems?.length || 0) > 0 || Boolean(t.runningItemsSummary?.trim());
+    if (hasUnsettledItems) {
+      const confirmed = await showConfirm({
+        title: "Clear Running Table Order?",
+        message: `Table ${t.tableNumber} still has items that have not been checked out. Marking it as Available will permanently clear those items from this running order. Continue only if the bill has been settled or the order should be discarded.`,
+        confirmText: "Clear Items & Mark Available",
+        cancelText: "Keep Order",
+        variant: "danger"
+      });
+      if (!confirmed) return;
+    }
     setActionBusyId(t.id);
     try {
       await onSaveTable({
@@ -83,7 +94,8 @@ export default function TablesView({
         runningItemsSummary: "",
         currentOrderItems: [],
         currentOrderExtraCharges: [],
-        currentOrderNotes: ""
+        currentOrderNotes: "",
+        currentOrderUpdatedAt: undefined
       });
     } catch (err: any) {
       await showAlert({
@@ -114,6 +126,28 @@ export default function TablesView({
     }
 
     setFormError(null);
+
+    const clearsRunningOrder = Boolean(
+      editingTable &&
+      (status === "available" || status === "cleaning") &&
+      (
+        (editingTable.currentOrderItems?.length || 0) > 0 ||
+        Boolean(editingTable.runningItemsSummary?.trim()) ||
+        Boolean(editingTable.currentOrderId) ||
+        Number(editingTable.currentOrderTotal || 0) > 0
+      )
+    );
+    if (clearsRunningOrder && editingTable) {
+      const confirmed = await showConfirm({
+        title: "Unsettled Items Will Be Deleted",
+        message: `Table ${editingTable.tableNumber} has a running order that has not been checked out. Changing its status to ${status === "available" ? "Available" : "Needs Cleaning"} will delete all saved items, extra charges, and order notes. Do you want to continue?`,
+        confirmText: "Delete Items & Change Status",
+        cancelText: "Cancel",
+        variant: "danger"
+      });
+      if (!confirmed) return;
+    }
+
     setIsSubmitting(true);
 
     const newTable: RestaurantTable = {
@@ -127,7 +161,8 @@ export default function TablesView({
       runningItemsSummary: status === "available" || status === "cleaning" ? "" : (editingTable?.runningItemsSummary || ""),
       currentOrderItems: status === "available" || status === "cleaning" ? [] : (editingTable?.currentOrderItems || []),
       currentOrderExtraCharges: status === "available" || status === "cleaning" ? [] : (editingTable?.currentOrderExtraCharges || []),
-      currentOrderNotes: status === "available" || status === "cleaning" ? "" : (editingTable?.currentOrderNotes || "")
+      currentOrderNotes: status === "available" || status === "cleaning" ? "" : (editingTable?.currentOrderNotes || ""),
+      currentOrderUpdatedAt: status === "available" || status === "cleaning" ? undefined : editingTable?.currentOrderUpdatedAt
     };
 
     try {
@@ -350,6 +385,17 @@ export default function TablesView({
                   <button
                     type="button"
                     onClick={async () => {
+                      const hasUnsettledItems = (t.currentOrderItems?.length || 0) > 0 || Boolean(t.runningItemsSummary?.trim());
+                      if (hasUnsettledItems) {
+                        const confirmed = await showConfirm({
+                          title: "Delete Table With Running Order?",
+                          message: `Table ${t.tableNumber} has items that have not been checked out. Deleting this table will also remove its saved running order. Continue?`,
+                          confirmText: "Delete Table & Items",
+                          cancelText: "Keep Table",
+                          variant: "danger"
+                        });
+                        if (!confirmed) return;
+                      }
                       setActionBusyId(t.id);
                       try {
                         await onDeleteTable(t.id);
