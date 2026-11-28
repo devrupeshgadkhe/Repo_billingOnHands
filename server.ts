@@ -2415,13 +2415,18 @@ app.post("/api/tables/item", (req, res) => {
     const persistedTable = readDb().tables?.find(table => table.id === sanitized.id);
     const expectedItems = JSON.stringify(sanitized.currentOrderItems || []);
     const actualItems = JSON.stringify(persistedTable?.currentOrderItems || []);
+    const expectedCharges = JSON.stringify(sanitized.currentOrderExtraCharges || []);
+    const actualCharges = JSON.stringify(persistedTable?.currentOrderExtraCharges || []);
     const expectedDraft = JSON.stringify(sanitized.currentOrderDraft || {});
     const actualDraft = JSON.stringify(persistedTable?.currentOrderDraft || {});
     if (
       !persistedTable ||
       persistedTable.currentOrderUpdatedAt !== sanitized.currentOrderUpdatedAt ||
       persistedTable.currentOrderInvoiceNumber !== sanitized.currentOrderInvoiceNumber ||
+      Number(persistedTable.currentOrderTotal || 0) !== Number(sanitized.currentOrderTotal || 0) ||
+      (persistedTable.currentOrderNotes || "") !== (sanitized.currentOrderNotes || "") ||
       expectedItems !== actualItems ||
+      expectedCharges !== actualCharges ||
       expectedDraft !== actualDraft
     ) {
       return res.status(500).json({ error: "Restaurant running bill could not be verified after saving. The existing table order has not been confirmed as saved." });
