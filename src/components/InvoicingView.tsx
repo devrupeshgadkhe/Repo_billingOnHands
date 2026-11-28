@@ -255,13 +255,15 @@ export default function InvoicingView({
 
   // Sync with business settings if changed
   useEffect(() => {
-    if (!invoiceToEdit && type === "sale") {
+    // A saved restaurant table draft owns its billing mode. Do not replace it
+    // with the store default while restoring an unsettled table bill.
+    if (!invoiceToEdit && type === "sale" && !(isRestaurantMode && selectedTableForPOS)) {
       if (business?.defaultBillingMode === 'non_gst' || business?.defaultGstSlab === 0) {
         setBillingMode('non_gst');
         setInvoiceLines(prev => prev.map(line => ({ ...line, gstRate: 0 })));
       }
     }
-  }, [business?.defaultBillingMode, business?.defaultGstSlab, invoiceToEdit, type]);
+  }, [business?.defaultBillingMode, business?.defaultGstSlab, invoiceToEdit, type, isRestaurantMode, selectedTableForPOS]);
 
   // Quick-Pick Catalog UI state
   const [showCatalog, setShowCatalog] = useState(true);
@@ -730,8 +732,10 @@ export default function InvoicingView({
     } else {
       setInvoiceLines([]);
     }
-    setExtraCharges((selectedTableForPOS.currentOrderExtraCharges || []).map(charge => ({ ...charge })));
-    setNotes(selectedTableForPOS.currentOrderNotes ?? "");
+    const restoredExtraCharges = (selectedTableForPOS.currentOrderExtraCharges || []).map(charge => ({ ...charge }));
+    setExtraCharges(restoredExtraCharges);
+    if (restoredExtraCharges.length > 0) setShowExtraChargesSection(true);
+    setNotes(selectedTableForPOS.currentOrderNotes ?? savedDraft?.notes ?? "");
     setErrorText("");
   }, [selectedTableForPOS, isRestaurantMode, items, tablePOSOpenKey, business?.defaultBillingMode, business?.defaultGstSlab]);
 
