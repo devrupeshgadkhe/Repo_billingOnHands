@@ -670,6 +670,9 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
         status: (["available", "occupied", "reserved", "cleaning"].includes(tbl?.status) ? tbl.status : "available") as RestaurantTable["status"],
         currentOrderId: tbl?.currentOrderId ? String(tbl.currentOrderId) : undefined,
         currentOrderInvoiceNumber: tbl?.currentOrderInvoiceNumber ? String(tbl.currentOrderInvoiceNumber) : undefined,
+        currentOrderDraft: tbl?.currentOrderDraft && typeof tbl.currentOrderDraft === "object"
+          ? { ...tbl.currentOrderDraft }
+          : undefined,
         currentOrderTotal: Number(tbl?.currentOrderTotal) || 0,
         runningItemsSummary: tbl?.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
         // Preserve the complete active restaurant cart through every database
@@ -2365,6 +2368,9 @@ app.post("/api/tables/item", (req, res) => {
       status: (["available", "occupied", "reserved", "cleaning"].includes(tbl.status) ? tbl.status : "available") as RestaurantTable["status"],
       currentOrderId: tbl.currentOrderId ? String(tbl.currentOrderId) : undefined,
       currentOrderInvoiceNumber: tbl.currentOrderInvoiceNumber ? String(tbl.currentOrderInvoiceNumber) : undefined,
+      currentOrderDraft: tbl.currentOrderDraft && typeof tbl.currentOrderDraft === "object"
+        ? { ...tbl.currentOrderDraft }
+        : undefined,
       currentOrderTotal: Number(tbl.currentOrderTotal) || 0,
       runningItemsSummary: tbl.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
       currentOrderItems: Array.isArray(tbl.currentOrderItems) ? tbl.currentOrderItems : [],
@@ -2385,7 +2391,25 @@ app.post("/api/tables/item", (req, res) => {
     }
 
     writeDb(db);
-    res.json({ success: true, table: sanitized, tables: db.tables });
+
+    // writeDb intentionally protects legacy callers from throwing, so verify
+    // this restaurant-specific write by reading the persisted snapshot back.
+    const persistedTable = readDb().tables?.find(table => table.id === sanitized.id);
+    const expectedItems = JSON.stringify(sanitized.currentOrderItems || []);
+    const actualItems = JSON.stringify(persistedTable?.currentOrderItems || []);
+    const expectedDraft = JSON.stringify(sanitized.currentOrderDraft || {});
+    const actualDraft = JSON.stringify(persistedTable?.currentOrderDraft || {});
+    if (
+      !persistedTable ||
+      persistedTable.currentOrderUpdatedAt !== sanitized.currentOrderUpdatedAt ||
+      persistedTable.currentOrderInvoiceNumber !== sanitized.currentOrderInvoiceNumber ||
+      expectedItems !== actualItems ||
+      expectedDraft !== actualDraft
+    ) {
+      return res.status(500).json({ error: "Restaurant running bill could not be verified after saving. The existing table order has not been confirmed as saved." });
+    }
+
+    res.json({ success: true, table: persistedTable, tables: readDb().tables || [] });
   } catch (err: any) {
     res.status(500).json({ error: "Failed to create or update table: " + (err?.message || err) });
   }
