@@ -77,7 +77,9 @@ export default function KOTPrintModal({
               <span>Print KOT</span>
             </button>
             <button
+              id="kot-close-btn"
               type="button"
+              aria-label="Close KOT Modal"
               onClick={onClose}
               className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer"
             >

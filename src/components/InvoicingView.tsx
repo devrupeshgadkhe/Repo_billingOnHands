@@ -157,6 +157,8 @@ export default function InvoicingView({
   const [selectedTableId, setSelectedTableId] = useState<string>(() => selectedTableForPOS?.id || "");
   const loadedTableIdRef = useRef<string>("");
   const [isKotModalOpen, setIsKotModalOpen] = useState(false);
+  const [isSavingTable, setIsSavingTable] = useState(false);
+  const [tableActionError, setTableActionError] = useState("");
 
   // Local additions from bill scanning
   const [addedItems, setAddedItems] = useState<Item[]>([]);
@@ -520,7 +522,8 @@ export default function InvoicingView({
     setPaidAmt(Number(savedDraft?.paidAmount) || 0);
     setCashTendered(Number(savedDraft?.cashTendered) || Number(savedDraft?.paidAmount) || 0);
     setCustomPaidAmount(Boolean(savedDraft?.customPaidAmount));
-    setBillingMode(savedDraft?.billingMode || (business?.defaultBillingMode === "non_gst" || business?.defaultGstSlab === 0 ? "non_gst" : "gst"));
+    const effectiveBillingMode = savedDraft?.billingMode || (business?.defaultBillingMode === "non_gst" || business?.defaultGstSlab === 0 ? "non_gst" : "gst");
+    setBillingMode(effectiveBillingMode);
     setOriginalInvoiceNumber(savedDraft?.originalInvoiceNumber || "");
     setSourceChallanId(savedDraft?.sourceChallanId);
     setSourceChallanNumber(savedDraft?.sourceChallanNumber);
@@ -535,52 +538,81 @@ export default function InvoicingView({
     const restorableOrderLines = savedOrderLines
       .filter(line => {
         const quantity = Number(line?.quantity);
+        const lineName = String(line?.itemName ?? (line as any)?.name ?? "").trim();
         const catalogItem = items.find(item => item.id === line?.itemId);
         // Preserve a saved positive-quantity line even if its menu item
         // was later removed/renamed in the catalog. The bill snapshot, not
         // the current catalog lookup, is authoritative for an open table.
         return Number.isFinite(quantity) && quantity > 0 &&
-          Boolean(line?.itemId || line?.itemName?.trim() || catalogItem?.name);
+          Boolean(line?.itemId || lineName || catalogItem?.name);
       })
       .map(line => {
         const catalogItem = items.find(item => item.id === line.itemId);
+        const lineName = String(line?.itemName ?? (line as any)?.name ?? "").trim();
+        const rawCustomPrice = line?.customPrice ?? (line as any)?.price;
         return {
           ...line,
-          itemName: line.itemName?.trim() || catalogItem?.name || "Unavailable Menu Item",
+          itemName: lineName || catalogItem?.name || "Unavailable Menu Item",
           hsn: line.hsn || catalogItem?.hsn || "9999",
           unit: line.unit || catalogItem?.unit || "PCS",
           quantity: Number(line.quantity),
-          customPrice: Number.isFinite(Number(line.customPrice)) ? Number(line.customPrice) : (catalogItem?.salePrice || 0),
+          customPrice: rawCustomPrice !== undefined && rawCustomPrice !== null && Number.isFinite(Number(rawCustomPrice))
+            ? Number(rawCustomPrice)
+            : (catalogItem?.salePrice || 0),
           discount: Number.isFinite(Number(line.discount)) ? Number(line.discount) : 0,
-          gstRate: Number.isFinite(Number(line.gstRate)) ? Number(line.gstRate) : (catalogItem?.gstRate || 0)
+          gstRate: Number.isFinite(Number(line.gstRate))
+            ? Number(line.gstRate)
+            : (effectiveBillingMode === "non_gst" ? 0 : (catalogItem?.gstRate || 0))
         };
       });
     if (restorableOrderLines.length > 0) {
       setInvoiceLines(restorableOrderLines);
     } else if (table.runningItemsSummary?.trim() && !table.runningItemsSummary.trim().startsWith("Bill Settled")) {
       // Backward compatibility: older Beta versions stored only a summary
-      // such as "2x Tea, 1x Coffee", not the full cart snapshot.
+      // such as "2x Tea, 1x Coffee" or "1x Paneer (Half)", not the full cart snapshot.
       const legacyLines = table.runningItemsSummary
         .split(/,\s*(?=\d+(?:\.\d+)?\s*x\s*)/i)
         .map(part => {
           const match = part.trim().match(/^(\d+(?:\.\d+)?)\s*x\s*(.+)$/i);
           if (!match) return null;
-          const quantity = Number(match[1]);
-          const itemName = match[2].trim();
-          const catalogItem = items.find(item => item.name.trim().toLowerCase() === itemName.toLowerCase());
+          const rawQty = Number(match[1]);
+          const quantity = Number.isFinite(rawQty) && rawQty > 0 ? rawQty : 1;
+          const rawName = match[2].trim();
+          const isHalf = /\(half\)$/i.test(rawName);
+          const baseName = rawName.replace(/\s*\(half\)$/i, "").trim();
+          const catalogItem =
+            items.find(item => item.name.trim().toLowerCase() === rawName.toLowerCase()) ||
+            items.find(item => item.name.trim().toLowerCase() === baseName.toLowerCase());
+          const resolvedPrice = isHalf && catalogItem?.halfPrice && catalogItem.halfPrice > 0
+            ? catalogItem.halfPrice
+            : (catalogItem?.salePrice || 0);
           return {
             itemId: catalogItem?.id || "",
-            itemName: catalogItem?.name || itemName,
+            itemName: catalogItem?.name || baseName || rawName,
             hsn: catalogItem?.hsn || "9999",
             unit: catalogItem?.unit || "PCS",
-            quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
-            customPrice: catalogItem?.salePrice || 0,
+            quantity,
+            customPrice: resolvedPrice,
             discount: 0,
             discountType: "percent" as const,
-            gstRate: catalogItem?.gstRate || 0
+            gstRate: effectiveBillingMode === "non_gst" ? 0 : (catalogItem?.gstRate || 0),
+            portionLabel: isHalf ? ("Half" as const) : undefined
           };
         })
         .filter((line): line is NonNullable<typeof line> => Boolean(line));
+
+      const pricedSubtotal = legacyLines.reduce((sum, l) => sum + (l.customPrice > 0 ? l.customPrice * l.quantity : 0), 0);
+      const unpricedUnits = legacyLines.reduce((sum, l) => sum + (l.customPrice === 0 ? l.quantity : 0), 0);
+      const fallbackTotal = Number(table.currentOrderTotal) || 0;
+      if (unpricedUnits > 0 && fallbackTotal > pricedSubtotal) {
+        const unitFallbackPrice = parseFloat(((fallbackTotal - pricedSubtotal) / unpricedUnits).toFixed(2));
+        legacyLines.forEach(l => {
+          if (l.customPrice === 0) {
+            l.customPrice = unitFallbackPrice;
+          }
+        });
+      }
+
       setInvoiceLines(legacyLines);
       if (legacyLines.length > 0) {
         setQuickNotification("Older table order recovered from its item summary. Please verify prices and discounts before checkout.");
@@ -596,6 +628,7 @@ export default function InvoicingView({
     setNotes(restoredNotes);
     setShowNotes(Boolean(restoredNotes.trim()));
     setErrorText("");
+    setTableActionError("");
   };
 
   // Sync / pre-populate form on editing or mode switch ONLY.
@@ -755,10 +788,15 @@ export default function InvoicingView({
       loadedTableIdRef.current = "";
       return;
     }
-    // The POS can mount before its item catalog has loaded. Do not mark this
-    // table as restored until catalog data is ready; otherwise the effect's
-    // items dependency reruns but the table-ID guard skips the actual restore.
-    if (items.length === 0) return;
+    const tableHasSavedLines = Boolean(
+      (Array.isArray(selectedTableForPOS.currentOrderItems) &&
+        selectedTableForPOS.currentOrderItems.some(l => Number(l?.quantity) > 0)) ||
+      (selectedTableForPOS.runningItemsSummary?.trim() &&
+        !selectedTableForPOS.runningItemsSummary.trim().startsWith("Bill Settled"))
+    );
+    // If catalog hasn't loaded yet AND the table has no saved line snapshot,
+    // wait for catalog before marking restored; otherwise restore immediately.
+    if (items.length === 0 && !tableHasSavedLines) return;
     // Restore once per explicit table-open session, not whenever the table
     // object changes after Save to Table. App refreshes the server-verified
     // table snapshot after every save; including currentOrderUpdatedAt here
@@ -1019,7 +1057,11 @@ export default function InvoicingView({
     setInvoiceLines(prev => {
       const copy = [...prev];
       copy[idx] = {
+        ...copy[idx],
         itemId,
+        itemName: selectedItem.name,
+        hsn: selectedItem.hsn,
+        unit: selectedItem.unit,
         quantity: copy[idx].quantity || 1,
         customPrice: type === "sale" ? selectedItem.salePrice : selectedItem.purchasePrice,
         discount: copy[idx].discount || 0,
@@ -1552,31 +1594,25 @@ export default function InvoicingView({
     }
   };
 
-  const handleOpenKOTModal = () => {
-    if (invoiceLines.length === 0) {
-      setErrorText("Please add at least 1 food item to generate a Kitchen Order Ticket (KOT).");
-      return;
-    }
-    setErrorText("");
-    setIsKotModalOpen(true);
-  };
-
-  const handleSaveRunningTableKOT = async () => {
-    if (!isRestaurantMode) return;
+  const persistCurrentOrderToTable = async (options?: { silentSuccess?: boolean }): Promise<boolean> => {
+    if (!isRestaurantMode) return false;
+    if (isSavingTable) return false;
     if (!selectedTableId) {
-      setErrorText("Please select a dining table to attach this running kitchen order.");
-      return;
+      setTableActionError("Please select a dining table above to save this running kitchen order.");
+      return false;
     }
     const linesToPersist = invoiceLines.filter(
       line => Number(line.quantity) > 0 && Boolean(line.itemId || line.itemName?.trim())
     );
     if (linesToPersist.length === 0) {
-      setErrorText("Please add items to save order to table.");
-      return;
+      setTableActionError("Please add at least one item before saving order to table.");
+      return false;
     }
     const tbl = tables.find(t => t.id === selectedTableId) || (selectedTableForPOS?.id === selectedTableId ? selectedTableForPOS : undefined);
-    if (!tbl || !onSaveTable) return;
+    if (!tbl || !onSaveTable) return false;
     setErrorText("");
+    setTableActionError("");
+    setIsSavingTable(true);
     const snapshotLines = linesToPersist.map(line => {
       const catalogItem = items.find(i => i.id === line.itemId);
       return {
@@ -1608,51 +1644,83 @@ export default function InvoicingView({
     // Re-saving updates the snapshot; it never appends duplicate quantities.
     try {
       await onSaveTable({
-      ...tbl,
-      status: "occupied",
-      currentOrderId: stableOrderId,
-      currentOrderInvoiceNumber: stableInvoiceNumber,
-      currentOrderDraft: {
-        invoiceNumber: stableInvoiceNumber,
-        invoiceDate,
-        selectedPartyId,
-        partySearchText,
-        partyName: selectedPartyId === "walkin_customer"
-          ? (partySearchText.trim() || activeParty?.name || "")
-          : (activeParty?.name || partySearchText || ""),
-        partyGstin: activeParty?.gstin || "",
-        notes,
-        paymentType,
-        paidAmount: paidAmt,
-        cashTendered,
-        customPaidAmount,
-        billingMode,
-        transactionType: txSubtype,
-        originalInvoiceNumber,
-        sourceChallanId,
-        sourceChallanNumber,
-        sourceQuotationId,
-        sourceQuotationNumber,
-        orderType
-      } satisfies RestaurantTableOrderDraft,
-      currentOrderTotal: computedInvoiceDetails.grandTotal,
-      runningItemsSummary: summary,
-      currentOrderItems: snapshotLines,
-      currentOrderExtraCharges: extraCharges.filter(c => c.title.trim() && c.amount > 0).map(c => ({ ...c })),
-      currentOrderNotes: notes,
-      currentOrderUpdatedAt: new Date().toISOString()
+        ...tbl,
+        status: "occupied",
+        currentOrderId: stableOrderId,
+        currentOrderInvoiceNumber: stableInvoiceNumber,
+        currentOrderDraft: {
+          invoiceNumber: stableInvoiceNumber,
+          invoiceDate,
+          selectedPartyId,
+          partySearchText,
+          partyName: selectedPartyId === "walkin_customer"
+            ? (partySearchText.trim() || activeParty?.name || "")
+            : (activeParty?.name || partySearchText || ""),
+          partyGstin: activeParty?.gstin || "",
+          notes,
+          paymentType,
+          paidAmount: paidAmt,
+          cashTendered,
+          customPaidAmount,
+          billingMode,
+          transactionType: txSubtype,
+          originalInvoiceNumber,
+          sourceChallanId,
+          sourceChallanNumber,
+          sourceQuotationId,
+          sourceQuotationNumber,
+          orderType
+        } satisfies RestaurantTableOrderDraft,
+        currentOrderTotal: computedInvoiceDetails.grandTotal,
+        runningItemsSummary: summary,
+        currentOrderItems: snapshotLines,
+        currentOrderExtraCharges: extraCharges.filter(c => c.title.trim() && c.amount > 0).map(c => ({ ...c })),
+        currentOrderNotes: notes,
+        currentOrderUpdatedAt: new Date().toISOString()
       });
     } catch (err: any) {
-      setErrorText(err?.message || "Failed to save the complete restaurant running bill. Please retry.");
-      return;
+      setTableActionError(err?.message || "Failed to save the complete restaurant running bill. Please retry.");
+      setIsSavingTable(false);
+      return false;
     }
+    setIsSavingTable(false);
     playPOSSound('success');
-    setQuickNotification(`Table ${tbl.tableNumber} is now marked Occupied with ₹${computedInvoiceDetails.grandTotal.toFixed(2)} running kitchen order!`);
-    setTimeout(() => setQuickNotification(""), 3500);
+    if (!options?.silentSuccess) {
+      setQuickNotification(`Table ${tbl.tableNumber} is now marked Occupied with ₹${computedInvoiceDetails.grandTotal.toFixed(2)} running kitchen order!`);
+      setTimeout(() => setQuickNotification(""), 3500);
+    }
+    return true;
   };
 
-  // Safe checks if catalog registries are blank
-  if (items.length === 0 || (relevantParties.length === 0 && !(isRestaurantMode && type === "sale"))) {
+  const handleOpenKOTModal = async () => {
+    const validKotLines = invoiceLines.filter(
+      line => Number(line.quantity) > 0 && Boolean(line.itemId || line.itemName?.trim())
+    );
+    if (validKotLines.length === 0) {
+      setTableActionError("Please add at least 1 food item to generate a Kitchen Order Ticket (KOT).");
+      return;
+    }
+    if (isRestaurantMode && type === "sale" && selectedTableId) {
+      const saved = await persistCurrentOrderToTable({ silentSuccess: true });
+      if (!saved) return;
+    } else {
+      setTableActionError("");
+      setErrorText("");
+    }
+    setIsKotModalOpen(true);
+  };
+
+  const handleSaveRunningTableKOT = async () => {
+    await persistCurrentOrderToTable({ silentSuccess: false });
+  };
+
+  // Safe checks if catalog registries are blank — allow restored restaurant orders to display even if menu items were deleted
+  const hasRestorableRestaurantOrder = Boolean(
+    isRestaurantMode &&
+    type === "sale" &&
+    (selectedTableForPOS || selectedTableId || invoiceLines.length > 0)
+  );
+  if ((items.length === 0 && !hasRestorableRestaurantOrder) || (relevantParties.length === 0 && !(isRestaurantMode && type === "sale"))) {
     return (
       <div id="invoice-setup-warning" className="bg-white rounded-xl border border-dashed border-slate-200 p-8 text-center max-w-lg mx-auto shadow-sm my-12">
         <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
@@ -1937,88 +2005,133 @@ export default function InvoicingView({
                 </div>
               </div>
 
-              {orderType === 'dine_in' && (
-                <div className="flex items-center gap-2">
-                  <label className="font-bold text-amber-950">Table:</label>
-                  <select
-                    id="pos-table-select"
-                    value={selectedTableId}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (!val) {
-                        setSelectedTableId("");
-                        if (onSelectTableForPOS) onSelectTableForPOS(null);
-                        return;
+              {(() => {
+                const handleSelectTableOption = (val: string) => {
+                  setTableActionError("");
+                  if (!val) {
+                    setSelectedTableId("");
+                    if (onSelectTableForPOS) onSelectTableForPOS(null);
+                    return;
+                  }
+                  const found = tables.find(t => t.id === val);
+                  if (!found) return;
+                  const hasRunningOrder = Boolean(
+                    found.status === "occupied" ||
+                    (found.currentOrderItems && found.currentOrderItems.some(line => Number(line.quantity) > 0)) ||
+                    found.currentOrderDraft ||
+                    found.currentOrderInvoiceNumber ||
+                    (found.runningItemsSummary?.trim() && !found.runningItemsSummary.trim().startsWith("Bill Settled"))
+                  );
+                  const hasCartContent = invoiceLines.some(
+                    line => Number(line.quantity) > 0 && Boolean(line.itemId || line.itemName?.trim())
+                  );
+                  const prevTable = selectedTableId ? tables.find(t => t.id === selectedTableId) : undefined;
+                  const switchingFromOccupiedTable = Boolean(
+                    prevTable &&
+                    prevTable.id !== found.id &&
+                    (prevTable.status === "occupied" || Boolean(prevTable.currentOrderId) || Boolean(prevTable.currentOrderInvoiceNumber))
+                  );
+                  if (hasRunningOrder && !hasCartContent) {
+                    setOrderType('dine_in');
+                    loadedTableIdRef.current = [found.id, tablePOSOpenKey].join("::");
+                    restoreTableOrderToPOS(found);
+                    if (onSelectTableForPOS) onSelectTableForPOS(found);
+                  } else if (hasRunningOrder && hasCartContent && selectedTableId !== found.id) {
+                    setErrorText(`Table ${found.tableNumber} already has an active running bill. Clear the current cart or open ${found.tableNumber} from Restaurant Tables so its saved items are not overwritten.`);
+                  } else {
+                    setErrorText("");
+                    setOrderType('dine_in');
+                    setSelectedTableId(val);
+                    loadedTableIdRef.current = [found.id, tablePOSOpenKey].join("::");
+                    if (onSelectTableForPOS) onSelectTableForPOS(found);
+                    if (switchingFromOccupiedTable) {
+                      setInvoiceLines([]);
+                      setExtraCharges([]);
+                      setShowExtraChargesSection(false);
+                      setNotes("");
+                      setShowNotes(false);
+                      const randomSuffix = Math.floor(100 + Math.random() * 900);
+                      setInvoiceNumber(`INV-${new Date().getFullYear()}-${randomSuffix}`);
+                      setPartySearchText(`Table ${found.tableNumber} (Dine-In)`);
+                      setSelectedPartyId("walkin_customer");
+                    } else {
+                      const isGenericCustomer =
+                        !partySearchText.trim() ||
+                        /^(walk[\s-]?in|cash customer|table\s)/i.test(partySearchText.trim());
+                      if (isGenericCustomer) {
+                        setPartySearchText(`Table ${found.tableNumber} (Dine-In)`);
+                        setSelectedPartyId("walkin_customer");
                       }
-                      const found = tables.find(t => t.id === val);
-                      if (found) {
-                        const hasRunningOrder = Boolean(
-                          found.status === "occupied" ||
-                          (found.currentOrderItems && found.currentOrderItems.some(line => Number(line.quantity) > 0)) ||
-                          found.currentOrderDraft ||
-                          found.currentOrderInvoiceNumber
-                        );
-                        const hasCartContent = invoiceLines.some(
-                          line => Number(line.quantity) > 0 && Boolean(line.itemId || line.itemName?.trim())
-                        );
-                        const prevTable = selectedTableId ? tables.find(t => t.id === selectedTableId) : undefined;
-                        const switchingFromOccupiedTable = Boolean(
-                          prevTable &&
-                          prevTable.id !== found.id &&
-                          (prevTable.status === "occupied" || Boolean(prevTable.currentOrderId) || Boolean(prevTable.currentOrderInvoiceNumber))
-                        );
-                        if (hasRunningOrder && !hasCartContent) {
-                          loadedTableIdRef.current = [found.id, tablePOSOpenKey].join("::");
-                          restoreTableOrderToPOS(found);
-                          if (onSelectTableForPOS) onSelectTableForPOS(found);
-                        } else if (hasRunningOrder && hasCartContent && selectedTableId !== found.id) {
-                          setErrorText(`Table ${found.tableNumber} already has an active running bill. Clear the current cart or open ${found.tableNumber} from Restaurant Tables so its saved items are not overwritten.`);
-                        } else {
-                          setErrorText("");
-                          setSelectedTableId(val);
-                          loadedTableIdRef.current = [found.id, tablePOSOpenKey].join("::");
-                          if (onSelectTableForPOS) onSelectTableForPOS(found);
-                          if (switchingFromOccupiedTable) {
-                            setInvoiceLines([]);
-                            setExtraCharges([]);
-                            setShowExtraChargesSection(false);
-                            setNotes("");
-                            setShowNotes(false);
-                            const randomSuffix = Math.floor(100 + Math.random() * 900);
-                            setInvoiceNumber(`INV-${new Date().getFullYear()}-${randomSuffix}`);
-                            setPartySearchText(`Table ${found.tableNumber} (Dine-In)`);
-                            setSelectedPartyId("walkin_customer");
-                          } else {
-                            const isGenericCustomer =
-                              !partySearchText.trim() ||
-                              /^(walk[\s-]?in|cash customer|table\s)/i.test(partySearchText.trim());
-                            if (isGenericCustomer) {
-                              setPartySearchText(`Table ${found.tableNumber} (Dine-In)`);
-                              setSelectedPartyId("walkin_customer");
-                            }
-                          }
-                        }
-                      }
-                    }}
-                    className="bg-white border border-amber-300 rounded-xl px-3 py-1.5 font-bold text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
-                  >
-                    <option value="">-- Choose Table --</option>
-                    {tables.map(t => (
-                      <option key={t.id} value={t.id}>
-                        {t.tableNumber} ({t.section || 'Main Dining'} - {t.capacity} Seats) {t.status === 'occupied' ? '🔴 Occupied' : t.status === 'cleaning' ? '🧹 Needs Cleaning' : t.status === 'reserved' ? '🟡 Reserved' : '🟢 Free'}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => onNavigateTab("tables")}
-                    className="px-2.5 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-bold text-[11px] transition shadow-2xs cursor-pointer"
-                    title="View visual table map"
-                  >
-                    View Tables
-                  </button>
-                </div>
-              )}
+                    }
+                  }
+                };
+
+                const runningTables = tables.filter(t =>
+                  t.status === "occupied" ||
+                  (Array.isArray(t.currentOrderItems) && t.currentOrderItems.some(l => Number(l.quantity) > 0))
+                );
+
+                return (
+                  <>
+                    {orderType === 'dine_in' && (
+                      <div className="flex items-center gap-2">
+                        <label className="font-bold text-amber-950">Table:</label>
+                        <select
+                          id="pos-table-select"
+                          value={selectedTableId}
+                          onChange={(e) => handleSelectTableOption(e.target.value)}
+                          className="bg-white border border-amber-300 rounded-xl px-3 py-1.5 font-bold text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+                        >
+                          <option value="">-- Choose Table --</option>
+                          {tables.map(t => (
+                            <option key={t.id} value={t.id}>
+                              {t.tableNumber} ({t.section || 'Main Dining'} - {t.capacity} Seats) {t.status === 'occupied' ? '🔴 Occupied' : t.status === 'cleaning' ? '🧹 Needs Cleaning' : t.status === 'reserved' ? '🟡 Reserved' : '🟢 Free'}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => onNavigateTab("tables")}
+                          className="px-2.5 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl font-bold text-[11px] transition shadow-2xs cursor-pointer"
+                          title="View visual table map"
+                        >
+                          View Tables
+                        </button>
+                      </div>
+                    )}
+
+                    {runningTables.length > 0 && (
+                      <div id="pos-running-tables-bar" className="w-full flex flex-wrap items-center gap-1.5 pt-2 border-t border-amber-200/70">
+                        <span className="text-[11px] font-bold text-amber-900 mr-1">Running Tables:</span>
+                        {runningTables.map(rt => {
+                          const isCurrent = selectedTableId === rt.id;
+                          const totalVal = Number(rt.currentOrderTotal) || 0;
+                          return (
+                            <button
+                              key={rt.id}
+                              type="button"
+                              data-running-table-id={rt.id}
+                              onClick={() => handleSelectTableOption(rt.id)}
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer flex items-center gap-1.5 ${
+                                isCurrent
+                                  ? "bg-amber-800 text-white border-amber-900 shadow-xs"
+                                  : "bg-white hover:bg-amber-100 text-amber-950 border-amber-300"
+                              }`}
+                              title={`Load running bill for ${rt.tableNumber}`}
+                            >
+                              <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
+                              <span>{rt.tableNumber}</span>
+                              <span className={isCurrent ? "text-amber-200" : "text-amber-700"}>
+                                · ₹{totalVal.toFixed(0)}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -3221,26 +3334,36 @@ export default function InvoicingView({
 
               {/* Restaurant Quick KOT & Running Order Action Buttons */}
               {isRestaurantMode && type === "sale" && (
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={handleOpenKOTModal}
-                    className="py-2.5 px-3 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
-                    title="Print Kitchen Order Ticket for chef"
-                  >
-                    <Utensils className="w-3.5 h-3.5" />
-                    <span>Print KOT</span>
-                  </button>
+                <div className="space-y-2 pt-1">
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      disabled={isSavingTable}
+                      onClick={handleOpenKOTModal}
+                      className="py-2.5 px-3 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
+                      title="Save & Print Kitchen Order Ticket for chef"
+                    >
+                      <Utensils className="w-3.5 h-3.5" />
+                      <span>{isSavingTable ? "Saving..." : "Print KOT"}</span>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={handleSaveRunningTableKOT}
-                    className="py-2.5 px-3 bg-amber-800 hover:bg-amber-900 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
-                    title="Save running order to dining table"
-                  >
-                    <UtensilsCrossed className="w-3.5 h-3.5" />
-                    <span>Save to Table</span>
-                  </button>
+                    <button
+                      type="button"
+                      disabled={isSavingTable}
+                      onClick={handleSaveRunningTableKOT}
+                      className="py-2.5 px-3 bg-amber-800 hover:bg-amber-900 disabled:opacity-60 text-white font-bold rounded-xl transition flex items-center justify-center space-x-1.5 cursor-pointer shadow-xs text-xs"
+                      title="Save running order to dining table"
+                    >
+                      <UtensilsCrossed className="w-3.5 h-3.5" />
+                      <span>{isSavingTable ? "Saving..." : "Save to Table"}</span>
+                    </button>
+                  </div>
+                  {tableActionError && (
+                    <div id="pos-table-error-banner" className="p-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-[11px] font-semibold flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                      <span>{tableActionError}</span>
+                    </div>
+                  )}
                 </div>
               )}
 

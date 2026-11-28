@@ -681,11 +681,11 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
         currentOrderItems: Array.isArray(tbl?.currentOrderItems)
           ? tbl.currentOrderItems.map((line: any) => ({
               itemId: String(line?.itemId || ""),
-              itemName: line?.itemName ? String(line.itemName) : undefined,
+              itemName: (line?.itemName || line?.name) ? String(line?.itemName || line?.name) : undefined,
               hsn: line?.hsn ? String(line.hsn) : undefined,
               unit: line?.unit ? String(line.unit) : undefined,
               quantity: Math.max(0, Number(line?.quantity) || 0),
-              customPrice: Number(line?.customPrice) || 0,
+              customPrice: Number(line?.customPrice ?? line?.price) || 0,
               discount: Number(line?.discount) || 0,
               discountType: line?.discountType === "amount" ? "amount" as const : "percent" as const,
               gstRate: Math.max(0, Number(line?.gstRate) || 0),
@@ -2379,11 +2379,11 @@ app.post("/api/tables/item", (req, res) => {
       currentOrderItems: Array.isArray(tbl.currentOrderItems)
         ? tbl.currentOrderItems.map((line: any) => ({
             itemId: String(line?.itemId || ""),
-            itemName: line?.itemName ? String(line.itemName) : undefined,
+            itemName: (line?.itemName || line?.name) ? String(line?.itemName || line?.name) : undefined,
             hsn: line?.hsn ? String(line.hsn) : undefined,
             unit: line?.unit ? String(line.unit) : undefined,
             quantity: Math.max(0, Number(line?.quantity) || 0),
-            customPrice: Number(line?.customPrice) || 0,
+            customPrice: Number(line?.customPrice ?? line?.price) || 0,
             discount: Number(line?.discount) || 0,
             discountType: line?.discountType === "amount" ? "amount" as const : "percent" as const,
             gstRate: Math.max(0, Number(line?.gstRate) || 0),

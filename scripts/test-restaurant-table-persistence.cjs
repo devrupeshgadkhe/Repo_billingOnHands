@@ -253,6 +253,52 @@ async function fetchApiDb(page) {
     assert.equal(apiDb.tables.find((t) => t.id === "tbl_1").currentOrderItems.length, expectedLinesAfterEdit, "T-1 order must stay untouched");
 
     // ---------------------------------------------------------------
+    // TEST 5B: Running Tables Quick-Load Pills & Inline Table Validation
+    // ---------------------------------------------------------------
+    console.log("6B. Testing Running Tables quick-load pills & inline Save to Table validation...");
+    await page.locator("#sidebar-dashboard-btn").click();
+    await page.locator("#sidebar-sales-btn").click();
+    await page.locator("#pos-terminal-root").waitFor({ state: "visible" });
+
+    // Clicking Save to Table before choosing a table must surface inline error right beside button
+    await page.getByRole("button", { name: /Save to Table/i }).click();
+    await page.locator("#pos-table-error-banner").waitFor({ state: "visible" });
+
+    // Click Running Table pill for T-2 to load its running bill in one click
+    await page.locator('#pos-running-tables-bar [data-running-table-id="tbl_2"]').waitFor({ state: "visible" });
+    await page.locator('#pos-running-tables-bar [data-running-table-id="tbl_2"]').click();
+    await page.locator("tbody tr").first().waitFor({ state: "visible" });
+    assert.equal(await page.locator("#pos-table-select").inputValue(), "tbl_2", "T-2 should be selected via quick-load pill");
+    assert.equal((await page.locator("#pos-grand-total-amount").innerText()).trim(), t2TotalBeforeSave);
+    assert.equal(await page.locator("#pos-party-search-input").inputValue(), "Priya Kulkarni");
+
+    // ---------------------------------------------------------------
+    // TEST 5C: Print KOT Auto-Saves Table Order
+    // ---------------------------------------------------------------
+    console.log("6C. Testing Print KOT auto-saves running items to dining table...");
+    await page.locator("#sidebar-dashboard-btn").click();
+    await page.locator("#sidebar-sales-btn").click();
+    await page.locator("#pos-terminal-root").waitFor({ state: "visible" });
+    await page.locator("#pos-table-select").selectOption("tbl_4");
+    await page.locator("#pos-barcode-scanner-input").fill(dish2.name);
+    await page.locator("#pos-barcode-scanner-input").press("Enter");
+    await page.locator("tbody tr").first().waitFor({ state: "visible" });
+
+    const [kotSaveResp] = await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/api/tables/item") && r.request().method() === "POST"),
+      page.getByRole("button", { name: /Print KOT/i }).click()
+    ]);
+    assert.equal(kotSaveResp.status(), 200, "Print KOT must persist running items to T-4");
+    await page.getByText(/Kitchen Order Ticket \(KOT\)/i).first().waitFor({ state: "visible" });
+    await page.locator("#kot-close-btn").click();
+    await page.locator("#kot-close-btn").waitFor({ state: "hidden" });
+    assert.equal(await page.locator("tbody tr").count(), 1, "Cart must remain visible after Print KOT");
+    apiDb = await fetchApiDb(page);
+    const savedT4 = apiDb.tables.find((t) => t.id === "tbl_4");
+    assert.equal(savedT4.status, "occupied", "T-4 must be marked occupied after Print KOT");
+    assert.equal(savedT4.currentOrderItems.length, 1, "T-4 must have saved KOT item");
+
+    // ---------------------------------------------------------------
     // TEST 6: Full Browser Refresh & Multi-Table Isolation
     // ---------------------------------------------------------------
     console.log("7. Reloading browser & verifying T-1 and T-2 independent persistence...");
@@ -338,7 +384,7 @@ async function fetchApiDb(page) {
     assert.equal(diskDb.tables.find((t) => t.id === "tbl_2").currentOrderItems.length, 1);
 
     // Dismiss print modal if open, return to Tables, and Mark Cleaned on T-1
-    console.log("11. Closing receipt preview, marking T-1 cleaned, and checking non-restaurant mode regression...");
+    console.log("11. Closing receipt preview, marking T-1 cleaned, testing empty-catalog legacy summary recovery...");
     const closePreviewBtn = page.locator('button[title="Close Preview"]');
     if (await closePreviewBtn.isVisible().catch(() => false)) {
       await closePreviewBtn.click();
@@ -347,6 +393,37 @@ async function fetchApiDb(page) {
     const t1CleaningCard = page.locator("div.rounded-2xl").filter({ has: page.getByText("T-1", { exact: true }) }).first();
     await t1CleaningCard.getByRole("button", { name: /Mark Cleaned/i }).click();
     await t1CleaningCard.getByText(/available/i).waitFor({ state: "visible" });
+
+    // Empty-catalog + legacy runningItemsSummary recovery test on T-3
+    await page.evaluate(async () => {
+      const db = await (await fetch("/api/db", { cache: "no-store" })).json();
+      for (const item of db.items || []) {
+        await fetch(`/api/items/${item.id}`, { method: "DELETE" });
+      }
+      const t3 = (db.tables || []).find((t) => t.id === "tbl_3") || { id: "tbl_3", tableNumber: "T-3", capacity: 6, section: "AC Hall" };
+      await fetch("/api/tables/item", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...t3,
+          status: "occupied",
+          currentOrderInvoiceNumber: "INV-2026-LEGACY",
+          currentOrderTotal: 380,
+          runningItemsSummary: "2x Paneer Chilli, 1x Veg Biryani",
+          currentOrderItems: []
+        })
+      });
+    });
+    await page.reload({ waitUntil: "networkidle" });
+    await page.locator("#sidebar-tables-btn").click();
+    const t3LegacyCard = page.locator("div.rounded-2xl").filter({ has: page.getByText("T-3", { exact: true }) }).first();
+    await t3LegacyCard.getByRole("button", { name: /View Order \/ Bill/i }).click();
+    await page.locator("#pos-terminal-root").waitFor({ state: "visible" });
+    await page.locator("tbody tr").first().waitFor({ state: "visible" });
+    assert.equal(await page.locator("#invoice-setup-warning").count(), 0, "Empty catalog must NOT block opening occupied table T-3");
+    assert.equal(await page.locator("tbody tr").count(), 2, "Legacy summary must restore 2 items on T-3");
+    const t3TotalText = (await page.locator("#pos-grand-total-amount").innerText()).trim();
+    assert.notEqual(t3TotalText, "₹0.00", "Legacy summary recovery must derive non-zero item prices totaling currentOrderTotal");
 
     // Non-Restaurant Mode Regression Check (Kirana retail flow via clean uninstall + setup)
     if (fs.existsSync(LOCK_PATH)) fs.unlinkSync(LOCK_PATH);
