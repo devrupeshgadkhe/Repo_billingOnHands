@@ -50,6 +50,7 @@ export default function App() {
   } | null>(null);
   const [isMunimjiOpen, setIsMunimjiOpen] = useState<boolean>(false);
   const [activeTableForPOS, setActiveTableForPOS] = useState<RestaurantTable | null>(null);
+  const [tablePOSOpenKey, setTablePOSOpenKey] = useState(0);
 
   // Autonomous Continuous Auto-Updater Engine (Desktop Electron & Web)
   useEffect(() => {
@@ -370,6 +371,11 @@ export default function App() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.error || "Failed to save restaurant table.");
+    }
+    // Keep the active POS session synchronized with the server-verified
+    // table snapshot; otherwise a later re-save can submit stale table data.
+    if (activeTableForPOS?.id === table.id && data.table) {
+      setActiveTableForPOS(data.table as RestaurantTable);
     }
     await fetchState(true);
   };
@@ -1185,6 +1191,7 @@ export default function App() {
               business={dbState.business}
               tables={dbState.tables || []}
               selectedTableForPOS={activeTableForPOS}
+              tablePOSOpenKey={tablePOSOpenKey}
               onClearTableForPOS={() => setActiveTableForPOS(null)}
               onSaveTable={handleSaveTable}
               invoiceToEdit={invoiceToEdit?.type.includes("sale") ? invoiceToEdit : null}
@@ -1275,6 +1282,7 @@ export default function App() {
                   console.warn("Could not refresh table order before checkout; using current table data.", error);
                 }
                 setActiveTableForPOS(tableToOpen);
+                setTablePOSOpenKey(previous => previous + 1);
                 setActiveTab("sales");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
