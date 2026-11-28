@@ -27,7 +27,8 @@ import {
   Minimize2,
   ExternalLink,
   Camera,
-  Upload
+  Upload,
+  UtensilsCrossed
 } from "lucide-react";
 const munimji3DAvatar = "/munimji-3d.jpg";
 import {
@@ -36,7 +37,7 @@ import {
   MunimjiResponse,
   MunimjiDisplayCard
 } from "../services/munimjiClient";
-import { DatabaseState, Invoice } from "../types";
+import { DatabaseState, Invoice, RestaurantTable } from "../types";
 import CameraScannerModal from "./CameraScannerModal.js";
 
 export type MunimjiLang = "mr" | "hi" | "en";
@@ -60,6 +61,7 @@ interface MunimjiDrawerProps {
   onApplyBillToEditor?: (billData: any) => void;
   onOpenInvoice?: (invoice: Invoice) => void;
   onNavigateTab?: (tab: string) => void;
+  onOpenTablePOS?: (table: RestaurantTable) => void;
 }
 
 // Multilingual UI Translations (Marathi, Hindi, English)
@@ -499,7 +501,8 @@ export default function MunimjiDrawer({
   onRefreshDb,
   onApplyBillToEditor,
   onOpenInvoice,
-  onNavigateTab
+  onNavigateTab,
+  onOpenTablePOS
 }: MunimjiDrawerProps) {
   // Sizing mode (Normal wide vs Maximized Full Screen)
   const [isMaximized, setIsMaximized] = useState<boolean>(() => {
@@ -1095,7 +1098,7 @@ export default function MunimjiDrawer({
         playMunimjiVoice(response.audioBase64, response.audioMimeType, response.replyText);
       }
 
-      // If sales invoice was generated, automatically apply or open it for the merchant
+      // If sales invoice or table POS trigger was generated, apply or open it for the merchant
       const billAction = response.actionPayload?.action;
       if (billAction === "CREATE_SALES_INVOICE" && onApplyBillToEditor && response.actionPayload) {
         try {
@@ -1103,18 +1106,33 @@ export default function MunimjiDrawer({
         } catch (applyErr) {
           console.warn("Auto-apply bill notice:", applyErr);
         }
+      } else if (billAction === "OPEN_TABLE_POS" && onOpenTablePOS) {
+        const targetTbl = response.actionPayload?.result?.table || response.actionPayload?.table;
+        if (targetTbl) {
+          try {
+            onOpenTablePOS(targetTbl);
+            setTimeout(() => onClose(), 450);
+          } catch (tblErr) {
+            console.warn("Open table POS notice:", tblErr);
+          }
+        }
       } else if (billAction === "OPEN_NEW_BILL" && onNavigateTab) {
         onNavigateTab("sales");
       }
 
-      // Check and execute page navigation / redirection across Web & Electron
+      // Check and execute page navigation / redirection only for explicit NAVIGATE actions or OPEN_NEW_BILL
       const navTarget =
         response.actionPayload?.targetTab ||
         response.actionPayload?.tab ||
         response.actionPayload?.page ||
         (response as any).actionResult?.data?.targetTab;
 
-      if (navTarget && onNavigateTab && billAction !== "CREATE_SALES_INVOICE") {
+      const isExplicitNav =
+        response.intent === "NAVIGATE" ||
+        billAction === "NAVIGATE" ||
+        billAction === "OPEN_NEW_BILL";
+
+      if (navTarget && onNavigateTab && isExplicitNav) {
         try {
           const target = String(navTarget).toLowerCase();
           onNavigateTab(target);
@@ -1126,7 +1144,7 @@ export default function MunimjiDrawer({
         }
       }
 
-      // Always synchronize global DB state so inventory, billing, parties immediately update
+      // Always synchronize global DB state so inventory, billing, tables, parties immediately update
       try {
         await onRefreshDb();
       } catch (refreshErr) {
@@ -1859,6 +1877,127 @@ export default function MunimjiDrawer({
                         </div>
                       )}
 
+                      {/* Card: RESTAURANT TABLES LIST */}
+                      {card.type === "table_list" && (
+                        <div>
+                          <div className="flex items-center justify-between border-b pb-2 mb-2.5">
+                            <div className="flex items-center gap-2">
+                              <UtensilsCrossed className="w-4 h-4 text-amber-600" />
+                              <span className="font-bold text-sm text-slate-900">{card.title}</span>
+                            </div>
+                            <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                              {Array.isArray(card.data?.tables) ? card.data.tables.length : 0} Tables
+                            </span>
+                          </div>
+
+                          {Array.isArray(card.data?.tables) && card.data.tables.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2.5">
+                              {card.data.tables.map((tbl: any) => {
+                                const isOccupied = tbl.status === "occupied";
+                                const isCleaning = tbl.status === "cleaning";
+                                const isReserved = tbl.status === "reserved";
+                                const badgeClass = isOccupied
+                                  ? "bg-amber-100 text-amber-900 border-amber-300"
+                                  : isCleaning
+                                  ? "bg-sky-100 text-sky-900 border-sky-300"
+                                  : isReserved
+                                  ? "bg-purple-100 text-purple-900 border-purple-300"
+                                  : "bg-emerald-100 text-emerald-900 border-emerald-300";
+
+                                return (
+                                  <div key={tbl.id || tbl.tableNumber} className={`p-2.5 rounded-xl border text-xs ${badgeClass}`}>
+                                    <div className="flex items-center justify-between gap-2 mb-1">
+                                      <span className="font-extrabold text-sm">{tbl.tableNumber}</span>
+                                      <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-white/80">
+                                        {tbl.status}
+                                      </span>
+                                    </div>
+                                    <div className="text-[11px] opacity-85 mb-1.5">
+                                      {tbl.section || "Main Dining"} • {tbl.capacity || 4} seats
+                                    </div>
+                                    {isOccupied && (
+                                      <div className="bg-white/80 rounded-lg p-1.5 mb-2 text-[11px]">
+                                        <div className="font-bold text-slate-900">
+                                          Running Bill: ₹{Number(tbl.currentOrderTotal || 0).toFixed(2)}
+                                        </div>
+                                        {tbl.runningItemsSummary && (
+                                          <div className="text-slate-600 truncate">{tbl.runningItemsSummary}</div>
+                                        )}
+                                      </div>
+                                    )}
+                                    <div className="flex items-center gap-1.5">
+                                      {onOpenTablePOS && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const fullTbl = dbState?.tables?.find(t => t.id === tbl.id || t.tableNumber === tbl.tableNumber) || tbl;
+                                            onOpenTablePOS(fullTbl as RestaurantTable);
+                                            onClose();
+                                          }}
+                                          className="flex-1 py-1 px-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[11px] font-bold transition-colors"
+                                        >
+                                          {isOccupied ? "Open Bill" : "Take Order"}
+                                        </button>
+                                      )}
+                                      {isCleaning && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleExecuteCardAction("UPDATE_TABLE_STATUS", { tableId: tbl.id, tableNumber: tbl.tableNumber, status: "available" })}
+                                          className="py-1 px-2 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-[11px] font-bold transition-colors"
+                                        >
+                                          Mark Cleaned
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-500 mb-2">No dining tables configured yet.</p>
+                          )}
+
+                          {onNavigateTab && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onNavigateTab("tables");
+                                onClose();
+                              }}
+                              className="w-full py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg transition-colors text-center"
+                            >
+                              {language === "en" ? "Open Restaurant Tables Floor" : "रेस्टॉरंट टेबल्स पेज उघडा"}
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Card: PROMOTIONAL OFFER / SCHEME */}
+                      {card.type === "offer_card" && (
+                        <div>
+                          <div className="flex items-center justify-between border-b pb-2 mb-2">
+                            <div className="flex items-center gap-2">
+                              <Tag className="w-4 h-4 text-emerald-600" />
+                              <span className="font-bold text-sm text-slate-900">{card.title}</span>
+                            </div>
+                          </div>
+                          <div className="text-xs text-slate-700 space-y-1.5">
+                            {Array.isArray(card.data?.offers) ? (
+                              card.data.offers.map((of: any, oi: number) => (
+                                <div key={oi} className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-between">
+                                  <span className="font-bold text-emerald-950">{of.title}</span>
+                                  <span className="text-[11px] font-extrabold text-emerald-700">{of.type}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 font-semibold text-emerald-950">
+                                {card.data?.title || "Active Store Scheme"}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Card: LEAKAGE / TEST */}
                       {(card.type === "leakage_report" || card.type === "test_report") && (
                         <div>
@@ -1915,6 +2054,41 @@ export default function MunimjiDrawer({
           )}
 
           <div ref={messagesEndRef} />
+        </div>
+
+        {/* Quick Suggestions Bar (adapts automatically to Restaurant Mode vs Store Mode) */}
+        <div className="px-3.5 py-2 bg-white border-t border-slate-100 flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+          {(dbState?.business?.businessType === "restaurant"
+            ? [
+                {
+                  label: language === "en" ? "🍽️ Tables Status" : "🍽️ टेबल्स स्थिती",
+                  query: language === "en" ? "Show all restaurant tables status" : "सर्व टेबल्स स्थिती दाखव"
+                },
+                {
+                  label: language === "en" ? "🪑 Seed Tables" : "🪑 सॅम्पल टेबल्स तयार कर",
+                  query: language === "en" ? "Seed sample restaurant tables" : "सॅम्पल टेबल्स तयार कर"
+                },
+                {
+                  label: language === "en" ? "📋 Menu List" : "📋 मेनू यादी",
+                  query: language === "en" ? "Show restaurant menu items list" : "रेस्टॉरंट मेनू यादी दाखव"
+                },
+                {
+                  label: language === "en" ? "🎁 Active Offers" : "🎁 चालू ऑफर्स",
+                  query: language === "en" ? "Show active offers and cashback schemes" : "सध्या कोणत्या ऑफर्स चालू आहेत?"
+                }
+              ]
+            : t.chips.slice(0, 4)
+          ).map((chip, cIdx) => (
+            <button
+              key={cIdx}
+              type="button"
+              disabled={isProcessing || isRecording}
+              onClick={() => handleProcessCommand({ text: chip.query })}
+              className="shrink-0 px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 text-[11px] font-semibold transition-colors disabled:opacity-50"
+            >
+              {chip.label}
+            </button>
+          ))}
         </div>
 
         {/* Bottom Input & Microphone Controls */}

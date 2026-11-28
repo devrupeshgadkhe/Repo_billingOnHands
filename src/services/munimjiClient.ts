@@ -7,7 +7,17 @@
  */
 
 export interface MunimjiDisplayCard {
-  type: "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report" | "product_list" | "party_list";
+  type:
+    | "mini_bill"
+    | "price_guide"
+    | "supplier_comparison"
+    | "stock_alert"
+    | "leakage_report"
+    | "test_report"
+    | "product_list"
+    | "party_list"
+    | "table_list"
+    | "offer_card";
   title: string;
   data: any;
 }
@@ -22,12 +32,26 @@ export interface MunimjiResponse {
     | "ITEM_ADD"
     | "PRICE_UPDATE"
     | "ITEM_DELETE"
+    | "MENU_AVAILABILITY"
     | "PARTY_ADD"
     | "PARTY_LIST"
     | "PARTY_DELETE"
     | "EXPENSE_ADD"
     | "QUOTATION_CREATE"
     | "CHALLAN_CREATE"
+    | "OFFER_LIST"
+    | "OFFER_CREATE"
+    | "OFFER_DELETE"
+    | "TABLE_CREATE"
+    | "TABLE_LIST"
+    | "TABLE_UPDATE"
+    | "TABLE_DELETE"
+    | "TABLE_ORDER"
+    | "CHECK_LOYALTY"
+    | "ADJUST_LOYALTY"
+    | "SEND_EOD_EMAIL"
+    | "GODOWN_LIST"
+    | "NAVIGATE"
     | "BUSINESS_AUDIT"
     | "SYSTEM_SELF_TEST"
     | "PRODUCT_LIST"

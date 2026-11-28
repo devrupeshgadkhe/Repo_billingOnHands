@@ -1,66 +1,45 @@
 # CURRENT_TASK.md — Live Development State
 
 ## Current Task Information
-- **Task ID**: TASK-004
-- **Objective**: Establish a safe pre-production release pipeline, preserve the current production installer, and prepare secure updater/data isolation before implementing security and Business Mode improvements.
-- **Status**: IN PROGRESS
-- **Current Branch**: `pre-production`
-- **Production Baseline**: `main` at commit `524a91b1bbc847f72650b6d27c8a0ef39640c6b0`, application version `1.1.20`
-- **Latest Production Release**: `v1.1.20`
-- **Production Workflow**: `.github/workflows/build-electron.yml` (unchanged)
+- **Task ID**: TASK-006
+- **Objective**: Train Digital Munimji end-to-end on all newly added features (Restaurant Table CRUD & running-order/settlement workflows, Restaurant Menu catalog/Sold-Out toggles, Half/Full portion & GST/Non-GST sales billing, Offers/Cashback, Loyalty, Godowns, EOD) and synchronize all continuity documentation with the latest ChatGPT (PR #2 & PR #3) and AI Studio (`v1.1.15`–`v1.1.24`) changes on `pre-production`.
+- **Status**: VERIFIED LOCAL — READY FOR PUSH & CI PACKAGING
+- **Current Branch**: `pre-production` (NEVER modify `main` directly)
+- **Current Pre-Production App Version**: `1.1.24` (`BillingOnHand-Beta`)
+- **Production Baseline**: `main` at `v1.1.20` (Workflow: `.github/workflows/build-electron.yml` unchanged)
+- **Pre-Production Workflow**: `.github/workflows/pre-production.yml` (publishes rolling `beta-latest` GitHub Prerelease after automated Playwright Electron smoke test)
 
 ## User Requirements
-1. Marathi is chat-only. All UI strings, menu names, titles, labels, dialogs, validation messages, notifications, code comments, and new technical documentation must be English.
-2. Preserve the current production architecture and reuse the exact existing Windows x64 Electron build configuration wherever possible.
-3. Keep pre-production database, Electron user data, installation lock, and backups separate from production.
-4. Existing installed applications must be able to receive prereleases through automatic updates, without requiring a manual reinstall.
-5. Preserve all existing features and avoid production changes until reviewed and validated.
-6. Update project context, task, roadmap, changelog, and testing documentation as implementation progresses.
+1. All UI text, labels, buttons, notifications, comments, and technical documentation remain English-only (keeping Munimji's existing `mr`/`hi`/`en` multilingual chat/voice capabilities intact).
+2. Preserve the React + Vite + Express + Electron + JSON DB (`data/db.json`) architecture and isolated `BillingOnHand-Beta` userData channel (`release-channel.cjs`).
+3. Digital Munimji must be able to create and manage restaurant tables, add/settle running orders, manage restaurant menu availability, and create valid sales bills (including Half/Full portions, Dine-In/Takeaway/Delivery, GST & Non-GST).
+4. Synchronize `PROJECT_CONTEXT.md`, `docs/PROJECT_CONTEXT.md`, `CURRENT_TASK.md`, `CHANGELOG.md`, and `TESTING.md` with all recent ChatGPT and AI Studio work.
 
-## Verified Repository Findings
-- The current production release is `v1.1.20`; its installer is approximately 115 MB.
-- The existing workflow uses Node.js 20, `npm ci || npm install`, `npm run build`, and `npx electron-builder --win --x64 --publish never`.
-- The production workflow auto-increments versions, pushes commits/tags, and publishes a stable GitHub Release. It must not be reused unchanged for beta publishing.
-- The existing updater uses the GitHub provider for this repository and sets `allowPrerelease = false`.
-- Electron `userData` is passed to the backend as `ELECTRON_USER_DATA`; the backend stores `data/db.json`, `install-lock.json`, and backups under that directory.
-- The current branch protection status for `main` is disabled. Do not change repository protection settings without a separately reviewed plan.
-- A successful production workflow run exists for release `v1.1.20`.
+## Completed Milestones on `pre-production`
+- **v1.1.15**: Installation-only Business Mode Lock (`InstallSetupView.tsx`, `data/install-lock.json`, NSIS uninstall-only clear), atomic table CRUD endpoints, `cleaning` lifecycle, and Multi-Scheme Cashback Engine (`OffersView.tsx`).
+- **v1.1.20**: Dedicated Restaurant Menu Items UI (Option A on shared `items` store with `dietaryType`, `halfPrice`, `kitchenStation`, `shortCode`, `isAvailable`, `trackStock`), KOT station labels (`KOTPrintModal.tsx`), and non-tracked dish stock bypass.
+- **ChatGPT PR #2 & PR #3 (`e38214d`..`46bb393`)**:
+  - Beta channel isolation (`release-channel.cjs`), `beta-latest` prerelease pipeline, and Playwright Electron smoke-test gate (`scripts/electron-smoke-test.cjs`).
+  - `RestaurantTableOrderDraft` persistence, guest name & billing mode preservation, customer snapshot checkout fallback, persistence error surfacing, read-after-write verification, and stale-write protection preventing partial table updates from erasing active running orders.
+- **AI Studio `v1.1.21`–`v1.1.23` (`c43b89a`, `d4f73b8`, `34b4fa6`, `2fd294e`)**:
+  - Fixed immediate post-Save-to-Table cart clearing (`tableSessionSignature` guard in `InvoicingView.tsx`).
+  - Surfaced **Save to Table** & **Print KOT** above the fold, synced Print KOT auto-save to occupied tables, added 1-click **Running Tables** quick-load pills with dirty-cart guards, and added recovery for legacy `runningItemsSummary`, alternate schemas (`{name,qty,rate}`, `{title,count,price}`), deleted catalog items, and total-only occupied tables.
+  - Added end-to-end Playwright suite `scripts/test-restaurant-table-persistence.cjs`.
+- **AI Studio `v1.1.24` (Current)**:
+  - Updated `src/services/munimjiClient.ts`, `src/server/munimjiPool.ts`, `server.ts`, `src/App.tsx`, and `src/components/MunimjiDrawer.tsx` to train Munimji on `ADD_TABLE`, `SEED_TABLES`, `TABLE_LIST`, `UPDATE_TABLE_STATUS`, `DELETE_TABLE`, `OPEN_TABLE_POS`, `SAVE_TABLE_ORDER`, `SETTLE_TABLE_BILL`, `MENU_AVAILABILITY`, `OFFER_LIST`/`OFFER_CREATE`, `GODOWN_LIST`, `CHECK_LOYALTY`/`ADJUST_LOYALTY`, `SEND_EOD_EMAIL`, and `NAVIGATE`.
+  - Fixed Munimji sales invoice persistence bug (`invoice.type = "sale"`, GST/Non-GST totals, `trackStock !== false`, and linked table transition to `cleaning`) and preserved `tableId`, `tableNumber`, `orderType`, and `originalInvoiceNumber` in `normalizeDatabaseState()` (`server.ts`).
+  - Fixed background `fetchState()` DB refreshes in `src/App.tsx` (`hasLoadedDbRef`) so refreshing database state never unmounts `MunimjiDrawer` or wipes active drawer messages/cards.
+  - Added interactive `"table_list"` and `"offer_card"` UI cards (plus explicit-navigation guard preventing query cards from auto-closing the drawer) and restaurant quick-suggestion chips in `MunimjiDrawer.tsx`.
+  - Added end-to-end verification suite `scripts/test-munimji-restaurant.cjs` and bumped pre-production version to `1.1.24` (`package.json`, `src/version.ts`).
 
-## Completed in This Task
-- Created `pre-production` from the current `main` head without modifying `main`.
-- Added `.github/workflows/pre-production.yml`. It mirrors the production dependency fallback, Node version, build scripts, Electron Builder configuration, NSIS setup, and Windows x64 target. It uploads a test artifact and does not publish releases or tags.
-- Added `docs/PRE_PRODUCTION_AND_RELEASE_STRATEGY.md`.
-- Updated `AGENTS.md`, `CURRENT_TASK.md`, and `TESTING.md` with English-only UI/code requirements and the pre-production branch policy.
-- Added `release-channel.cjs` to select a dedicated `BillingOnHand-PreProduction` user-data directory for prerelease versions while preserving the exact existing production user-data path for stable versions.
-- Added `scripts/test-release-channel.cjs` and the `test:release-channel` npm script to cover stable, beta, alpha, and release-candidate version behavior.
-- Added the release-channel/data-isolation test to the pre-production workflow.
-- The first strict `npm ci` run exposed a package manifest/lockfile mismatch. The workflow now mirrors the existing production `npm ci || npm install` fallback; lockfile repair remains tracked.
-
-## Critical Compatibility Blocker
-The currently installed `v1.1.20` app has `allowPrerelease = false`. It cannot discover a GitHub prerelease. A small stable updater-bridge release must be built, tested, and published first. Existing installations can then receive the bridge through the current stable channel; only after that should beta prereleases be published.
-
-The bridge must keep the production app identity and production data path. The prerelease build must use the same installer identity for in-place updating, but switch to a separate deterministic beta `userData` directory before the backend starts. Switching back to a stable build must restore the original production data path.
-
-## Tests and Release Status
-- Repository and production workflow inspection: **COMPLETED**
-- Pre-production branch creation: **PASSED**
-- First strict `npm ci` attempt: **FAILED — manifest and lockfile out of sync**
-- Production-compatible dependency fallback: **PASSED** in the initial baseline CI run
-- Initial baseline TypeScript validation: **PASSED**
-- Initial baseline web/backend build: **PASSED**
-- Initial baseline Windows installer packaging: **IN PROGRESS**
-- Release-channel/data-isolation unit test: **ADDED; LATEST CI PENDING**
-- Windows installer artifact verification: **PENDING**
-- Stable updater bridge: **NOT IMPLEMENTED**
-- Beta release: **NOT PUBLISHED**
-- Security remediation: **NOT STARTED**
-- Business Mode enhancements: **NOT STARTED**
-- Production deployment: **NOT READY**
+## Tests & Verification Status (`v1.1.24`)
+- TypeScript Check (`npm run lint`): **PASSED** (`tsc --noEmit` exit 0)
+- Production Web & Backend Build (`npm run build`): **PASSED** (Vite + esbuild `dist/server.cjs`)
+- Release Channel Isolation (`npm run test:release-channel`): **PASSED**
+- Restaurant Table Persistence E2E (`node scripts/test-restaurant-table-persistence.cjs`): **PASSED** (all 11 scenarios + Kirana retail non-regression)
+- Digital Munimji Restaurant Tables & Sales Verification (`node scripts/test-munimji-restaurant.cjs`): **PASSED** (table seed/create/order/list/settle/clean/delete, `invoice.type === "sale"`, `tableNumber` preservation, and UI `MunimjiDrawer` 1-click Open Bill to T-2 POS)
+- GitHub Actions `pre-production` Windows Beta Build & `beta-latest` Release: **PENDING PUSH**
 
 ## Next Actions
-1. Complete and inspect the current Windows packaging run.
-2. Ensure the latest commit runs the new release-channel/data-isolation test and produces a valid Windows installer.
-3. Repair and validate the package lockfile without changing dependency versions unnecessarily.
-4. Implement and test updater bridge compatibility.
-5. Complete the stable bridge release before publishing beta releases.
-6. Continue security remediation and Business Mode improvements in separately testable milestones.
+1. Run final co-executed `compile_applet` and `lint_applet` sanity check after updating documentation.
+2. Commit and push cleanly to `origin/pre-production` and verify the GitHub Actions workflow + `beta-latest` prerelease assets pass end-to-end.

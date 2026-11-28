@@ -144,6 +144,17 @@
 * **Restaurant & Cafe Dedicated Menu Items (Option A on Shared `items` Table) (`ItemsView.tsx`, `InvoicingView.tsx`, `KOTPrintModal.tsx`, `Sidebar.tsx`, `server.ts`):**
   - Reuses the existing `items` store with optional restaurant properties (`dietaryType`, `halfPrice`, `kitchenStation`, `shortCode`, `isAvailable`, `trackStock`) while keeping retail/medical/kirana modes untouched.
   - Provides hotel-specific menu table, FSSAI dietary indicators, 1-click Available/Sold-Out toggling, Half/Full portion POS selection, kitchen station KOT tags, and automatic skipping of inventory stock deduction for cooked-to-order dishes (`trackStock === false`).
+* **Pre-Production Beta Channel Isolation & Automated Desktop Smoke Gate (ChatGPT PR #2–#3, `e38214d`..`46bb393`, `release-channel.cjs`, `.github/workflows/pre-production.yml`, `scripts/electron-smoke-test.cjs`):**
+  - Isolated `pre-production` Electron desktop identity (`com.billingonhand.beta`, `BillingOnHand-Beta`), user-data folder, database, installation lock, and rolling `beta-latest` GitHub Prerelease asset (`latest.yml` + setup `.exe`) without touching `main` or stable production data.
+  - Added automated Playwright Electron desktop smoke testing (`npm run test:electron`) gating `.github/workflows/pre-production.yml` and verifying real desktop app launch, install flow, IPC, and startup integrity before installer packaging.
+* **Restaurant Persistent Table Running Orders & POS Restoration Hardening (ChatGPT `1fe5182`..`46bb393` & AI Studio `v1.1.21`–`v1.1.23`, `InvoicingView.tsx`, `TablesView.tsx`, `KOTPrintModal.tsx`, `App.tsx`, `server.ts`):**
+  - **Complete Draft Schema & Server Persistence Verification (`RestaurantTableOrderDraft`):** Persists running `invoiceNumber`, `currentOrderId`, `currentOrderItems`, `currentOrderExtraCharges`, `currentOrderNotes`, `currentOrderDraft` (customer/guest name, party ID, GSTIN, payment type, billing mode, transaction subtype, `orderType`), and `currentOrderUpdatedAt`, backed by normalized line verification, read-after-write verification, and stale-write protection preventing partial table updates from erasing active running bills.
+  - **Immediate Post-Save Cart Retention & Unconditional Occupied Table Restore (`v1.1.21`–`v1.1.23`):** Eliminated the post-save cart wipe (`tableSessionSignature` guard skipping redundant re-hydration on the same active session while preserving unsaved edits), kept **Save to Table** and **Print KOT** visible above the fold in the POS terminal, synced Print KOT auto-save to occupied tables, added 1-click **Running Tables** quick-load pills with dirty-cart overwrite guards, and added backward-compatible fallback hydration for legacy `runningItemsSummary`, alternate item schemas (`{name,qty,rate}`, `{title,count,price}`), missing catalog items, and total-only occupied tables.
+  - Verified end-to-end via Playwright browser suite (`scripts/test-restaurant-table-persistence.cjs`) covering Save-to-Table retention, multi-table isolation, HTTP 500 error resilience, deleted-item restoration, Print KOT persistence, Checkout-to-Cleaning, and Kirana retail non-regression.
+* **Digital Munimji Full Training for Restaurant Tables, Menu Catalog, Sales Billing & New Modules (`v1.1.24`, `munimjiPool.ts`, `munimjiClient.ts`, `MunimjiDrawer.tsx`, `server.ts`, `App.tsx`):**
+  - **Complete Table Lifecycle Control:** Munimji supports creating single tables (`ADD_TABLE`), seeding default floor plans (`SEED_TABLES`), listing live table statuses & running totals (`TABLE_LIST` with interactive `table_list` UI cards), updating statuses/marks cleaned/reserved (`UPDATE_TABLE_STATUS`), deleting unoccupied tables (`DELETE_TABLE`), opening a table directly in Sales POS (`OPEN_TABLE_POS`), appending/saving dishes to running table orders (`SAVE_TABLE_ORDER`), and settling occupied table bills to `cleaning` (`SETTLE_TABLE_BILL`) via both Gemini AI and offline Marathi/Hindi/English fallback heuristics.
+  - **Restaurant Menu & Multi-Scheme Intelligence:** Enriched Munimji's live database prompt context with `businessModeLocked`, `defaultBillingMode`, `tablesSummary`, restaurant dish fields (`dietaryType`, `halfPrice`, `kitchenStation`, `shortCode`, `isAvailable`, `trackStock`), `godownsSummary`, loyalty balances, and cashback schemes; added `MENU_AVAILABILITY` Sold-Out/Available toggles, Half/Full portion pricing in `SALES_BILL`, and quick suggestion chips in `MunimjiDrawer.tsx`.
+  - **Critical Invoice Reporting Fix (`invoice.type = "sale"`):** Fixed pre-existing Munimji invoice bug where bills were saved with `type: "sales"` (excluded from Dashboard/Sales Reports) and deducted stock even when `trackStock === false`; unified sales invoice creation to write `type: "sale"`, calculate GST/Non-GST totals accurately, respect `trackStock !== false`, and auto-clear linked tables on settlement.
 
 ---
 
@@ -162,29 +173,33 @@
 * `src/components/InstallSetupView.tsx` - First-time installation business mode selection and lock screen.
 * `scripts/installer.nsh` - NSIS custom uninstaller hook clearing `install-lock.json` only on full uninstall (preserved across updates).
 * `src/components/TablesView.tsx` - Restaurant table floor management, cleaning workflow, and atomic CRUD.
+* `src/components/KOTPrintModal.tsx` - Kitchen Order Ticket (KOT) print modal with kitchen station routing tags and table metadata.
 * `src/components/OffersView.tsx` - Multi-scheme promotional engine (Percentage, Flat, Buy X Get Y, Bill Slab, Cashback).
 * `src/server/eodReportService.ts` - End-of-Day report engine, HTML email builder, and SMTP scheduler (Phase 8).
-* `src/types.ts` - Central TypeScript interfaces (`Item`, `Party`, `Invoice`, `OfferScheme`, `RestaurantTable`, `InstallStatus`, `BusinessProfile`, etc.).
+* `src/types.ts` - Central TypeScript interfaces (`Item`, `Party`, `Invoice`, `OfferScheme`, `RestaurantTable`, `RestaurantTableOrderDraft`, `InstallStatus`, `BusinessProfile`, etc.).
 * `src/components/GodownsView.tsx` - Multi-Godown and warehouse stock transfer manager (Phase 9).
 * `src/components/StockTransferPrintModal.tsx` - Inter-godown stock transfer delivery transit pass print modal (Phase 9).
 * `src/components/EWayBillModal.tsx` - Official NIC E-Way Bill & E-Invoice modal (Phase 5).
-* `src/components/InvoicingView.tsx` - High-speed POS Billing, dining table lifecycle, item search, batch selection, dynamic GST, checkout, and parked bills.
+* `src/components/InvoicingView.tsx` - High-speed POS Billing, dining table persistent order lifecycle, Running Tables quick-load pills, item search, batch selection, dynamic GST, checkout, and parked bills.
 * `src/components/DeliveryChallansView.tsx` - Delivery challan management, vehicle transport tracking, and bill conversion.
-* `src/components/ItemsView.tsx` - Inventory catalog, dynamic GST selector, batch/expiry alerts, low stock badges, AI item scanner.
+* `src/components/ItemsView.tsx` - Inventory & Restaurant Menu catalog, FSSAI dietary badges, dynamic GST selector, batch/expiry alerts, low stock badges, AI item scanner.
 * `src/components/PartiesView.tsx` - Customer and Supplier Khata ledger, loyalty ledger, and payment reminders.
 * `src/components/ReportsView.tsx` - GSTR-1, GSTR-3B, P&L, Daybook, EOD email dispatch, and CSV export.
 * `src/components/SettingsView.tsx` - Business profile, locked business mode summary, thermal bill designer, loyalty config, and automated EOD email reports.
-* `src/components/MunimjiDrawer.tsx` - Digital Munimji AI floating voice assistant drawer.
+* `src/components/MunimjiDrawer.tsx` - Digital Munimji AI floating voice assistant drawer with interactive table/offer/product cards and restaurant quick suggestions.
 * `src/services/munimjiClient.ts` - Frontend client service for voice recording, streaming, and command processing.
+* `src/server/munimjiPool.ts` - Multi-key Gemini AI pool, structured intent prompt, database context builder, card hydration, and multilingual offline fallback processor.
+* `release-channel.cjs` - Deterministic separation between Production userData and Pre-Production Beta userData directories.
+* `scripts/electron-smoke-test.cjs` - Automated Playwright Electron desktop launch & setup smoke test gating CI.
+* `scripts/test-restaurant-table-persistence.cjs` - End-to-end Playwright verification suite for Restaurant table persistence & Kirana non-regression.
 * `docs/FEATURE_ROADMAP_AND_STATUS.md` - Detailed Marathi & English feature completion and status breakdown.
 
 ---
 
 ## 🔄 6. Instructions for Future AI Development Sessions
 Whenever resuming work on this codebase in a new Google AI Studio conversation:
-1. **Read `PROJECT_CONTEXT.md` first:** Check which phase was completed last (currently **Phase 9: Multi-Godown / Warehouse Stock Transfer & Dynamic GST**).
-2. **Follow Serial Order:** Proceed to the next pending phase (**Phase 10: Barcode Generator & Label Sticker Printing**).
-3. **Verify Builds:** Always run `lint_applet` and `compile_applet` before completing work.
-4. **Push to GitHub:** Commit and push changes to the repository `devrupeshgadkhe/Repo_billingOnHands` on branch `main`.
-5. **Update this file (`PROJECT_CONTEXT.md`):** Mark the completed phase and document key architecture changes immediately.
+1. **Read `PROJECT_CONTEXT.md`, `CURRENT_TASK.md`, and `AGENTS.md` first:** Check latest milestones (currently **v1.1.24** on `pre-production`: Restaurant Menu & Persistent Table Billing, Pre-Production Beta CI Gate, and Digital Munimji Tables/Sales Training; Core ERP Phase 9 completed).
+2. **Respect Branch Policy:** Never commit directly to `main`. All active development, CI packaging, and testing happen on `pre-production`; promote to `main` only via reviewed PR after verification passes.
+3. **Verify Builds & Tests:** Run `npm run test:release-channel`, `npm run lint`, `npm run build`, and relevant Playwright/API regression checks before reporting completion.
+4. **Update Context Docs:** Record new changes in `PROJECT_CONTEXT.md`, `docs/PROJECT_CONTEXT.md`, `CURRENT_TASK.md`, `CHANGELOG.md`, and `TESTING.md` immediately.
 

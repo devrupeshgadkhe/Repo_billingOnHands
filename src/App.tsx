@@ -196,10 +196,11 @@ export default function App() {
 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryAttempt, setRetryAttempt] = useState<number>(0);
+  const hasLoadedDbRef = useRef(false);
 
   // Fetch full data state from Express JSON API with resilient retry
   const fetchState = async (isRetry = false) => {
-    if (!isRetry) setIsLoading(true);
+    if (!isRetry && !hasLoadedDbRef.current) setIsLoading(true);
     setLoadError(null);
     try {
       const res = await fetch("/api/db", { cache: "no-store" });
@@ -208,22 +209,25 @@ export default function App() {
       if (!data || typeof data !== "object") {
         throw new Error("Invalid database format received");
       }
+      hasLoadedDbRef.current = true;
       setDbState(data);
       setLoadError(null);
       setRetryAttempt(0);
     } catch (err: any) {
       console.error("Failed to load business databases", err);
-      setLoadError(err?.message || "Connection to local database failed");
-      // Resilient auto-retry with backoff up to 5 times
-      setRetryAttempt(prev => {
-        const next = prev + 1;
-        if (next <= 5) {
-          setTimeout(() => {
-            fetchState(true);
-          }, Math.min(next * 1500, 5000));
-        }
-        return next;
-      });
+      if (!hasLoadedDbRef.current) {
+        setLoadError(err?.message || "Connection to local database failed");
+        // Resilient auto-retry with backoff up to 5 times
+        setRetryAttempt(prev => {
+          const next = prev + 1;
+          if (next <= 5) {
+            setTimeout(() => {
+              fetchState(true);
+            }, Math.min(next * 1500, 5000));
+          }
+          return next;
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -786,20 +790,35 @@ export default function App() {
       }
     }
 
-    // 2. Map items
+    // 2. Map items (respecting Non-GST and Restaurant Half/Full portion prices)
+    const isNonGstBill = Boolean(
+      billData.isNonGst ||
+      billData.billingMode === "non_gst" ||
+      (!billData.billingMode && dbState?.business?.defaultBillingMode === "non_gst")
+    );
+
     const invoiceItems = (billData.items || []).map((it: any) => {
       const itName = String(it.itemName || it.name || it.title || "Product").trim();
-      const matched = dbState?.items?.find(item => 
+      const matched = dbState?.items?.find(item =>
+        (it.itemId && item.id === it.itemId) ||
         item.name.toLowerCase() === itName.toLowerCase() ||
+        (item.shortCode && item.shortCode.toLowerCase() === itName.toLowerCase()) ||
         item.name.toLowerCase().includes(itName.toLowerCase()) ||
         itName.toLowerCase().includes(item.name.toLowerCase())
       );
-      const unitPrice = it.price || matched?.salePrice || 0;
-      const qty = it.quantity || 1;
+      const isHalf = it.portionLabel === "Half";
+      const unitPrice = Number(it.price) > 0
+        ? Number(it.price)
+        : (isHalf && Number(matched?.halfPrice || 0) > 0
+            ? Number(matched?.halfPrice)
+            : Number(matched?.salePrice || 0));
+      const qty = Number(it.quantity || 1);
       const amountBeforeTax = qty * unitPrice;
-      const gstRate = it.gstRate !== undefined && it.gstRate !== null
-        ? Number(it.gstRate)
-        : (matched?.gstRate !== undefined ? Number(matched.gstRate) : 0);
+      const gstRate = isNonGstBill
+        ? 0
+        : (it.gstRate !== undefined && it.gstRate !== null
+            ? Number(it.gstRate)
+            : (matched?.gstRate !== undefined ? Number(matched.gstRate) : 0));
       const taxAmount = (amountBeforeTax * gstRate) / 100;
       const halfTax = taxAmount / 2;
       return {
@@ -816,7 +835,8 @@ export default function App() {
         cgst: halfTax,
         sgst: halfTax,
         igst: 0,
-        totalAmount: amountBeforeTax + taxAmount
+        totalAmount: amountBeforeTax + taxAmount,
+        ...(it.portionLabel ? { portionLabel: it.portionLabel } : {})
       };
     });
 
@@ -825,6 +845,13 @@ export default function App() {
     const taxTotal = invoiceItems.reduce((acc: number, item: any) => acc + item.taxAmount, 0);
     const totalAmount = invoiceItems.reduce((acc: number, item: any) => acc + item.totalAmount, 0);
     const paymentMode = billData.paymentMode === "cash" ? "cash" : (billData.paymentMode === "bank" ? "bank" : "unpaid");
+
+    const linkedTable = (billData.tableId || billData.tableNumber)
+      ? dbState?.tables?.find(t =>
+          (billData.tableId && t.id === billData.tableId) ||
+          (billData.tableNumber && t.tableNumber.toLowerCase() === String(billData.tableNumber).toLowerCase())
+        )
+      : undefined;
 
     const draftInvoice: Invoice = {
       id: "munimji_" + Date.now(),
@@ -844,9 +871,14 @@ export default function App() {
       paymentType: paymentMode,
       paidAmount: paymentMode === "unpaid" ? 0 : totalAmount,
       remainingAmount: paymentMode === "unpaid" ? totalAmount : 0,
+      isNonGst: isNonGstBill,
+      billingMode: isNonGstBill ? "non_gst" : "gst",
+      ...(linkedTable ? { tableId: linkedTable.id, tableNumber: linkedTable.tableNumber } : {}),
+      ...(billData.orderType ? { orderType: billData.orderType } : {}),
       notes: "Generated by Digital Munimji Voice"
     };
 
+    setActiveTableForPOS(linkedTable || null);
     setInvoiceToEdit(draftInvoice);
     setIsReturnMode(false);
     setActiveTab(isPurchase ? "purchases" : "sales");
@@ -1389,10 +1421,31 @@ export default function App() {
         onRefreshDb={fetchState}
         onApplyBillToEditor={handleApplyMunimjiBill}
         onOpenInvoice={(inv) => setSelectedInvoice(inv)}
+        onOpenTablePOS={async (tbl) => {
+          let tableToOpen = tbl;
+          try {
+            const latestResponse = await fetch("/api/db", { cache: "no-store" });
+            if (latestResponse.ok) {
+              const latestDb: DatabaseState = await latestResponse.json();
+              if (latestDb && Array.isArray(latestDb.tables)) {
+                setDbState(latestDb);
+                tableToOpen = latestDb.tables.find(t => t.id === tbl.id) || tbl;
+              }
+            }
+          } catch (error) {
+            console.warn("Could not refresh table order before opening from Munimji.", error);
+          }
+          setInvoiceToEdit(null);
+          setIsReturnMode(false);
+          setActiveTableForPOS(tableToOpen);
+          setTablePOSOpenKey(prev => prev + 1);
+          setActiveTab("sales");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
         onNavigateTab={(tab) => {
           const t = String(tab || "").toLowerCase().trim();
           if (["sales", "sale", "billing", "bill", "pos", "invoice", "invoicing"].includes(t)) setActiveTab("sales");
-          else if (["items", "item", "inventory", "stock", "product", "products"].includes(t)) setActiveTab("items");
+          else if (["items", "item", "inventory", "stock", "product", "products", "menu"].includes(t)) setActiveTab("items");
           else if (["parties", "party", "customers", "customer", "suppliers", "supplier", "ledger"].includes(t)) setActiveTab("parties");
           else if (["purchases", "purchase", "buying", "kharedi"].includes(t)) setActiveTab("purchases");
           else if (["quotations", "quotation", "quote", "estimates", "estimate"].includes(t)) setActiveTab("quotations");
@@ -1401,6 +1454,7 @@ export default function App() {
           else if (["reports", "report", "analytics", "daybook", "gstr"].includes(t)) setActiveTab("reports");
           else if (["offers", "offer", "schemes", "scheme", "discounts", "cashback"].includes(t)) setActiveTab("offers");
           else if (["tables", "table", "dining"].includes(t)) setActiveTab("tables");
+          else if (["godowns", "godown", "warehouse", "warehouses"].includes(t)) setActiveTab("godowns");
           else if (["settings", "setting", "profile", "backup"].includes(t)) setActiveTab("settings");
           else if (["access_control", "users", "user", "permissions"].includes(t)) setActiveTab("access_control");
           else setActiveTab("dashboard");

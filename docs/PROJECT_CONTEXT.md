@@ -1,105 +1,35 @@
 # 📘 Billing On Hand - Project State, Architecture & Development Context
 
-> **File Purpose:** This document is the single source of truth for the codebase history, current development state, completed phases, architectural rules, and upcoming roadmap. Any AI assistant or developer picking up this project in Google AI Studio or local IDE can read this file to gain 100% instant project context without any ramp-up delay.
+> **File Purpose:** Mirrored reference of `/PROJECT_CONTEXT.md`. Keep synchronized with the root `PROJECT_CONTEXT.md` so any developer or assistant inspecting `docs/` immediately gets accurate, up-to-date project history through `v1.1.24`.
 
 ---
 
 ## 🏢 1. Project Overview & Architecture
 * **Project Name:** Billing On Hand (`Repo_billingOnHands`)
 * **Primary Developer / Author:** Rupesh Gadkhe (`devrupeshgadkhe`)
-* **Target Audience:** Indian retail and wholesale merchants (Kirana, Supermarkets, Agriculture/Krishi Seva, Garments, Medical/Pharmacy, Electronics, Hardware, F&B, etc.).
+* **Target Audience:** Indian retail, wholesale, and hospitality merchants (Kirana, Supermarkets, Agriculture/Krishi Seva, Garments, Medical/Pharmacy, Wine Shop, Electronics, Restaurant & Cafe, Hardware, etc.).
 * **Core Technology Stack:**
   * **Frontend:** React (TypeScript) + Vite + Tailwind CSS + Lucide Icons.
   * **Backend / API:** Node.js (TypeScript with `tsx`) + Express running on Port 3000.
-  * **Desktop Target:** Electron (Windows / Mac / Linux cross-platform desktop application).
-  * **Storage Engine:** 100% Offline-First persistent JSON database (`db.json`) with automated pre-backup snapshots (`/backups/`).
-  * **AI & Voice Engine:** Google Gemini API with unified Indian male voice (`mr-IN` / `hi-IN` / `en-IN`), multi-key pool rotation (`gemini_key.txt` and environment variables), and intelligent intent routing.
+  * **Desktop Target:** Electron (Windows x64 NSIS desktop application with `BillingOnHand-Beta` isolated pre-production channel).
+  * **Storage Engine:** 100% Offline-First persistent JSON database (`data/db.json` + `data/install-lock.json`) with automated pre-backup snapshots (`/backups/`).
+  * **AI & Voice Engine:** Google Gemini API (`munimjiPool.ts`) with unified Indian male voice (`mr-IN` / `hi-IN` / `en-IN`), multi-key pool rotation, offline heuristic fallback, and intelligent intent routing.
 
 ---
 
-## 🛡️ 2. Architectural Guardrails & Stability Rules (CRITICAL)
-1. **Zero White-Screen Discipline:**
-   * Every component is protected by React Error Boundaries (`ErrorBoundary.tsx`).
-   * The app includes a resilient client-side retry loader with 5 automated reconnection attempts and an interactive retry button to ensure smooth startup in desktop Electron builds.
-2. **Offline-First & Self-Contained:**
-   * Never rely on external blocking CDN scripts.
-   * Sound effects (beeps, clicks, cash register sounds) use browser Web Audio API synthesizers so they work 100% offline.
-3. **Desktop App Compatibility:**
-   * Never break Electron native bridges or local storage paths.
-   * Avoid `window.alert` or `window.open` where modal dialogs should be used.
-4. **Digital Munimji Voice & Navigation Principle:**
-   * Munimji uses a unified male voice and rotates keys seamlessly.
-   * Whenever Munimji triggers page navigation (e.g. to Invoicing, Challans, Items, Reports), the Munimji drawer **must automatically minimize (`onClose`)** after navigation so the user can interact directly with the destination page.
+## 📊 2. Completed Phases & Major Releases Summary
+
+* **Phases 1–9 (Core ERP):** Multi-payment POS & Barcode billing, GST slabs & Non-GST mode, Quotations & Delivery Challans, GSTR-1/3B/P&L/Daybook Reports, Offers & Schemes, Batch & Expiry tracking, NIC E-Way Bill & E-Invoice JSON generator, Custom Thermal Bill Designer & Indian vernacular fractional POS, Customer Loyalty Points Ledger, Scheduled Automated EOD Email Reports (`eodReportService.ts`), and Multi-Godown Warehouse & Stock Transfers.
+* **v1.1.15 (Business Mode Lock & Table Cleaning Lifecycle):** Installation-only business mode selector (`InstallSetupView.tsx`, `data/install-lock.json`, NSIS uninstall-only clear in `scripts/installer.nsh`), atomic `/api/tables/*` routes, `cleaning` table status, and Cashback reward schemes in `OffersView.tsx`.
+* **v1.1.20 (Restaurant Menu UI — Option A on Shared `items`):** FSSAI dietary badges (`veg`, `non_veg`, `egg`, `beverage`), Half/Full portion pricing, short codes, Kitchen Stations on `KOTPrintModal.tsx`, Available/Sold-Out toggles, and non-tracked dish stock bypass (`trackStock === false`).
+* **ChatGPT PR #2 & PR #3 (`e38214d`..`46bb393`):** Pre-Production Beta CI pipeline (`.github/workflows/pre-production.yml`), isolated `BillingOnHand-Beta` userData (`release-channel.cjs`), `beta-latest` GitHub Prerelease updater, Playwright Electron smoke test gate (`scripts/electron-smoke-test.cjs`), `RestaurantTableOrderDraft` schema, read-after-write table verification, and server-side guards against stale updates overwriting active running bills.
+* **v1.1.21–v1.1.23 (`c43b89a`, `d4f73b8`, `34b4fa6`, `2fd294e`):** Fixed immediate post-Save-to-Table POS cart wipe (`tableSessionSignature` guard), added **Running Tables** quick-load pills & Print KOT auto-save sync, surfaced **Save to Table** & **Print KOT** above the fold, recovered legacy/alternate occupied table schemas (`runningItemsSummary`, `{name,qty,rate}`, missing catalog fallback, total-only fallback), and verified via `scripts/test-restaurant-table-persistence.cjs`.
+* **v1.1.24 (Digital Munimji Restaurant & New Features Training):**
+  * Trained Munimji (`munimjiPool.ts`, `server.ts`, `munimjiClient.ts`, `MunimjiDrawer.tsx`, `App.tsx`) for full Restaurant Table CRUD (`ADD_TABLE`, `SEED_TABLES`, `TABLE_LIST`, `UPDATE_TABLE_STATUS`, `DELETE_TABLE`), opening tables in POS (`OPEN_TABLE_POS`), saving running dishes (`SAVE_TABLE_ORDER`), settling table bills (`SETTLE_TABLE_BILL`), Menu Sold-Out toggles (`MENU_AVAILABILITY`), Half/Full portion billing, GST/Non-GST billing, cashback offers, godowns, and interactive `table_list` / `offer_card` UI cards.
+  * Fixed `server.ts` Munimji invoice bug so bills always save `type: "sale"`, calculate GST/Non-GST & Khata balances properly, respect `trackStock !== false`, and auto-transition settled dining tables to `cleaning`.
 
 ---
 
-## 📊 3. Completed Phases & Features Matrix (Status: 100% Completed)
-
-### ✅ Phase 1: Core Invoicing, Catalog & Multi-Payment POS
-* Multi-payment checkout: Cash (with tender calculator and fast chips), UPI/Bank, and Khata (credit/debt ledger).
-* Barcode scanner support, product search autocomplete, and keyboard shortcuts (F2 Charge, F3 Hold/Park, F5 Cash, F6 Bank, F7 Khata).
-* GST Tax Slabs (0%, 5%, 12%, 18%, 28%) with auto CGST/SGST/IGST breakdown.
-* Extra charges (Freight, Packaging, Loading/Hamali, Labor).
-* Sale Returns & Credit/Debit notes linked to original bills.
-* Multimodal AI Bill & Invoice Scanner (Gemini OCR).
-
-### ✅ Phase 2: Quotations & Delivery Challans
-* **Quotations / Estimates (`QuotationsView.tsx` & `QuotationPrintModal.tsx`):** Draft, Sent, Accepted, Rejected statuses, and 1-Click conversion to Sales Invoices.
-* **Delivery Challans (`DeliveryChallansView.tsx` & `ChallanPrintModal.tsx`):** Vehicle numbers, LR/Bilty details, gross/net weight, transporter info, Rule 55 compliance, and 1-Click conversion to bills.
-
-### ✅ Phase 3: Analytics, GST Reports, Schemes & Access Control
-* **Reports & Analytics (`ReportsView.tsx`):** GSTR-1 (B2B, B2CL, B2CS, HSN summaries), GSTR-3B, Profit & Loss Statement, Daybook, and Stock Valuation.
-* **Offers & Discount Schemes (`OffersView.tsx`):** Percentage discounts, flat discounts, Buy X Get Y, and minimum cart value rules.
-* **User Permissions & RBAC (`AccessControlView.tsx`):** Admin, Manager, Billing Clerk, View-Only operator with granular action locks.
-* **Multi-Business Support (`SettingsView.tsx`):** Run multiple independent firms/shops with individual GSTINs, logos, and print layouts.
-
-### ✅ Phase 4: Batch Number & Expiry Date Management
-* **Batch Tracking (`ItemsView.tsx` & `InvoicingView.tsx`):** Batch number, manufacturing date, and expiry date recording for pharma, grocery, seed, and FMCG.
-* **Near Expiry & Expired Inventory Alerts:** 45-day threshold visual warnings, statistics cards, and filter tabs (All, Low Stock, Near Expiry, Expired).
-* **Batch-Enabled Print Templates:** Automatic printing of batch numbers and expiry dates on 58mm/80mm thermal and A4/A5 receipts.
-* **Munimji Voice Sync:** Voice queries for expiry alerts and auto-navigation to inventory filter tabs.
-
-### ✅ Phase 5: Government NIC E-Way Bill & E-Invoice JSON Generator (`EWayBillModal.tsx`)
-* **Official NIC E-Way Bill Schema (`eWayBillJSON`):** 100% compliant JSON payload for direct bulk upload to `ewaybillgst.gov.in`.
-* **IRP E-Invoice Schema (v1.03):** Standard B2B, B2G, Deemed Export, and Reverse Charge compliant payload.
-* **Cross-Module Triggers:** 1-Click generation from Sales Invoices (`InvoicingView.tsx`), Delivery Challans (`DeliveryChallansView.tsx`), and Sales Reports (`ReportsView.tsx`).
-* **Live NIC Pre-Validation:** Automated validation for 15-character GSTIN, 6-digit PIN codes, transport distance, and vehicle numbers.
-* **Transit Slip Printing:** Rule 138 compliant e-Way Bill summary print with QR code and barcode.
-* **Digital Munimji Sync:** Voice commands ("ई-वे बिल बनवा", "E-Invoice तयार करा") navigate directly to generator with drawer auto-minimize.
-
----
-
-## 🚀 4. Upcoming Roadmap & Next Phases (In Serial Order)
-
-| Phase | Feature Name | Scope & Specifications | Priority |
-| :--- | :--- | :--- | :--- |
-| **Phase 6** | **Custom Thermal Bill Designer** | Drag-and-drop / customizable thermal bill editor for 58mm & 80mm printers (custom headers, footers, store logo, QR code, bilingual English/Marathi labels, font sizes, GST breakdown switches). | **Next / High** |
-| **Phase 7** | **Customer Loyalty Points Scheme** | Points earning rules per ₹100 spent, point redemption in POS checkout, customer points balance ledger, and expiry management. | Medium |
-| **Phase 8** | **Automated Scheduled Email Reports** | Automated daily end-of-day (EOD) summary email with sales, cash collection, and low stock snapshot sent to business owner. | Medium |
-| **Phase 9** | **Multi-Godown / Warehouse Stock Transfer** | Multi-location warehouse inventory tracking and intra-warehouse stock transfer vouchers. | Medium |
-
----
-
-## 💻 5. Key File Index for Quick Navigation
-* `src/App.tsx` - Root UI orchestrator, persistent database sync, view router, and top navigation.
-* `server.ts` - Express API backend, Gemini AI client, Digital Munimji execution engine, database normalization, and backup runner.
-* `src/types.ts` - Central TypeScript interfaces (`Item`, `Party`, `Invoice`, `DeliveryChallan`, `Quotation`, `BusinessProfile`, `ItemBatch`, etc.).
-* `src/components/EWayBillModal.tsx` - Official NIC E-Way Bill & E-Invoice modal (Phase 5).
-* `src/components/InvoicingView.tsx` - High-speed POS Billing, item search, batch selection, checkout, and parked bills.
-* `src/components/DeliveryChallansView.tsx` - Delivery challan management, vehicle transport tracking, and bill conversion.
-* `src/components/ItemsView.tsx` - Inventory catalog, batch/expiry alerts, low stock badges, AI item scanner.
-* `src/components/PartiesView.tsx` - Customer and Supplier Khata ledger and payment reminders.
-* `src/components/ReportsView.tsx` - GSTR-1, GSTR-3B, P&L, Daybook, and CSV export.
-* `src/components/MunimjiDrawer.tsx` - Digital Munimji AI floating voice assistant drawer.
-* `src/services/munimjiClient.ts` - Frontend client service for voice recording, streaming, and command processing.
-* `docs/FEATURE_ROADMAP_AND_STATUS.md` - Detailed Marathi & English feature completion and status breakdown.
-
----
-
-## 🔄 6. Instructions for Future AI Development Sessions
-Whenever resuming work on this codebase in a new Google AI Studio conversation:
-1. **Read `PROJECT_CONTEXT.md` first:** Check which phase was completed last (currently **Phase 5**).
-2. **Follow Serial Order:** Proceed to the next pending phase (**Phase 6: Custom Thermal Bill Designer**).
-3. **Verify Builds:** Always run `lint_applet` and `compile_applet` before completing work.
-4. **Push to GitHub:** Commit and push changes to the repository `devrupeshgadkhe/Repo_billingOnHands` on branch `main`.
-5. **Update this file (`PROJECT_CONTEXT.md`):** Mark the completed phase and document key architecture changes immediately.
+## 💻 3. Branch & Verification Discipline
+1. Active engineering, testing, and CI prerelease packaging happen strictly on `pre-production` (`main` stays protected until reviewed PR merge).
+2. Always see root `/PROJECT_CONTEXT.md`, `/CURRENT_TASK.md`, `/CHANGELOG.md`, and `/TESTING.md` for live task tracking and verification commands.

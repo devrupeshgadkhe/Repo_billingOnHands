@@ -10,7 +10,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { GoogleGenAI, Type, ThinkingLevel, Modality } from "@google/genai";
-import { DatabaseState, Item, Party, Invoice } from "../types.js";
+import { DatabaseState, Item, Party, Invoice, RestaurantTable } from "../types.js";
 
 export interface KeyEntry {
   id: string;
@@ -608,6 +608,7 @@ export interface MunimjiCommandResponse {
     | "ITEM_ADD"
     | "PRICE_UPDATE"
     | "ITEM_DELETE"
+    | "MENU_AVAILABILITY"
     | "PARTY_ADD"
     | "PARTY_LIST"
     | "PARTY_DELETE"
@@ -617,6 +618,15 @@ export interface MunimjiCommandResponse {
     | "OFFER_LIST"
     | "OFFER_CREATE"
     | "OFFER_DELETE"
+    | "TABLE_CREATE"
+    | "TABLE_LIST"
+    | "TABLE_UPDATE"
+    | "TABLE_DELETE"
+    | "TABLE_ORDER"
+    | "CHECK_LOYALTY"
+    | "ADJUST_LOYALTY"
+    | "SEND_EOD_EMAIL"
+    | "GODOWN_LIST"
     | "NAVIGATE"
     | "BUSINESS_AUDIT"
     | "SYSTEM_SELF_TEST"
@@ -625,7 +635,17 @@ export interface MunimjiCommandResponse {
   userTranscript?: string;
   replyText: string;
   displayCards?: {
-    type: "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report" | "product_list" | "party_list" | "offer_card";
+    type:
+      | "mini_bill"
+      | "price_guide"
+      | "supplier_comparison"
+      | "stock_alert"
+      | "leakage_report"
+      | "test_report"
+      | "product_list"
+      | "party_list"
+      | "table_list"
+      | "offer_card";
     title: string;
     data: any;
   }[];
@@ -641,6 +661,8 @@ export interface MunimjiCommandResponse {
  * Builds the database snapshot context to feed into Munimji's brain
  */
 export function buildDatabaseContext(db: DatabaseState): string {
+  const isRestaurant = db.business?.businessType === "restaurant";
+
   const itemsSummary = (db.items || []).map(i => ({
     name: i.name,
     retailSalePrice: i.salePrice,
@@ -656,7 +678,17 @@ export function buildDatabaseContext(db: DatabaseState): string {
     purchasePrice: i.purchasePrice,
     stock: i.stockQuantity,
     unit: i.unit,
-    lowStockAlert: i.stockQuantity <= (i.minStockAlert || 5)
+    lowStockAlert: (i.trackStock !== false) && i.stockQuantity <= (i.minStockAlert || 5),
+    ...(isRestaurant || i.dietaryType || i.halfPrice || i.kitchenStation || i.shortCode || i.isAvailable !== undefined || i.trackStock === false
+      ? {
+          dietaryType: i.dietaryType,
+          halfPrice: i.halfPrice,
+          kitchenStation: i.kitchenStation,
+          shortCode: i.shortCode,
+          isAvailable: i.isAvailable !== false,
+          trackStock: i.trackStock !== false
+        }
+      : {})
   }));
 
   const activeOffers = (db.offers || []).filter(o => o.isActive).map(o => ({
@@ -665,11 +697,42 @@ export function buildDatabaseContext(db: DatabaseState): string {
     target: o.targetValue || o.targetType,
     discountPercent: o.discountPercent,
     discountAmount: o.discountAmount,
+    cashbackPercent: o.cashbackPercent,
+    cashbackAmount: o.cashbackAmount,
+    maxCashbackAmount: o.maxCashbackAmount,
     buyQty: o.buyQuantity,
     freeQty: o.freeQuantity,
     freeItem: o.freeItemName,
     minBill: o.minBillAmount,
     validUntil: o.endDate
+  }));
+
+  const tablesSummary = (db.tables || []).map(t => ({
+    id: t.id,
+    tableNumber: t.tableNumber,
+    section: t.section || "Main Dining",
+    capacity: t.capacity,
+    status: t.status,
+    currentOrderInvoiceNumber: t.currentOrderInvoiceNumber || undefined,
+    currentOrderTotal: Number(t.currentOrderTotal || 0),
+    runningItemsSummary: t.runningItemsSummary || undefined,
+    itemCount: Array.isArray(t.currentOrderItems) ? t.currentOrderItems.length : 0,
+    customerName: t.currentOrderDraft?.partyName || undefined,
+    orderType: t.currentOrderDraft?.orderType || undefined,
+    runningItems: (t.currentOrderItems || []).slice(0, 10).map(li => ({
+      name: li.itemName || li.itemId,
+      qty: li.quantity,
+      price: li.customPrice,
+      portion: li.portionLabel
+    }))
+  }));
+
+  const godownsSummary = (db.godowns || []).map(g => ({
+    id: g.id,
+    name: g.name,
+    address: g.address,
+    manager: g.managerName,
+    isDefault: g.isDefault
   }));
 
   const customerReceivables = (db.parties || [])
@@ -678,7 +741,8 @@ export function buildDatabaseContext(db: DatabaseState): string {
       customerName: p.name,
       pendingDuesThakbaki: p.currentBalance,
       phone: p.phone,
-      creditLimit: p.creditLimit || 0
+      creditLimit: p.creditLimit || 0,
+      loyaltyPoints: p.loyaltyPoints || 0
     }));
 
   const totalCustomerReceivables = customerReceivables.reduce((s, c) => s + c.pendingDuesThakbaki, 0);
@@ -704,7 +768,9 @@ export function buildDatabaseContext(db: DatabaseState): string {
       paidAmount: inv.paidAmount,
       remainingPendingAmount: inv.remainingAmount,
       paymentType: inv.paymentType,
-      items: (inv.items || []).map(it => ({ name: it.itemName, qty: it.quantity, price: it.price }))
+      tableNumber: inv.tableNumber,
+      orderType: inv.orderType,
+      items: (inv.items || []).map(it => ({ name: it.itemName, qty: it.quantity, price: it.price, portionLabel: it.portionLabel }))
     }));
 
   const unpaidPendingBills = (db.invoices || [])
@@ -724,13 +790,20 @@ export function buildDatabaseContext(db: DatabaseState): string {
   return `
 STORE CONTEXT (LIVE STORE DATA):
 Business Name: ${db.business?.name || "Local Store"}
-Business Sector/Vertical: ${db.business?.businessType || "general"} (${db.business?.operationMode || "retail & wholesale"})
+Business Sector/Vertical (Locked at Install: ${Boolean(db.installStatus?.businessModeLocked)}): ${db.business?.businessType || "general"} (${db.business?.operationMode || "retail & wholesale"})
+Default Billing Mode: ${db.business?.defaultBillingMode || "gst"} | Default GST Slab: ${db.business?.defaultGstSlab ?? 0}%
 Licenses: Drug License: ${db.business?.drugLicenseNo || "N/A"}, Fertilizer License: ${db.business?.fertilizerLicenseNo || "N/A"}, Seed License: ${db.business?.seedLicenseNo || "N/A"}, FSSAI: ${db.business?.fssaiNo || "N/A"}
-Total Products In Stock: ${(db.items || []).length}
-All Store Products (Items, Multi-Tier Rates & Stock): ${JSON.stringify(itemsSummary)}
+Total Products / Menu Items: ${(db.items || []).length}
+All Store Products / Menu Catalog (Items, Multi-Tier / Half-Full Rates, Dietary, Station, Availability & Stock): ${JSON.stringify(itemsSummary)}
 
-Active Offers, Discounts & Schemes (चालू ऑफर्स व स्कीम्स):
+${isRestaurant || tablesSummary.length > 0 ? `Restaurant Dining Tables (Live Floor & Running Orders):
+Total Tables: ${tablesSummary.length} | Available: ${tablesSummary.filter(t => t.status === "available").length} | Occupied: ${tablesSummary.filter(t => t.status === "occupied").length} | Needs Cleaning: ${tablesSummary.filter(t => t.status === "cleaning").length} | Reserved: ${tablesSummary.filter(t => t.status === "reserved").length}
+Tables Detail: ${JSON.stringify(tablesSummary)}
+` : ""}
+Active Offers, Discounts & Cashback Schemes (चालू ऑफर्स व स्कीम्स):
 ${activeOffers.length > 0 ? JSON.stringify(activeOffers) : "सध्या कोणतीही विशेष ऑफर सक्रिय नाही."}
+
+${godownsSummary.length > 0 ? `Godowns / Warehouses: ${JSON.stringify(godownsSummary)} (Stock Transfers: ${(db.stockTransfers || []).length})` : ""}
 
 Customer Dues & Thakbaki (उधारी व थकबाकी):
 Total Customer Dues (एकूण थकबाकी येणे): ₹${totalCustomerReceivables}
@@ -969,7 +1042,7 @@ export function enrichMunimjiResponseWithStoreData(
     (response.replyText || "")
   ).toLowerCase();
 
-  // Guard: NEVER treat as generic product list if the user or Munimji is performing an action (add item, update stock, bill, price change, etc.)
+  // Guard: NEVER treat as generic product list if the user or Munimji is performing an action or table query
   const intentStr = String(response.intent || "");
   const isActionCommand =
     intentStr === "ITEM_ADD" ||
@@ -979,19 +1052,65 @@ export function enrichMunimjiResponseWithStoreData(
     intentStr === "UPDATE_STOCK" ||
     intentStr === "PRICE_UPDATE" ||
     intentStr === "ITEM_DELETE" ||
+    intentStr === "MENU_AVAILABILITY" ||
     intentStr === "SALES_BILL" ||
     intentStr === "PARTY_ADD" ||
     intentStr === "EXPENSE_ADD" ||
+    intentStr === "TABLE_CREATE" ||
+    intentStr === "TABLE_LIST" ||
+    intentStr === "TABLE_UPDATE" ||
+    intentStr === "TABLE_DELETE" ||
+    intentStr === "TABLE_ORDER" ||
+    intentStr === "OFFER_CREATE" ||
+    intentStr === "OFFER_DELETE" ||
+    intentStr === "NAVIGATE" ||
     Boolean(response.actionPayload?.action) ||
     Boolean(response.actionPayload?.productName) ||
     Boolean(response.actionPayload?.itemName) ||
     Boolean(response.actionPayload?.product) ||
-    /(?:नवीन|ॲड|जोडा|करा|वाढव|कमी|बदल|डिलीट|काढून|add|create|new\s*product|new\s*item|delete|update)/i.test(spokenQuery);
+    Boolean(response.actionPayload?.tableNumber) ||
+    /(?:नवीन|ॲड|जोडा|करा|वाढव|कमी|बदल|डिलीट|काढून|टेबल|table|add|create|new\s*product|new\s*item|delete|update)/i.test(spokenQuery);
+
+  const isTableIntent =
+    intentStr === "TABLE_LIST" ||
+    intentStr === "TABLE_CREATE" ||
+    intentStr === "TABLE_UPDATE" ||
+    intentStr === "TABLE_DELETE" ||
+    (intentStr === "TABLE_ORDER" && response.actionPayload?.action !== "OPEN_TABLE_POS");
+
+  if (isTableIntent && dbState && Array.isArray(dbState.tables)) {
+    const tables = dbState.tables.map((t: any) => ({
+      id: t.id,
+      tableNumber: t.tableNumber,
+      section: t.section || "Main Dining",
+      capacity: Number(t.capacity || 4),
+      status: t.status || "available",
+      currentOrderInvoiceNumber: t.currentOrderInvoiceNumber || undefined,
+      currentOrderTotal: Number(t.currentOrderTotal || 0),
+      runningItemsSummary: t.runningItemsSummary || "",
+      itemCount: Array.isArray(t.currentOrderItems) ? t.currentOrderItems.length : 0,
+      customerName: t.currentOrderDraft?.partyName || ""
+    }));
+    if (!response.displayCards) response.displayCards = [];
+    response.displayCards = response.displayCards.filter((c) => c.type !== "table_list");
+    response.displayCards.unshift({
+      type: "table_list",
+      title: "Live Restaurant Tables (टेबल स्थिती)",
+      data: {
+        totalCount: tables.length,
+        availableCount: tables.filter(t => t.status === "available").length,
+        occupiedCount: tables.filter(t => t.status === "occupied").length,
+        cleaningCount: tables.filter(t => t.status === "cleaning").length,
+        reservedCount: tables.filter(t => t.status === "reserved").length,
+        tables
+      }
+    });
+  }
 
   const isProductListQuery =
     !isActionCommand &&
     (response.intent === "PRODUCT_LIST" ||
-    /(प्रॉडक्ट|वस्तू|सामान|माल|स्टॉक|प्रॉडक्ट्स).*(यादी|लिस्ट|दाखव|किती|दिखाओ|सूची|बघायची|पाहिजे)|(product|item|stock|catalog|inventory).*(list|show|all|view|catalog)|सर्व.*(प्रॉडक्ट|वस्तू|सामान)/i.test(query));
+    /(प्रॉडक्ट|वस्तू|सामान|माल|स्टॉक|प्रॉडक्ट्स|मेनू|menu|dishes).*(यादी|लिस्ट|दाखव|किती|दिखाओ|सूची|बघायची|पाहिजे)|(product|item|stock|catalog|inventory|menu).*(list|show|all|view|catalog)|सर्व.*(प्रॉडक्ट|वस्तू|सामान|मेनू)/i.test(query));
 
   if (isProductListQuery && dbState && Array.isArray(dbState.items)) {
     response.intent = "PRODUCT_LIST";
@@ -1000,11 +1119,17 @@ export function enrichMunimjiResponseWithStoreData(
       id: i.id,
       name: i.name,
       salePrice: Number(i.salePrice || 0),
+      halfPrice: i.halfPrice !== undefined ? Number(i.halfPrice) : undefined,
       purchasePrice: Number(i.purchasePrice || 0),
       stock: Number(i.stockQuantity || 0),
       unit: i.unit || "PCS",
       category: i.category || "",
-      lowStock: Number(i.stockQuantity || 0) <= Number(i.minStockAlert || 5)
+      dietaryType: i.dietaryType,
+      kitchenStation: i.kitchenStation,
+      shortCode: i.shortCode,
+      isAvailable: i.isAvailable !== false,
+      trackStock: i.trackStock !== false,
+      lowStock: i.trackStock !== false && Number(i.stockQuantity || 0) <= Number(i.minStockAlert || 5)
     }));
 
     if (!response.displayCards) {
@@ -1019,7 +1144,9 @@ export function enrichMunimjiResponseWithStoreData(
 
     response.displayCards.unshift({
       type: "product_list",
-      title: "आपल्या दुकानातील वस्तूंची यादी (Live Store Catalog)",
+      title: dbState.business?.businessType === "restaurant"
+        ? "रेस्टॉरंट मेनू व आयटम्स यादी (Live Menu Catalog)"
+        : "आपल्या दुकानातील वस्तूंची यादी (Live Store Catalog)",
       data: {
         totalCount: allItems.length,
         totalStockValue,
@@ -1051,94 +1178,108 @@ export async function processMunimjiCommand(
 ): Promise<MunimjiCommandResponse> {
   const dbContext = buildDatabaseContext(dbState);
 
-  const systemInstruction = `You are 'डिजिटल मुनीमजी' (Digital Munimji), the ultra-smart, respectful, and highly competent business advisor and accountant for Indian retail and wholesale merchants.
+  const systemInstruction = `You are 'डिजिटल मुनीमजी' (Digital Munimji), the ultra-smart, respectful, and highly competent business advisor, accountant, and POS operator for Indian retail, wholesale merchants, and Restaurants / Cafes.
 You understand spoken Marathi, Hindi, and English (including colloquial phrases and mixed Hinglish/Marathi terms).
 
 Your responsibilities across all store modules:
-1. 'ITEM_ADD' / 'ADD_ITEMS': When the user asks to add one or MULTIPLE new products/items to inventory (via voice, text, or handwritten lists/bills/notes, e.g., "नवीन प्रॉडक्ट ॲड कर: बासमती तांदूळ ६० रुपये भाव १०० किलो स्टॉक", "हे ४ आयटम ॲड कर: साखर ४० रु, तेल १२० रु, पोहे ५० रु, चहा २५० रु", "Add 5 items: Sugar 40, Oil 120, Tea 250").
+1. 'ITEM_ADD' / 'ADD_ITEMS': When the user asks to add one or MULTIPLE new products or restaurant menu dishes to inventory (e.g., "नवीन प्रॉडक्ट ॲड कर: बासमती तांदूळ ६० रुपये भाव १०० किलो स्टॉक", "नवीन डिश ॲड कर: पनीर टिक्का २२० रुपये, हाफ १३०, व्हेज, तंदूर स्टेशन", "Add 3 dishes: Masala Dosa 90 veg South Indian, Paneer Butter Masala 260 half 150 veg").
    CRITICAL ANTI-DEFAULT-NAME & MULTI-ITEM RULES:
-   - NEVER name items 'Item 1', 'Item 2', 'आयटम 1', 'आयटम २', or 'नवीन वस्तू'! Use the EXACT actual product name spoken by the user (e.g. 'साखर', 'तेल', 'पोहे', 'तांदूळ', 'चहा', 'गहू').
-   - If the user says e.g. "आयटम एक साखर ४० रुपये, आयटम दोन तेल १२० रुपये", the extracted product names are 'साखर' and 'तेल', NOT 'आयटम एक' or 'आयटम दोन'!
-   - NEVER merge 2, 3, 4 or more items into a single combined item name! If multiple items are provided (even in a continuous sentence without commas, e.g. "साखर 40 तेल 120 पोहे 50 चहा 250"), you MUST extract each one separately into the 'items' array with its own itemName, price, quantity, and unit:
+   - NEVER name items 'Item 1', 'Item 2', 'आयटम 1', 'आयटम २', or 'नवीन वस्तू'! Use the EXACT actual product/dish name spoken by the user.
+   - If Business Sector is 'restaurant' OR the user mentions menu dishes/plates/veg/non-veg/half price/kitchen station, ALSO include optional restaurant fields:
+     "dietaryType": "veg"|"non_veg"|"egg"|"beverage", "halfPrice"?: number, "kitchenStation"?: string, "shortCode"?: string, "isAvailable": true, "trackStock": false (unless packaged drink/bottled item).
    If multiple items:
    Extract: actionPayload: {
      "action": "ADD_ITEMS",
      "items": Array<{
-       "itemName": string,
-       "name": string,
-       "salePrice": number,
-       "mrp": number,
-       "purchasePrice": number,
-       "stockQuantity": number,
-       "unit": string,
-       "gstRate": number,
-       "hsn": string
+       "itemName": string, "name": string, "salePrice": number, "halfPrice"?: number, "mrp": number,
+       "purchasePrice": number, "stockQuantity": number, "unit": string, "gstRate": number, "hsn": string,
+       "category"?: string, "dietaryType"?: "veg"|"non_veg"|"egg"|"beverage", "kitchenStation"?: string,
+       "shortCode"?: string, "isAvailable"?: boolean, "trackStock"?: boolean
      }>
    }
    If single item:
-   Extract: actionPayload: { "action": "ADD_ITEM", "itemName": string, "name": string, "salePrice": number, "mrp": number, "purchasePrice": number, "stockQuantity": number, "unit": string, "gstRate": number, "hsn": string }
-   Include a 'stock_alert' displayCard with the added product details.
-2. 'STOCK_UPDATE': When user wants to adjust stock of an existing or new item (e.g., "१० किलो साखर वाढव", "२ नग खराब झाले वजा कर", "साखरेचा स्टॉक ५० कर").
+   Extract: actionPayload: { "action": "ADD_ITEM", "itemName": string, "name": string, "salePrice": number, "halfPrice"?: number, "mrp": number, "purchasePrice": number, "stockQuantity": number, "unit": string, "gstRate": number, "hsn": string, "category"?: string, "dietaryType"?: "veg"|"non_veg"|"egg"|"beverage", "kitchenStation"?: string, "shortCode"?: string, "isAvailable"?: boolean, "trackStock"?: boolean }
+   Include a 'stock_alert' displayCard with the added item details.
+2. 'MENU_AVAILABILITY': When restaurant operator marks a dish Sold Out / Out of Stock or Available again (e.g., "पनीर टिक्का बंद कर / sold out कर", "mark Masala Dosa unavailable", "दाल तडका चालू कर / available कर").
+   Extract: actionPayload: { "action": "MENU_AVAILABILITY", "itemName": string, "isAvailable": boolean }
+3. 'STOCK_UPDATE': When user wants to adjust stock of an existing or new item ("१० किलो साखर वाढव", "२ नग खराब झाले वजा कर", "साखरेचा स्टॉक ५० कर").
    Extract: actionPayload: { "action": "STOCK_UPDATE", "itemName": string, "quantityChange": number, "operation": "ADD"|"SUBTRACT"|"SET" }
-3. 'PRICE_UPDATE': When user wants to change product price (e.g., "साखरेचा भाव ४५ रुपये कर", "तेलाची खरेदी किंमत १३० कर").
-   Extract: actionPayload: { "action": "PRICE_UPDATE", "itemName": string, "salePrice": number, "purchasePrice": number }
-4. 'ITEM_DELETE': When user asks to delete/remove an item (e.g., "हा आयटम डिलीट कर: जुना बल्ब").
+4. 'PRICE_UPDATE': When user wants to change product/dish price ("साखरेचा भाव ४५ रुपये कर", "पनीर टिक्का २५० रुपये कर").
+   Extract: actionPayload: { "action": "PRICE_UPDATE", "itemName": string, "salePrice": number, "halfPrice"?: number, "purchasePrice"?: number }
+5. 'ITEM_DELETE': When user asks to delete/remove an item ("हा आयटम डिलीट कर: जुना बल्ब").
    Extract: actionPayload: { "action": "ITEM_DELETE", "itemName": string }
-5. 'PARTY_ADD': When user asks to add a customer or supplier party (e.g., "नवीन ग्राहक ॲड कर: विजय कदम फोन ९८२२१२३४५६", "नवीन सप्लायर ॲड करा: बालाजी ट्रेडर्स", "कस्टमर रमेश ॲड कर फोन ९८७६५४३२१०", "ग्राहक सुरेश पत्ता पुणे फोन ९८००११२२३३").
-   CRITICAL FOR PARTY TYPE (CUSTOMER vs SUPPLIER):
-   - If user says 'ग्राहक', 'कस्टमर', 'customer', 'buyer' OR does not specify supplier, type MUST BE "customer".
-   - If user says 'सप्लायर', 'supplier', 'विक्रेता', 'vendor', type MUST BE "supplier".
+6. 'PARTY_ADD': When user asks to add a customer or supplier party ("नवीन ग्राहक ॲड कर: विजय कदम फोन ९८२२१२३४५६", "नवीन सप्लायर ॲड करा: बालाजी ट्रेडर्स").
+   CRITICAL: If user says 'ग्राहक', 'कस्टमर', 'customer', 'buyer' OR does not specify supplier, type MUST BE "customer". If 'सप्लायर', 'supplier', 'vendor', type MUST BE "supplier".
    Extract: actionPayload: { "action": "ADD_PARTY", "partyName": string, "type": "customer"|"supplier", "phone": string, "address": string, "initialBalance": number, "gstin": string }
-6. 'PARTY_LIST': When user asks to view customers, suppliers, or ledger credit/dues (e.g., "ग्राहकांची यादी दाखव", "सप्लायरची यादी", "उधारी कोणाकडे बाकी आहे").
+7. 'PARTY_LIST': When user asks to view customers, suppliers, or ledger credit/dues ("ग्राहकांची यादी दाखव", "उधारी कोणाकडे बाकी आहे").
    Return intent: 'PARTY_LIST', and include a 'party_list' displayCard.
-7. 'PARTY_DELETE': When user asks to remove a party (e.g., "हा ग्राहक डिलीट कर: रमेश").
+8. 'PARTY_DELETE': When user asks to remove a party ("हा ग्राहक डिलीट कर: रमेश").
    Extract: actionPayload: { "action": "DELETE_PARTY", "partyName": string }
-8. 'EXPENSE_ADD': When user records daily shop expenses or income (e.g., "खर्च नोंदव: चहा नाश्ता ५० रुपये रोख", "लाईट बिल १२०० रुपये बँक", "दुकान भाडे ८००० रुपये").
+9. 'EXPENSE_ADD': When user records daily expenses ("खर्च नोंदव: चहा नाश्ता ५० रुपये रोख", "लाईट बिल १२०० रुपये बँक").
    Extract: actionPayload: { "action": "ADD_EXPENSE", "category": string, "amount": number, "paymentType": "cash"|"bank", "notes": string }
-9. 'QUOTATION_CREATE': When user asks to prepare estimate/quotation (e.g., "सुरेशसाठी १० नग फॅनचे कोटेशन बनव").
-   Extract: actionPayload: { "action": "CREATE_QUOTATION", "customerName": string, "items": Array<{ itemName: string, name: string, quantity: number, price: number }> }
-10. 'CHALLAN_CREATE': When user asks to create delivery challan (e.g., "डिलिव्हरी चलन तयार कर: गणेश ट्रेडर्स, गाडी MH 12 AB 1234, २० बॉक्स").
-   Extract: actionPayload: { "action": "CREATE_CHALLAN", "partyName": string, "items": Array<{ itemName: string, name: string, quantity: number }>, "vehicleNumber": string }
-11. 'SALES_BILL': When user asks to bill/sell goods (e.g., "महेशला ५ किलो बासमती तांदूळ आणि २ लिटर तेल कॅशवर बिल कर", "सचिनला नॉन जीएसटी बिल दे", "विना जीएसटी साधे बिल बनवा", "बिल कर", "नवीन बिल बनवा").
-   CRITICAL BILLING RULES:
-   - UNDER NO CIRCUMSTANCES classify a billing command ("बिल कर", "बिलिंग कर", "बिल बनवा", "विक्री करा", "पावती बनवा", "सेल कर") as 'NAVIGATE'! Billing commands are ALWAYS intent: 'SALES_BILL'.
-   - If customer and items are specified:
-     If user explicitly requests 'नॉन जीएसटी', 'विना जीएसटी', 'साधे बिल', 'कच्चे बिल', 'Non-GST', 'Bill of Supply':
-       Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ itemName: string, name: string, quantity: number, price: number, unit?: string }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": true, "billingMode": "non_gst" }
-     Otherwise (standard GST invoice):
-       Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ itemName: string, name: string, quantity: number, price: number, unit?: string }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": false, "billingMode": "gst" }
-   - If user asks to create a bill but DOES NOT specify customer or items (e.g., "बिल कर", "नवीन बिल बनवायचे आहे", "बिलिंग सुरू कर"):
-     Extract: actionPayload: { "action": "OPEN_NEW_BILL", "targetTab": "sales" }
-     ReplyText: "होय मालक, मी नवीन बिलिंग काउंटर उघडत आहे. कोणाच्या नावाने आणि कोणत्या वस्तूंचे बिल बनवायचे आहे सांगा?"
-12. 'PURCHASE_BILL': When user enters incoming purchases from suppliers.
-13. 'PRICE_QUERY': When shopkeeper asks for product price or stock (e.g., "साखरेचा काय भाव आहे?", "चिल्लर काय भाव देऊ?", "बासमती तांदळाचा साठा किती आहे?", "साठा किती शिल्लक आहे?"). Look at 'All Store Products' in STORE CONTEXT and quote exact item name, available stock, unit, and price.
-14. 'SUPPLIER_COMPARISON': When user asks which supplier is cheaper (e.g., "फॉर्च्युन तेल कोणाकडून स्वस्त पडेल?").
-15. 'PRODUCT_LIST': When user asks to see product list or catalog (e.g., "प्रॉडक्टची लिस्ट दाखव", "वस्तूंची यादी दाखव", "स्टॉक दाखव").
-16. 'BUSINESS_AUDIT': When user asks where business is leaking ("कुठे पाणी मुरतंय?", "आजचा हिशोब").
-17. 'SYSTEM_SELF_TEST': When user asks to test software modules ("बिलिंग टेस्ट कर").
-18. 'DUES_QUERY' / 'PARTY_LIST': When merchant asks who owes money or about pending balance/dues/thakbaki (e.g., "कोणाकडे किती थकबाकी आहे?", "उधारी कोणाची बाकी आहे?", "करणची किती थकबाकी आहे?"). You MUST look at 'Customer Dues & Thakbaki' in STORE CONTEXT. Quote the exact customer names, phone numbers, and ₹ pending amounts. If general, quote the total customer dues and list the customers with dues. Set intent: 'PARTY_LIST' and include 'party_list' displayCard.
-19. 'BILL_QUERY': When merchant asks about bill date, bill number, bill pending amount, recent bill, or unpaid bills (e.g., "शेवटच्या बिलाचा नंबर काय आहे?", "बिलाची तारीख काय आहे?", "बिलाची पेंडिंग अमाऊंट किती आहे?", "पेंडिंग बिले कोणती आहेत?"). Look at 'Recent Sales Bills & Invoices' and 'Latest Invoice' in STORE CONTEXT. Quote the exact invoice number (e.g. INV-...), bill date, customer name, total amount, paid amount, and remaining pending amount. Set intent: 'SALES_BILL' with 'mini_bill' displayCard.
-20. 'OFFER_LIST': When merchant asks about active offers, seasonal discounts or promotional schemes (e.g., "सध्या कोणत्या ऑफर्स चालू आहेत?", "महाधन खतावर काय स्कीम आहे?", "ऑफर्स दाखव", "चालू स्कीम्स सांगा"). Look at 'Active Offers, Discounts & Schemes' in STORE CONTEXT. Quote the exact scheme names, discounts (%, ₹), Buy X Get Y Free rules, and validity. Return intent: 'OFFER_LIST' with 'offer_card' displayCard.
-21. 'OFFER_CREATE': When merchant asks to create or launch a dynamic scheme or offer (e.g., "नवीन ऑफर तयार कर: बायर औषधांवर १०% सूट", "५ पोत्यांवर १ बॅग मोफत स्कीम लावा").
-   Extract: actionPayload: { "action": "OFFER_CREATE", "title": string, "type": "buy_x_get_y"|"percentage_discount"|"flat_discount"|"bill_slab_discount", "targetType": "all"|"brand"|"category"|"item", "targetValue": string, "discountPercent": number, "discountAmount": number, "buyQuantity": number, "freeQuantity": number }
-22. 'OFFER_DELETE': When merchant asks to remove an offer (e.g., "ही ऑफर डिलीट कर: महाधन स्कीम").
-   Extract: actionPayload: { "action": "OFFER_DELETE", "title": string }
-23. 'NAVIGATE': ONLY when user explicitly asks to view, open, or switch screens/pages without asking to make a bill or perform a transaction (e.g., "रिपोर्ट्स पेज उघड", "इन्व्हेंटरी दाखव", "पार्टीज उघड", "सेटिंग्ज उघड", "डॅशबोर्ड दाखव", "खर्च पेज दाखव", "open reports screen", "take me to access control").
-   Extract: actionPayload: { "action": "NAVIGATE", "targetTab": "dashboard"|"items"|"parties"|"quotations"|"sales"|"challans"|"purchases"|"transactions"|"reports"|"settings"|"access_control" }
-   Set intent: "NAVIGATE". In replyText, enthusiastically and respectfully confirm the navigation in natural Marathi (e.g., "होय मालक, मी रिपोर्ट्स आणि GST विश्लेषक पेज उघडत आहे.").
-24. 'GENERAL_CHAT': Polite, helpful conversation as a loyal Munimji.
+10. 'QUOTATION_CREATE': When user asks to prepare estimate/quotation.
+    Extract: actionPayload: { "action": "CREATE_QUOTATION", "customerName": string, "items": Array<{ itemName: string, name: string, quantity: number, price: number }> }
+11. 'CHALLAN_CREATE': When user asks to create delivery challan.
+    Extract: actionPayload: { "action": "CREATE_CHALLAN", "partyName": string, "items": Array<{ itemName: string, name: string, quantity: number }>, "vehicleNumber": string }
+12. 'SALES_BILL': When user asks to bill/sell goods or food orders (e.g., "महेशला ५ किलो बासमती तांदूळ आणि २ लिटर तेल कॅशवर बिल कर", "रमेशला २ पनीर टिक्का हाफ आणि ३ रोटी कॅश बिल दे", "सचिनला नॉन जीएसटी बिल दे", "Takeaway order 2 Veg Biryani parcel", "बिल कर", "नवीन बिल बनवा").
+    CRITICAL BILLING RULES:
+    - UNDER NO CIRCUMSTANCES classify a billing command ("बिल कर", "बिलिंग कर", "बिल बनवा", "विक्री करा", "पावती बनवा", "सेल कर") as 'NAVIGATE'! Billing commands are ALWAYS intent: 'SALES_BILL' (or 'TABLE_ORDER' if saving/settling a dining table).
+    - Respect Restaurant Portions: if user says "half"/"हाफ", set "portionLabel": "Half" and use dish halfPrice (if available in catalog). If parcel/takeaway, set "orderType": "takeaway"; if home delivery, "orderType": "delivery"; if dine-in/table, "orderType": "dine_in".
+    - If customer and items are specified:
+      If user requests 'नॉन जीएसटी', 'विना जीएसटी', 'साधे बिल', 'कच्चे बिल', 'Non-GST', 'Bill of Supply':
+        Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ itemName: string, name: string, quantity: number, price: number, unit?: string, portionLabel?: "Full"|"Half", gstRate?: number }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": true, "billingMode": "non_gst", "orderType"?: "dine_in"|"takeaway"|"delivery", "tableNumber"?: string }
+      Otherwise (standard GST invoice):
+        Extract: actionPayload: { "action": "CREATE_SALES_INVOICE", "customerName": string, "items": Array<{ itemName: string, name: string, quantity: number, price: number, unit?: string, portionLabel?: "Full"|"Half", gstRate?: number }>, "paymentMode": "cash"|"bank"|"unpaid", "totalAmount": number, "isNonGst": false, "billingMode": "gst", "orderType"?: "dine_in"|"takeaway"|"delivery", "tableNumber"?: string }
+    - If user asks to create a bill WITHOUT specifying items (e.g., "बिल कर", "नवीन बिल बनवायचे आहे"):
+      Extract: actionPayload: { "action": "OPEN_NEW_BILL", "targetTab": "sales" }
+13. RESTAURANT TABLES MANAGEMENT (For Cafe / Restaurant Mode):
+    - 'TABLE_CREATE': Create a new table or seed sample tables.
+      Single table (e.g., "नवीन टेबल T-7 तयार कर 6 सीटर AC Dining", "Create table T-8 capacity 4 Main Hall"):
+      Extract: actionPayload: { "action": "ADD_TABLE", "tableNumber": string, "section": string, "capacity": number, "status": "available"|"reserved" }
+      Seed defaults (e.g., "सॅम्पल टेबल्स तयार कर", "create sample restaurant tables", "seed tables"):
+      Extract: actionPayload: { "action": "SEED_TABLES" }
+      Include a 'table_list' displayCard.
+    - 'TABLE_LIST': Query table layout, vacant tables, occupied tables, or running bills (e.g., "सर्व टेबल्स दाखव", "कोणते टेबल्स रिकामे आहेत?", "चालू टेबल्सचे बिल किती आहे?", "show all tables status").
+      Look at 'Restaurant Dining Tables' in STORE CONTEXT, summarize counts and occupied bills, set intent: 'TABLE_LIST', and include a 'table_list' displayCard.
+    - 'TABLE_UPDATE': Mark cleaned, reserve, free, or edit table info (e.g., "टेबल T-2 साफ झाला", "mark table T-2 cleaned", "टेबल T-5 रिझर्व्ह कर", "T-3 मोकळा कर", "T-4 ची क्षमता 6 कर").
+      Extract: actionPayload: { "action": "UPDATE_TABLE_STATUS", "tableNumber": string, "status"?: "available"|"cleaning"|"reserved", "section"?: string, "capacity"?: number, "newTableNumber"?: string }
+      Include a 'table_list' displayCard.
+    - 'TABLE_DELETE': Remove a table ("टेबल T-8 डिलीट कर", "delete table T-8").
+      Extract: actionPayload: { "action": "DELETE_TABLE", "tableNumber": string }
+      Include a 'table_list' displayCard.
+    - 'TABLE_ORDER': Open table POS, add/save running items onto a table, or settle/checkout an occupied table!
+      - To OPEN a table in Sales POS ("टेबल T-1 उघड", "open table T-1 for order", "T-2 वर ऑर्डर घ्यायची आहे / POS उघड"):
+        Extract: actionPayload: { "action": "OPEN_TABLE_POS", "tableNumber": string }
+      - To ADD / SAVE dishes to a table's persistent running order ("टेबल T-1 वर २ पनीर टिक्का आणि ३ रोटी ॲड कर", "Add 2 Masala Dosa to table T-3", "T-1 मध्ये 1 हाफ बिर्याणी सेव्ह कर"):
+        Extract: actionPayload: { "action": "SAVE_TABLE_ORDER", "tableNumber": string, "items": Array<{ itemName: string, name: string, quantity: number, price?: number, portionLabel?: "Full"|"Half", unit?: string }>, "customerName"?: string, "notes"?: string, "orderType"?: "dine_in"|"takeaway"|"delivery", "billingMode"?: "gst"|"non_gst" }
+      - To SETTLE / CHECKOUT an occupied table into a final Sales Invoice & mark Needs Cleaning ("टेबल T-1 चे बिल फायनल कर कॅशवर", "settle table T-1 bill by UPI/bank", "T-2 checkout cash"):
+        Extract: actionPayload: { "action": "SETTLE_TABLE_BILL", "tableNumber": string, "paymentMode": "cash"|"bank"|"unpaid", "customerName"?: string, "isNonGst"?: boolean }
+14. 'PURCHASE_BILL': When user enters incoming purchases from suppliers.
+15. 'PRICE_QUERY': When merchant asks price or stock/availability ("साखरेचा काय भाव आहे?", "पनीर टिक्का हाफ आणि फुल कितीला आहे?"). Quote exact prices from STORE CONTEXT.
+16. 'SUPPLIER_COMPARISON': Compare supplier rates.
+17. 'PRODUCT_LIST': Show all products / restaurant menu list ("प्रॉडक्टची लिस्ट दाखव", "मेनू दाखव", "show menu catalog").
+18. 'BUSINESS_AUDIT': Business leakage report ("कुठे पाणी मुरतंय?", "आजचा हिशोब").
+19. 'SYSTEM_SELF_TEST': Test software modules.
+20. 'DUES_QUERY' / 'PARTY_LIST': Customer dues / receivables query. Set intent: 'PARTY_LIST' and include 'party_list' displayCard.
+21. 'BILL_QUERY': Recent or pending bill query. Set intent: 'SALES_BILL' with 'mini_bill' displayCard.
+22. 'OFFER_LIST' / 'OFFER_CREATE' / 'OFFER_DELETE': View active discounts & cashback schemes, create percentage/flat/BOGO/slab/cashback schemes (supports "cashbackPercent", "cashbackAmount", "maxCashbackAmount", "minBillAmount"), or delete offers.
+23. 'CHECK_LOYALTY' / 'ADJUST_LOYALTY': Check customer loyalty points or add/deduct bonus points ('partyName', 'points', 'reason').
+24. 'SEND_EOD_EMAIL': Generate & send End-of-Day email report ("आजचा डे-एंड ईमेल पाठवा", "send EOD report").
+25. 'GODOWN_LIST': Check warehouses / godowns & stock transfers ("गोडाऊन स्टॉक दाखव").
+26. 'NAVIGATE': ONLY when user explicitly asks to open/view a screen without creating a bill/table mutation:
+    Extract: actionPayload: { "action": "NAVIGATE", "targetTab": "dashboard"|"items"|"tables"|"offers"|"godowns"|"parties"|"quotations"|"sales"|"challans"|"purchases"|"transactions"|"reports"|"settings"|"access_control" }
 
 DATABASE COMMIT ENFORCEMENT:
-When the merchant commands ANY create, update, or delete action (adding items, updating stock/price, adding parties, expenses, quotations, challans, offers, or sales), YOU MUST ALWAYS POPULATE the 'actionPayload' with machine-readable fields so our persistent database commits the real changes instantly.
+When the merchant commands ANY create, update, or delete action (items, menu availability, restaurant tables, running table orders, table settlement, stock/price, parties, expenses, quotations, challans, offers, loyalty, or sales), YOU MUST ALWAYS POPULATE 'actionPayload' with machine-readable fields so our persistent database commits the real changes instantly.
 
 Always return a JSON object strictly conforming to this structure:
 {
-  "intent": "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "ITEM_ADD" | "PRICE_UPDATE" | "ITEM_DELETE" | "PARTY_ADD" | "PARTY_LIST" | "PARTY_DELETE" | "EXPENSE_ADD" | "QUOTATION_CREATE" | "CHALLAN_CREATE" | "OFFER_LIST" | "OFFER_CREATE" | "OFFER_DELETE" | "NAVIGATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "PRODUCT_LIST" | "GENERAL_CHAT",
+  "intent": "SALES_BILL" | "PURCHASE_BILL" | "PRICE_QUERY" | "SUPPLIER_COMPARISON" | "STOCK_UPDATE" | "ITEM_ADD" | "PRICE_UPDATE" | "ITEM_DELETE" | "MENU_AVAILABILITY" | "PARTY_ADD" | "PARTY_LIST" | "PARTY_DELETE" | "EXPENSE_ADD" | "QUOTATION_CREATE" | "CHALLAN_CREATE" | "OFFER_LIST" | "OFFER_CREATE" | "OFFER_DELETE" | "TABLE_CREATE" | "TABLE_LIST" | "TABLE_UPDATE" | "TABLE_DELETE" | "TABLE_ORDER" | "CHECK_LOYALTY" | "ADJUST_LOYALTY" | "SEND_EOD_EMAIL" | "GODOWN_LIST" | "NAVIGATE" | "BUSINESS_AUDIT" | "SYSTEM_SELF_TEST" | "PRODUCT_LIST" | "GENERAL_CHAT",
   "userTranscript": "Exact Marathi, Hindi, or English text spoken by the user",
   "replyText": "A warm, natural Marathi, Hindi, or English reply to speak out loud to the merchant",
   "displayCards": [
     {
-      "type": "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report" | "product_list" | "party_list" | "offer_card",
+      "type": "mini_bill" | "price_guide" | "supplier_comparison" | "stock_alert" | "leakage_report" | "test_report" | "product_list" | "party_list" | "table_list" | "offer_card",
       "title": "Short descriptive title",
       "data": { ...structured details... }
     }
@@ -1564,6 +1705,274 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
         filter: "expiring_soon"
       }
     };
+  }
+
+  // =========================================================================
+  // 1.7. RESTAURANT TABLES MANAGEMENT (Create, Seed, List, Status, Open POS, Add Order, Settle, Delete)
+  // =========================================================================
+  const normalizeTableToken = (raw: string): string => {
+    const cleaned = normalizeDigits(String(raw || "").trim().toUpperCase())
+      .replace(/^TABLE\s*/i, "")
+      .replace(/^टेबल\s*/i, "")
+      .replace(/\s+/g, "");
+    if (/^\d+$/.test(cleaned)) return `T-${cleaned}`;
+    if (/^T\d+$/.test(cleaned)) return `T-${cleaned.slice(1)}`;
+    return cleaned;
+  };
+
+  const extractTableRef = (): RestaurantTable | undefined => {
+    const tables = db.tables || [];
+    const directMatch = normQuery.match(/\b(?:table|टेबल)\s*#?\s*([a-z]*\s*-?\s*\d+|[a-z0-9-]+)\b/i) ||
+      normQuery.match(/\b(t-?\d+)\b/i);
+    if (directMatch && directMatch[1]) {
+      const targetNorm = normalizeTableToken(directMatch[1]);
+      const found = tables.find(t => normalizeTableToken(t.tableNumber) === targetNorm || t.tableNumber.toLowerCase() === directMatch[1].trim().toLowerCase());
+      if (found) return found;
+    }
+    return tables.find(t => normQuery.includes(t.tableNumber.toLowerCase()));
+  };
+
+  const extractMatchedDishes = () => {
+    const matched = (db.items || []).filter(it =>
+      query.includes(it.name.toLowerCase()) ||
+      (it.shortCode && query.includes(it.shortCode.toLowerCase())) ||
+      it.name.toLowerCase().split(" ").some(w => w.length > 2 && query.includes(w))
+    );
+    const isHalf = query.includes("half") || query.includes("हाफ") || query.includes("अर्धी") || query.includes("अर्धा");
+    return matched.map(it => {
+      let q = 1;
+      const escaped = it.name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const qRe = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(?:plate|bowl|cup|glass|portion|thali|half|full|प्लॅट|प्लेट|नग|pcs)?\\s*${escaped}|${escaped}\\s*(\\d+(?:\\.\\d+)?)`, "i");
+      const qm = normQuery.match(qRe);
+      if (qm) q = parseFloat(qm[1] || qm[2]) || 1;
+      const useHalf = isHalf && Number(it.halfPrice || 0) > 0;
+      const unitPrice = useHalf ? Number(it.halfPrice) : Number(it.salePrice || 0);
+      return {
+        itemId: it.id,
+        itemName: it.name,
+        name: it.name,
+        quantity: q,
+        unit: it.unit || "PLATE",
+        price: unitPrice,
+        gstRate: Number(it.gstRate || 0),
+        portionLabel: useHalf ? ("Half" as const) : (Number(it.halfPrice || 0) > 0 ? ("Full" as const) : undefined)
+      };
+    });
+  };
+
+  const mentionsTable = query.includes("टेबल") || /\btables?\b/i.test(query) || /\bt-?\d+\b/i.test(normQuery);
+
+  if (mentionsTable) {
+    const tables = db.tables || [];
+
+    // A. Seed default tables
+    if (query.includes("seed") || query.includes("सॅम्पल") || query.includes("sample") || query.includes("default")) {
+      return {
+        intent: "TABLE_CREATE",
+        replyText: lang === "en"
+          ? "Sir, creating sample restaurant tables (T-1 to T-6) across dining sections."
+          : "मालक, रेस्टॉरंटसाठी सॅम्पल टेबल्स (T-1 ते T-6) तयार केले आहेत!",
+        displayCards: [{
+          type: "table_list",
+          title: "Restaurant Tables Setup",
+          data: { totalCount: tables.length, tables }
+        }],
+        actionPayload: { action: "SEED_TABLES" }
+      };
+    }
+
+    // B. Delete table
+    if (query.includes("डिलीट") || query.includes("काढून") || query.includes("delete") || query.includes("remove")) {
+      const tbl = extractTableRef();
+      if (tbl) {
+        return {
+          intent: "TABLE_DELETE",
+          replyText: lang === "en"
+            ? `Removing table ${tbl.tableNumber} from floor layout.`
+            : `मालक, टेबल ${tbl.tableNumber} काढून टाकत आहे.`,
+          actionPayload: { action: "DELETE_TABLE", tableId: tbl.id, tableNumber: tbl.tableNumber }
+        };
+      }
+    }
+
+    // C. Create new table
+    const isTableCreate =
+      (query.includes("नवीन") || query.includes("add") || query.includes("create") || query.includes("new") || query.includes("तयार") || query.includes("ॲड") || query.includes("बनव")) &&
+      !query.includes("ऑर्डर") && !query.includes("order") && !query.includes("बिल") && !query.includes("bill") &&
+      (extractMatchedDishes().length === 0);
+
+    if (isTableCreate) {
+      const capMatch = normQuery.match(/(\d+)\s*(?:seater|seat|seats|capacity|सीटर|लोक|खुर्च्या|खुरच्या)/i);
+      const capacity = capMatch ? Math.max(1, parseInt(capMatch[1], 10)) : 4;
+      const numMatch = normQuery.match(/\b(?:table|टेबल)\s*#?\s*([a-z]*\s*-?\s*\d+|[a-z0-9-]+)\b/i) || normQuery.match(/\b(t-?\d+)\b/i);
+      const candidateRaw = numMatch?.[1] || `T-${tables.length + 1}`;
+      const tableNumber = normalizeTableToken(candidateRaw);
+      let section = "Main Dining";
+      if (query.includes("ac")) section = "AC Dining";
+      else if (query.includes("family") || query.includes("फॅमिली")) section = "Family Section";
+      else if (query.includes("garden") || query.includes("terrace") || query.includes("गार्डन")) section = "Garden / Terrace";
+      else if (query.includes("vip")) section = "VIP Lounge";
+
+      return {
+        intent: "TABLE_CREATE",
+        replyText: lang === "en"
+          ? `Sir, added table ${tableNumber} (${capacity} seats, ${section}) to your floor plan.`
+          : `मालक, नवीन टेबल ${tableNumber} (${capacity} सीटर, ${section}) डेटाबेसमध्ये तयार केले आहे.`,
+        displayCards: [{
+          type: "table_list",
+          title: `New Table: ${tableNumber}`,
+          data: {
+            totalCount: tables.length + 1,
+            tables: [...tables, { id: "pending", tableNumber, section, capacity, status: "available", currentOrderTotal: 0 }]
+          }
+        }],
+        actionPayload: {
+          action: "ADD_TABLE",
+          tableNumber,
+          section,
+          capacity,
+          status: query.includes("reserve") || query.includes("रिझर्व्ह") ? "reserved" : "available"
+        }
+      };
+    }
+
+    // D. Mark table cleaned / available / reserved
+    const isStatusChange =
+      query.includes("साफ") || query.includes("clean") || query.includes("cleaned") ||
+      query.includes("उपलब्ध") || query.includes("मोकळा") || query.includes("free") || query.includes("available") ||
+      query.includes("रिझर्व्ह") || query.includes("reserve") || query.includes("reserved");
+
+    if (isStatusChange && !query.includes("कोणते") && !query.includes("which") && !query.includes("list") && !query.includes("दाखव") && !query.includes("show")) {
+      const tbl = extractTableRef();
+      if (tbl) {
+        const nextStatus: RestaurantTable["status"] =
+          (query.includes("रिझर्व्ह") || query.includes("reserve")) ? "reserved" : "available";
+        const statusLabel = nextStatus === "reserved"
+          ? (lang === "en" ? "Reserved" : "रिझर्व्ह")
+          : (lang === "en" ? "Available / Cleaned" : "साफ व उपलब्ध");
+
+        return {
+          intent: "TABLE_UPDATE",
+          replyText: lang === "en"
+            ? `Sir, table ${tbl.tableNumber} has been marked as ${statusLabel}.`
+            : `मालक, टेबल ${tbl.tableNumber} आता '${statusLabel}' केला आहे.`,
+          actionPayload: {
+            action: "UPDATE_TABLE_STATUS",
+            tableId: tbl.id,
+            tableNumber: tbl.tableNumber,
+            status: nextStatus
+          }
+        };
+      }
+    }
+
+    // E. Settle / Checkout Table Bill
+    const matchedTable = extractTableRef();
+    if (matchedTable && (query.includes("फायनल") || query.includes("settle") || query.includes("checkout") || query.includes("बंद कर") || query.includes("कॅश बिल") || query.includes("बिलाचा पेमेंट"))) {
+      const paymentMode = (query.includes("upi") || query.includes("bank") || query.includes("बँक") || query.includes("ऑनलाईन"))
+        ? "bank"
+        : (query.includes("उधारी") || query.includes("credit") || query.includes("unpaid"))
+        ? "unpaid"
+        : "cash";
+      return {
+        intent: "TABLE_ORDER",
+        replyText: lang === "en"
+          ? `Settling running bill for table ${matchedTable.tableNumber} via ${paymentMode.toUpperCase()} and marking table for cleaning.`
+          : `मालक, टेबल ${matchedTable.tableNumber} चे ₹${matchedTable.currentOrderTotal || 0} चे बिल ${paymentMode === "cash" ? "रोख" : paymentMode === "bank" ? "बँक/UPI" : "उधारी"} ने फायनल करून टेबल क्लिनिंगसाठी मार्क केले आहे.`,
+        actionPayload: {
+          action: "SETTLE_TABLE_BILL",
+          tableId: matchedTable.id,
+          tableNumber: matchedTable.tableNumber,
+          paymentMode
+        }
+      };
+    }
+
+    // F. Add / Save items onto a Table's running order
+    const matchedDishes = extractMatchedDishes();
+    if (matchedTable && matchedDishes.length > 0) {
+      const addedTotal = matchedDishes.reduce((s, d) => s + d.quantity * d.price, 0);
+      const dishSummary = matchedDishes.map(d => `${d.quantity}x ${d.itemName}${d.portionLabel ? ` (${d.portionLabel})` : ""}`).join(", ");
+      return {
+        intent: "TABLE_ORDER",
+        replyText: lang === "en"
+          ? `Sir, added ${dishSummary} (₹${addedTotal}) to table ${matchedTable.tableNumber}'s running order.`
+          : `मालक, टेबल ${matchedTable.tableNumber} वर ${dishSummary} (₹${addedTotal}) यशस्वीरीत्या सेव्ह केले आहेत.`,
+        actionPayload: {
+          action: "SAVE_TABLE_ORDER",
+          tableId: matchedTable.id,
+          tableNumber: matchedTable.tableNumber,
+          items: matchedDishes,
+          orderType: "dine_in"
+        }
+      };
+    }
+
+    // G. Open Table in POS ("टेबल T-1 उघड", "open table T-1")
+    if (matchedTable && (query.includes("उघड") || query.includes("open") || query.includes("take order") || query.includes("ऑर्डर"))) {
+      return {
+        intent: "TABLE_ORDER",
+        replyText: lang === "en"
+          ? `Opening table ${matchedTable.tableNumber} in Sales POS.${matchedTable.currentOrderTotal ? ` Active bill: ₹${matchedTable.currentOrderTotal}.` : ""}`
+          : `होय मालक, टेबल ${matchedTable.tableNumber} साठी Sales POS उघडत आहे.`,
+        actionPayload: {
+          action: "OPEN_TABLE_POS",
+          tableId: matchedTable.id,
+          tableNumber: matchedTable.tableNumber,
+          table: matchedTable
+        }
+      };
+    }
+
+    // H. List / Query all tables
+    const availCount = tables.filter(t => t.status === "available").length;
+    const occTables = tables.filter(t => t.status === "occupied");
+    const cleanCount = tables.filter(t => t.status === "cleaning").length;
+    const occTotal = occTables.reduce((s, t) => s + Number(t.currentOrderTotal || 0), 0);
+
+    return {
+      intent: "TABLE_LIST",
+      replyText: tables.length === 0
+        ? (lang === "en" ? "No restaurant tables created yet. Ask me to 'Seed sample tables' or 'Create table T-1'!" : "मालक, अजून एकही टेबल तयार केलेले नाही. 'सॅम्पल टेबल्स तयार कर' असे सांगा!")
+        : (lang === "en"
+          ? `Floor Status: ${tables.length} total tables (${availCount} available, ${occTables.length} occupied totaling ₹${occTotal}, ${cleanCount} cleaning).`
+          : `मालक, सध्या एकूण ${tables.length} टेबल्स आहेत: ${availCount} उपलब्ध, ${occTables.length} चालू (एकूण बिल ₹${occTotal}), ${cleanCount} साफसफाई बाकी.`),
+      displayCards: [{
+        type: "table_list",
+        title: lang === "en" ? "Live Restaurant Tables" : "रेस्टॉरंट टेबल्स स्थिती (Live)",
+        data: {
+          totalCount: tables.length,
+          availableCount: availCount,
+          occupiedCount: occTables.length,
+          cleaningCount: cleanCount,
+          reservedCount: tables.filter(t => t.status === "reserved").length,
+          tables
+        }
+      }]
+    };
+  }
+
+  // =========================================================================
+  // 1.8. MENU ITEM AVAILABILITY TOGGLE (Sold Out / Available)
+  // =========================================================================
+  if (query.includes("sold out") || query.includes("unavailable") || query.includes("बंद कर") || query.includes("संपले") || (query.includes("available") && extractMatchedDishes().length > 0)) {
+    const matchedDishes = extractMatchedDishes();
+    if (matchedDishes.length > 0) {
+      const dish = matchedDishes[0];
+      const markAvailable = !(query.includes("sold out") || query.includes("unavailable") || query.includes("बंद") || query.includes("संपले") || query.includes("नाही"));
+      return {
+        intent: "MENU_AVAILABILITY",
+        replyText: lang === "en"
+          ? `Dish '${dish.itemName}' is now marked ${markAvailable ? "Available" : "Sold Out"}.`
+          : `मालक, '${dish.itemName}' ही डिश आता '${markAvailable ? "उपलब्ध (Available)" : "संपलेली (Sold Out)"}' केली आहे.`,
+        actionPayload: {
+          action: "MENU_AVAILABILITY",
+          itemId: dish.itemId,
+          itemName: dish.itemName,
+          isAvailable: markAvailable
+        }
+      };
+    }
   }
 
   // =========================================================================
@@ -2027,33 +2436,67 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
   }
 
   // =========================================================================
-  // 10. PRODUCT LIST (प्रॉडक्ट लिस्ट / वस्तूंची यादी / catalog / स्टॉक दाखव)
+  // 10. PRODUCT / MENU LIST (प्रॉडक्ट लिस्ट / मेनू यादी / catalog / स्टॉक दाखव)
   // =========================================================================
-  if ((query.includes("प्रॉडक्ट") || query.includes("वस्तू") || query.includes("सामान") || query.includes("आयटम") || query.includes("माल") || query.includes("product") || query.includes("stock")) &&
+  if ((query.includes("प्रॉडक्ट") || query.includes("वस्तू") || query.includes("सामान") || query.includes("आयटम") || query.includes("माल") || query.includes("मेनू") || query.includes("product") || query.includes("stock") || query.includes("menu")) &&
       (query.includes("यादी") || query.includes("लिस्ट") || query.includes("दाखव") || query.includes("कॅटलॉग") || query.includes("list") || query.includes("catalog") || query.includes("show"))) {
     const totalCount = (db.items || []).length;
-    const totalStockValue = (db.items || []).reduce((sum, it) => sum + (it.stockQuantity * it.salePrice), 0);
+    const totalStockValue = (db.items || []).reduce((sum, it) => sum + ((it.stockQuantity || 0) * (it.salePrice || 0)), 0);
 
     return {
       intent: "PRODUCT_LIST",
-      replyText: `मालक, दुकानाच्या डेटाबेसमधील सर्व ${totalCount} वस्तूंची यादी समोर आणली आहे. दुकानातील एकूण साठ्याचे मूल्य अंदाजे ₹${totalStockValue.toLocaleString("en-IN")} आहे.`,
+      replyText: db.business?.businessType === "restaurant"
+        ? (lang === "en"
+            ? `Sir, showing all ${totalCount} restaurant menu items with rates and availability.`
+            : `मालक, रेस्टॉरंट मेनूमधील सर्व ${totalCount} डिशेसची यादी दर व उपलब्धतेसह समोर आणली आहे.`)
+        : `मालक, दुकानाच्या डेटाबेसमधील सर्व ${totalCount} वस्तूंची यादी समोर आणली आहे. दुकानातील एकूण साठ्याचे मूल्य अंदाजे ₹${totalStockValue.toLocaleString("en-IN")} आहे.`,
       displayCards: [{
         type: "product_list",
-        title: "दुकानातील सर्व वस्तूंची थेट यादी (Live Store Catalog)",
+        title: db.business?.businessType === "restaurant" ? "रेस्टॉरंट मेनू यादी (Live Menu Catalog)" : "दुकानातील सर्व वस्तूंची थेट यादी (Live Store Catalog)",
         data: { totalCount, totalStockValue, items: db.items || [] }
       }]
     };
   }
 
   // =========================================================================
-  // 11. SALES BILL CREATION (बिल कर / विक्री नोंदव / bill / sale)
+  // 10.5. ACTIVE OFFERS & CASHBACK SCHEMES LIST
+  // =========================================================================
+  if ((query.includes("ऑफर") || query.includes("offer") || query.includes("स्कीम") || query.includes("scheme") || query.includes("cashback") || query.includes("discount")) &&
+      (query.includes("कोणत") || query.includes("चालू") || query.includes("active") || query.includes("list") || query.includes("दाखव") || query.includes("show") || query.includes("सांगा"))) {
+    const activeOffers = (db.offers || []).filter(o => o.isActive);
+    return {
+      intent: "OFFER_LIST",
+      replyText: activeOffers.length === 0
+        ? (lang === "en" ? "No active promotional offers or cashback schemes right now." : "मालक, सध्या कोणतीही विशेष ऑफर किंवा कॅशबॅक स्कीम सक्रिय नाही.")
+        : (lang === "en"
+            ? `Currently ${activeOffers.length} promotional schemes are active: ${activeOffers.map(o => o.title).join(", ")}.`
+            : `मालक, सध्या एकूण ${activeOffers.length} ऑफर्स व स्कीम्स चालू आहेत: ${activeOffers.map(o => o.title).join(", ")}.`),
+      displayCards: [{
+        type: "offer_card",
+        title: lang === "en" ? "Active Offers & Cashback Schemes" : "सध्याच्या चालू ऑफर्स व स्कीम्स",
+        data: { offers: activeOffers }
+      }]
+    };
+  }
+
+  // =========================================================================
+  // 11. SALES BILL CREATION (बिल कर / विक्री नोंदव / bill / sale / Half-Full / Parcel)
   // =========================================================================
   const isBillingRequest =
-    (query.includes("बिल") || query.includes("invoice") || query.includes("पावती") || query.includes("विक्री") || query.includes("sale") || query.includes("सेल")) &&
-    (query.includes("कर") || query.includes("करा") || query.includes("बनव") || query.includes("बनवा") || query.includes("द्या") || query.includes("दे") || query.includes("नवीन") || query.includes("तयार") || query.includes("start") || query.includes("create") || query.includes("make") || query.includes("new"));
+    (query.includes("बिल") || query.includes("invoice") || query.includes("पावती") || query.includes("विक्री") || query.includes("sale") || query.includes("सेल") || query.includes("parcel") || query.includes("takeaway") || query.includes("पार्सल")) &&
+    (query.includes("कर") || query.includes("करा") || query.includes("बनव") || query.includes("बनवा") || query.includes("द्या") || query.includes("दे") || query.includes("नवीन") || query.includes("तयार") || query.includes("start") || query.includes("create") || query.includes("make") || query.includes("new") || query.includes("bill") || query.includes("order"));
 
   if (isBillingRequest) {
     const isCredit = query.includes("उधारी") || query.includes("credit") || query.includes("unpaid");
+    const isBank = query.includes("upi") || query.includes("bank") || query.includes("बँक") || query.includes("ऑनलाईन") || query.includes("फोनपे") || query.includes("gpay");
+    const isNonGst = query.includes("नॉन जीएसटी") || query.includes("विना जीएसटी") || query.includes("साधे बिल") || query.includes("कच्चे बिल") || query.includes("non gst") || query.includes("non-gst");
+    const isHalf = query.includes("half") || query.includes("हाफ") || query.includes("अर्धी") || query.includes("अर्धा");
+    const orderType = (query.includes("parcel") || query.includes("takeaway") || query.includes("पार्सल"))
+      ? "takeaway"
+      : (query.includes("delivery") || query.includes("डिलिव्हरी"))
+      ? "delivery"
+      : (db.business?.businessType === "restaurant" ? "dine_in" : undefined);
+
     let customerName = lang === "en" ? "Cash Customer" : "रोख ग्राहक (Cash Sale)";
     for (const p of db.parties || []) {
       if (query.includes(p.name.toLowerCase())) {
@@ -2065,40 +2508,54 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
     // Check if items are specified in this billing sentence
     const candidateItems = (db.items || []).filter(it =>
       query.includes(it.name.toLowerCase()) ||
+      (it.shortCode && query.includes(it.shortCode.toLowerCase())) ||
       it.name.toLowerCase().split(' ').some(w => w.length > 2 && query.includes(w))
     );
 
     if (candidateItems.length > 0) {
-      // Build bill with matched items
       const billLines = candidateItems.map(it => {
         let q = 1;
-        const qRe = new RegExp(`(\\d+)\\s*(?:किलो|लिटर|नग|units?|box|pcs|kg|ltr)?\\s*${it.name.toLowerCase()}|${it.name.toLowerCase()}\\s*(\\d+)`, 'i');
+        const escaped = it.name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const qRe = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(?:किलो|लिटर|नग|प्लेट|प्लॅट|plate|bowl|cup|half|full|units?|box|pcs|kg|ltr)?\\s*${escaped}|${escaped}\\s*(\\d+(?:\\.\\d+)?)`, 'i');
         const qm = normQuery.match(qRe);
-        if (qm) q = parseInt(qm[1] || qm[2], 10) || 1;
-        const tot = q * it.salePrice;
+        if (qm) q = parseFloat(qm[1] || qm[2]) || 1;
+        const useHalf = isHalf && Number(it.halfPrice || 0) > 0;
+        const unitPrice = useHalf ? Number(it.halfPrice) : Number(it.salePrice || 0);
+        const gstRate = isNonGst ? 0 : Number(it.gstRate || 0);
+        const amtBeforeTax = q * unitPrice;
+        const taxAmt = (amtBeforeTax * gstRate) / 100;
+        const tot = amtBeforeTax + taxAmt;
         return {
           itemId: it.id,
           itemName: it.name,
           name: it.name,
           quantity: q,
           unit: it.unit || "PCS",
-          price: it.salePrice,
-          total: tot
+          price: unitPrice,
+          gstRate,
+          portionLabel: useHalf ? ("Half" as const) : (Number(it.halfPrice || 0) > 0 ? ("Full" as const) : undefined),
+          total: Math.round(tot * 100) / 100
         };
       });
 
-      const totalAmount = billLines.reduce((s, i) => s + i.total, 0);
-      const itemsText = billLines.map(i => `${i.quantity} ${i.unit} ${i.name}`).join(", ");
+      const totalAmount = Math.round(billLines.reduce((s, i) => s + i.total, 0) * 100) / 100;
+      const itemsText = billLines.map(i => `${i.quantity} ${i.unit} ${i.name}${i.portionLabel === "Half" ? " (Half)" : ""}`).join(", ");
+      const paymentMode = isCredit ? "unpaid" : (isBank ? "bank" : "cash");
 
       return {
         intent: "SALES_BILL",
-        replyText: `मालक, ${customerName} साठी ${itemsText} चे ₹${totalAmount} चे ${isCredit ? "उधारी" : "रोख"} बिल तयार केले आहे.`,
+        replyText: lang === "en"
+          ? `Sir, created a ${paymentMode.toUpperCase()} bill of ₹${totalAmount} for ${customerName}: ${itemsText}.`
+          : `मालक, ${customerName} साठी ${itemsText} चे ₹${totalAmount} चे ${isCredit ? "उधारी" : isBank ? "UPI/बँक" : "रोख"} बिल तयार केले आहे.`,
         displayCards: [{
           type: "mini_bill",
           title: `विक्री बिल: ${customerName}`,
           data: {
             customerName,
-            paymentMode: isCredit ? "unpaid" : "cash",
+            paymentMode,
+            isNonGst,
+            billingMode: isNonGst ? "non_gst" : "gst",
+            orderType,
             items: billLines,
             totalAmount
           }
@@ -2106,16 +2563,20 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
         actionPayload: {
           action: "CREATE_SALES_INVOICE",
           customerName,
-          paymentMode: isCredit ? "unpaid" : "cash",
+          paymentMode,
+          isNonGst,
+          billingMode: isNonGst ? "non_gst" : "gst",
+          orderType,
           items: billLines,
           totalAmount
         }
       };
     } else {
-      // User commanded to open/create a new bill without specific items (e.g. "बिल कर", "नवीन बिल बनवा")
       return {
         intent: "SALES_BILL",
-        replyText: `होय मालक, मी नवीन बिलिंग काउंटर उघडत आहे. कोणाच्या नावाने आणि कोणती वस्तू बिल करायची आहे सांगा?`,
+        replyText: lang === "en"
+          ? `Sure Sir, opening the Sales Billing counter. Tell me the items and customer name to bill.`
+          : `होय मालक, मी नवीन बिलिंग काउंटर उघडत आहे. कोणाच्या नावाने आणि कोणत्या वस्तूंचे बिल बनवायचे आहे सांगा?`,
         actionPayload: {
           action: "OPEN_NEW_BILL",
           targetTab: "sales"
@@ -2154,7 +2615,6 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
   // =========================================================================
   // 13. PAGE NAVIGATION / REDIRECTION (पेज उघड / स्क्रीन उघड / टॅब उघड / open page)
   // =========================================================================
-  // Only trigger on explicit screen/page navigation phrases; never bare 'जा' or 'ने'
   const isNavQuery =
     !isBillingRequest &&
     (query.includes("पेज उघड") || query.includes("स्क्रीन उघड") || query.includes("टॅब उघड") ||
@@ -2163,18 +2623,28 @@ function fallbackLocalMunimjiProcessor(req: MunimjiCommandRequest, db: DatabaseS
      query.includes("open page") || query.includes("open screen") || query.includes("go to page") || query.includes("navigate to") ||
      query.includes("switch tab") || query.includes("open tab") || query.includes("open reports") ||
      query.includes("open settings") || query.includes("open items") || query.includes("open inventory") ||
+     query.includes("open tables") || query.includes("open offers") || query.includes("open godowns") ||
      (query.includes("दाखव") && (query.includes("पेज") || query.includes("स्क्रीन") || query.includes("टॅब"))) ||
      (query.includes("उघड") && (query.includes("पेज") || query.includes("स्क्रीन") || query.includes("टॅब"))));
 
   if (isNavQuery) {
     let targetTab = "dashboard";
     let tabNameMarathi = "डॅशबोर्ड";
-    if (query.includes("रिपोर्ट") || query.includes("report") || query.includes("gstr") || query.includes("daybook")) {
+    if (query.includes("टेबल") || query.includes("table") || query.includes("dining")) {
+      targetTab = "tables";
+      tabNameMarathi = "रेस्टॉरंट टेबल्स (Tables)";
+    } else if (query.includes("ऑफर") || query.includes("offer") || query.includes("scheme") || query.includes("cashback")) {
+      targetTab = "offers";
+      tabNameMarathi = "ऑफर्स व कॅशबॅक स्कीम्स";
+    } else if (query.includes("गोडाऊन") || query.includes("godown") || query.includes("warehouse")) {
+      targetTab = "godowns";
+      tabNameMarathi = "गोडाऊन व स्टॉक ट्रान्सफर";
+    } else if (query.includes("रिपोर्ट") || query.includes("report") || query.includes("gstr") || query.includes("daybook")) {
       targetTab = "reports";
       tabNameMarathi = "रिपोर्ट्स आणि GST विश्लेषक";
-    } else if (query.includes("आयटम") || query.includes("प्रॉडक्ट") || query.includes("स्टॉक") || query.includes("इन्व्हेंटरी") || query.includes("item") || query.includes("product") || query.includes("inventory")) {
+    } else if (query.includes("आयटम") || query.includes("प्रॉडक्ट") || query.includes("स्टॉक") || query.includes("इन्व्हेंटरी") || query.includes("मेनू") || query.includes("item") || query.includes("product") || query.includes("inventory") || query.includes("menu")) {
       targetTab = "items";
-      tabNameMarathi = "आयटम्स व इन्व्हेंटरी";
+      tabNameMarathi = db.business?.businessType === "restaurant" ? "मेनू आयटम्स" : "आयटम्स व इन्व्हेंटरी";
     } else if (query.includes("ग्राहक") || query.includes("सप्लायर") || query.includes("पार्टी") || query.includes("खाते") || query.includes("party") || query.includes("parties") || query.includes("customer") || query.includes("supplier")) {
       targetTab = "parties";
       tabNameMarathi = "ग्राहक व सप्लायर (पार्टीज)";

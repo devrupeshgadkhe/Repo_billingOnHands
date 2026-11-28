@@ -1,49 +1,38 @@
 # TESTING.md — Verification & Testing Guide
 
 ## Automated Verification Commands
-1. **Release channel and data isolation**: `npm run test:release-channel`.
-2. **Type Check**: `npm run lint` (runs `tsc --noEmit`).
-3. **Production Web and Backend Build**: `npm run build`.
-4. **Windows Installer Build**: `npx electron-builder --win --x64 --publish never`.
-5. **Dependency Installation**: `npm ci || npm install` (matches the current production workflow; the package manifest and lockfile are currently out of sync and must be repaired).
+1. **Release channel and data isolation**: `npm run test:release-channel`
+2. **Type Check**: `npm run lint` (runs `tsc --noEmit`)
+3. **Production Web & Backend Build**: `npm run build` (runs `vite build` + `esbuild server.ts`)
+4. **Electron Desktop Smoke Test (Playwright + Electron)**: `npm run test:electron` (`scripts/electron-smoke-test.cjs`)
+5. **Restaurant Table Persistence & Cart Restoration E2E (Playwright)**: `node scripts/test-restaurant-table-persistence.cjs` (requires server on `http://localhost:3000`; safely snapshots and restores `data/db.json` & `data/install-lock.json`)
+6. **Digital Munimji Restaurant Tables & Sales E2E (API + Playwright)**: `node scripts/test-munimji-restaurant.cjs` (requires server on `http://localhost:3000`; safely snapshots and restores `data/db.json` & `data/install-lock.json`)
+7. **Windows Installer Build**: `npx electron-builder --win --x64 --publish never`
 
-## Pre-Production Workflow
+## Pre-Production CI Workflow
 Workflow: `.github/workflows/pre-production.yml`
 
-The workflow is triggered by pushes to `pre-production` or manually through GitHub Actions. It:
-- Uses Windows latest and Node.js 20, matching the current production workflow.
-- Uses the same `npm ci || npm install` dependency fallback as production.
-- Runs `npm run test:release-channel`, `npm run lint`, and `npm run build`.
-- Reuses the existing Electron Builder configuration and Windows x64 NSIS target.
-- Verifies that a non-empty installer and matching `latest.yml` are generated.
-- Uploads an artifact for manual testing.
-- Does not publish GitHub Releases, modify tags, or change production assets.
+Triggered on pushes to `pre-production` or `workflow_dispatch`. It:
+- Runs on `windows-latest` with Node.js 20 (`npm ci || npm install`).
+- Installs pinned Playwright runtime (`playwright@1.58.2`) and sets unique Beta build version via `scripts/set-preproduction-version.cjs`.
+- Runs `npm run test:release-channel`, `npm run lint`, `npm run build`, and `node scripts/ensure-icons.cjs`.
+- Runs the Playwright Electron desktop smoke test (`npm run test:electron`) gating installer generation.
+- Packages the isolated `BillingOnHand-Beta` Windows x64 NSIS installer, verifies `latest.yml`, and updates the rolling `beta-latest` GitHub Prerelease.
 
-## Current Verification Status
-- Production baseline `v1.1.20`: GitHub Actions run #128 succeeded on 2026-11-27.
-- Pre-production branch creation: **PASSED**.
-- First strict `npm ci` run: **FAILED** because `package.json` and `package-lock.json` are out of sync.
-- Production-compatible dependency fallback: **PASSED**.
-- Initial baseline TypeScript validation: **PASSED**.
-- Initial baseline web/backend build: **PASSED**.
-- Initial baseline Windows installer packaging: **IN PROGRESS**.
-- Release-channel/data-isolation unit test on latest commit: **PENDING**.
-- Windows installer artifact verification: **PENDING**.
-- Updater bridge compatibility test: **PENDING**.
-- Beta data isolation runtime test: **PENDING**.
+## Latest Verification Results (`v1.1.24` on `pre-production`)
+- `npm run test:release-channel`: **PASSED** (Beta identity, installer isolation, update feed, and data isolation verified)
+- `npm run lint`: **PASSED** (`tsc --noEmit` exited with code 0)
+- `npm run build`: **PASSED** (Vite client bundle + `esbuild` `dist/server.cjs` built cleanly)
+- `node scripts/test-restaurant-table-persistence.cjs`: **PASSED** (all restaurant table persistence, KOT, schema recovery, HTTP 500 resilience, checkout-to-cleaning, and Kirana retail non-regression checks passed)
+- `node scripts/test-munimji-restaurant.cjs`: **PASSED** (Munimji table seed/create/order/list/settle/clean/delete, `invoice.type === "sale"`, `tableNumber` preservation, `trackStock: false` protection, and interactive `MunimjiDrawer` -> POS T-2 flow passed)
+- GitHub Actions `pre-production` run & `beta-latest` release asset check: **PENDING PUSH**
 
-Do not report the pre-production build or deployment as successful until the latest GitHub Actions run and artifact have been inspected.
-
-## Existing Feature Regression Tests
-- Restaurant menu item creation/editing, availability toggle, Half/Full pricing, KOT kitchen station labels, and `trackStock === false` stock behavior.
-- Installation business-mode lock preservation across updates and clearing only on full uninstall.
-- Restaurant table lifecycle and persistence.
-- Offers and cashback schemes.
-- Existing invoice, purchase, stock, GST, print, backup/restore, and auto-update flows.
-
-## Required Manual Windows Smoke Tests
-- Install the pre-production artifact without uninstalling the stable application.
-- Verify the production database and installation lock remain unchanged.
-- Verify the beta application creates and uses only its dedicated data directory.
-- Verify restart, invoice creation, printing, camera/microphone, local API startup, and backup behavior.
-- Verify beta-to-beta update and stable rollback/update behavior before production promotion.
+## Coverage Matrix
+- **Restaurant Table Persistence (`test-restaurant-table-persistence.cjs`)**:
+  - Take Order -> Save to Table retains cart items, totals, invoice number, customer name, extra charges, and notes immediately without wiping.
+  - Multi-table isolation, dirty-cart overwrite guard, Running Tables quick-load pills, and Print KOT auto-save to occupied table.
+  - Recovery of legacy `runningItemsSummary`, alternate schemas (`{name,qty,rate}`, `{title,count,price}`), deleted catalog items, and total-only occupied tables.
+  - HTTP 500 persistence error resilience without clearing UI cart, Checkout -> `cleaning`, Mark Cleaned -> `available`, and Kirana retail non-regression.
+- **Digital Munimji Restaurant & Sales Training (`test-munimji-restaurant.cjs`)**:
+  - Table CRUD via `/api/munimji/process`: seed tables, create table (`T-7` 6-seater VIP), list tables + interactive `table_list` card, add running dishes (`SAVE_TABLE_ORDER`), settle table bill (`SETTLE_TABLE_BILL`) verifying `invoice.type === "sale"`, `trackStock === false` stock preservation, and `cleaning` status, mark cleaned (`available`), and delete table (`DELETE_TABLE`).
+  - Direct Munimji sales billing (`"Create cash bill 2 Masala Dosa"`) verifying `invoice.type === "sale"` and UI `MunimjiDrawer` rendering `table_list` cards + 1-click **Open Bill / Take Order** navigation into Sales POS.

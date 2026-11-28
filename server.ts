@@ -552,8 +552,14 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
       sourceChallanNumber: inv?.sourceChallanNumber ? String(inv.sourceChallanNumber) : undefined,
       sourceQuotationId: inv?.sourceQuotationId ? String(inv.sourceQuotationId) : undefined,
       sourceQuotationNumber: inv?.sourceQuotationNumber ? String(inv.sourceQuotationNumber) : undefined,
+      originalInvoiceNumber: inv?.originalInvoiceNumber ? String(inv.originalInvoiceNumber) : undefined,
       isNonGst: Boolean(inv?.isNonGst || inv?.billingMode === "non_gst"),
-      billingMode: (inv?.billingMode === "non_gst" || inv?.isNonGst ? "non_gst" : "gst") as "gst" | "non_gst"
+      billingMode: (inv?.billingMode === "non_gst" || inv?.isNonGst ? "non_gst" : "gst") as "gst" | "non_gst",
+      tableId: inv?.tableId ? String(inv.tableId) : undefined,
+      tableNumber: inv?.tableNumber ? String(inv.tableNumber) : undefined,
+      orderType: (inv?.orderType === "dine_in" || inv?.orderType === "takeaway" || inv?.orderType === "delivery")
+        ? inv.orderType
+        : undefined
     };
   }) : [];
 
@@ -3903,7 +3909,7 @@ app.post("/api/munimji/process", async (req, res) => {
       currentDb
     );
 
-    // Auto-commit any CRUD operation (Items, Stock, Price, Parties, Expenses, Quotes, Challans, Bills) directly to the persistent database
+    // Auto-commit any CRUD operation (Items, Menu Availability, Tables, Table Orders, Stock, Price, Parties, Expenses, Quotes, Challans, Offers, Bills) directly to the persistent database
     const crudResult = executeMunimjiUniversalCrud(
       response.actionPayload?.action || response.intent || "",
       response.actionPayload || {},
@@ -3915,6 +3921,29 @@ app.post("/api/munimji/process", async (req, res) => {
       if (!response.actionPayload) response.actionPayload = {};
       response.actionPayload.executed = true;
       response.actionPayload.result = crudResult.data;
+
+      // Sync any table_list card with live post-mutation tables state
+      if (Array.isArray(response.displayCards)) {
+        const freshDb = readDb();
+        const tblIdx = response.displayCards.findIndex(c => c.type === "table_list");
+        if (tblIdx > -1) {
+          const liveTables = freshDb.tables || [];
+          response.displayCards[tblIdx].data = {
+            ...(response.displayCards[tblIdx].data || {}),
+            totalCount: liveTables.length,
+            availableCount: liveTables.filter(t => t.status === "available").length,
+            occupiedCount: liveTables.filter(t => t.status === "occupied").length,
+            cleaningCount: liveTables.filter(t => t.status === "cleaning").length,
+            reservedCount: liveTables.filter(t => t.status === "reserved").length,
+            tables: liveTables
+          };
+        }
+      }
+    } else if (crudResult.message && crudResult.message !== "No changes made.") {
+      response.replyText = crudResult.message;
+      if (!response.actionPayload) response.actionPayload = {};
+      response.actionPayload.executed = false;
+      response.actionPayload.error = crudResult.message;
     }
 
     res.json(response);
@@ -4180,6 +4209,17 @@ function executeMunimjiUniversalCrud(
         const boxUnit = String(itemData?.boxUnit ?? itemData?.product?.boxUnit ?? "BOX").toUpperCase();
         const category = String(itemData?.category ?? itemData?.product?.category ?? "").trim();
         const brand = String(itemData?.brand ?? itemData?.company ?? itemData?.product?.brand ?? "").trim();
+        const isRestaurantMode = db.business?.businessType === "restaurant";
+        const rawDietary = String(itemData?.dietaryType ?? itemData?.product?.dietaryType ?? "").toLowerCase();
+        const dietaryType = (["veg", "non_veg", "egg", "beverage"].includes(rawDietary)
+          ? rawDietary
+          : (isRestaurantMode ? "veg" : undefined)) as any;
+        const parsedHalf = Number(itemData?.halfPrice ?? itemData?.product?.halfPrice ?? 0);
+        const halfPrice = parsedHalf > 0 ? parsedHalf : undefined;
+        const kitchenStation = String(itemData?.kitchenStation ?? itemData?.product?.kitchenStation ?? "").trim() || undefined;
+        const shortCode = String(itemData?.shortCode ?? itemData?.product?.shortCode ?? "").trim().toUpperCase() || undefined;
+        const isAvailable = itemData?.isAvailable !== undefined ? Boolean(itemData.isAvailable) : (isRestaurantMode ? true : undefined);
+        const trackStock = itemData?.trackStock !== undefined ? Boolean(itemData.trackStock) : (isRestaurantMode ? false : undefined);
 
         let item = db.items.find((it: any) => it.name.toLowerCase() === itemName.toLowerCase() || (it.name.toLowerCase().includes(itemName.toLowerCase()) && itemName.length > 4));
         if (item) {
@@ -4192,7 +4232,13 @@ function executeMunimjiUniversalCrud(
           if (boxUnit) item.boxUnit = boxUnit;
           if (category) item.category = category;
           if (brand) item.brand = brand;
-          if (stockQty > 0) item.stockQuantity = (item.stockQuantity || 0) + stockQty;
+          if (dietaryType) item.dietaryType = dietaryType;
+          if (halfPrice !== undefined) item.halfPrice = halfPrice;
+          if (kitchenStation) item.kitchenStation = kitchenStation;
+          if (shortCode) item.shortCode = shortCode;
+          if (isAvailable !== undefined) item.isAvailable = isAvailable;
+          if (trackStock !== undefined) item.trackStock = trackStock;
+          if (stockQty > 0 && item.trackStock !== false) item.stockQuantity = (item.stockQuantity || 0) + stockQty;
           processedItems.push(item);
         } else {
           item = {
@@ -4208,10 +4254,16 @@ function executeMunimjiUniversalCrud(
             boxUnit,
             category,
             brand,
-            stockQuantity: stockQty,
+            stockQuantity: trackStock === false ? 0 : stockQty,
             minStockAlert: Number(itemData?.minStockAlert || 5),
             gstRate,
-            unit
+            unit,
+            ...(dietaryType ? { dietaryType } : {}),
+            ...(halfPrice !== undefined ? { halfPrice } : {}),
+            ...(kitchenStation ? { kitchenStation } : {}),
+            ...(shortCode ? { shortCode } : {}),
+            ...(isAvailable !== undefined ? { isAvailable } : {}),
+            ...(trackStock !== undefined ? { trackStock } : {})
           };
           db.items.push(item);
           processedItems.push(item);
@@ -4227,6 +4279,26 @@ function executeMunimjiUniversalCrud(
         message = `Item '${single.name}' successfully added to inventory (Sale Price: ₹${single.salePrice}, Purchase Price: ₹${single.purchasePrice}).`;
         resultData = single;
         modified = true;
+      }
+    }
+
+    // 1.5. MENU AVAILABILITY TOGGLE (Restaurant Dishes)
+    else if (act.includes("MENU_AVAILABILITY") || intent === "MENU_AVAILABILITY") {
+      if (!db.items) db.items = [];
+      const targetName = String(payload?.itemName || payload?.name || "").trim().toLowerCase();
+      const targetId = String(payload?.itemId || "");
+      const item = db.items.find((it: any) =>
+        (targetId && it.id === targetId) ||
+        (targetName && (it.name.toLowerCase() === targetName || it.name.toLowerCase().includes(targetName) || (it.shortCode && it.shortCode.toLowerCase() === targetName)))
+      );
+      if (item) {
+        const nextAvail = payload?.isAvailable !== undefined ? Boolean(payload.isAvailable) : !(item.isAvailable !== false);
+        item.isAvailable = nextAvail;
+        message = `Menu item '${item.name}' marked as ${nextAvail ? "Available" : "Sold Out"}.`;
+        resultData = item;
+        modified = true;
+      } else {
+        return { success: false, message: `Menu item '${payload?.itemName || ""}' not found.` };
       }
     }
 
@@ -4285,10 +4357,13 @@ function executeMunimjiUniversalCrud(
         if (payload?.salePrice !== undefined || payload?.price !== undefined || payload?.rate !== undefined) {
           item.salePrice = Number(payload.salePrice ?? payload.price ?? payload.rate);
         }
+        if (payload?.halfPrice !== undefined) {
+          item.halfPrice = Number(payload.halfPrice) > 0 ? Number(payload.halfPrice) : undefined;
+        }
         if (payload?.purchasePrice !== undefined || payload?.costPrice !== undefined) {
           item.purchasePrice = Number(payload.purchasePrice ?? payload.costPrice);
         }
-        message = `Updated rates for '${item.name}'. Sale Price: ₹${item.salePrice}, Purchase Price: ₹${item.purchasePrice}.`;
+        message = `Updated rates for '${item.name}'. Sale Price: ₹${item.salePrice}${item.halfPrice ? `, Half Price: ₹${item.halfPrice}` : ""}, Purchase Price: ₹${item.purchasePrice}.`;
         resultData = item;
         modified = true;
       }
@@ -4513,11 +4588,360 @@ function executeMunimjiUniversalCrud(
       modified = true;
     }
 
-    // 10. SALES INVOICE / BILL
+    // 10. SALES INVOICE / BILL (AND RESTAURANT TABLE OPERATIONS)
     else if (act.includes("OPEN_NEW_BILL")) {
       message = "Opening new billing counter.";
       resultData = { action: "OPEN_NEW_BILL", targetTab: "sales" };
       return { success: true, message, data: resultData };
+    }
+    else if (act.includes("OPEN_TABLE_POS")) {
+      if (!db.tables) db.tables = [];
+      const normTok = (v: string) => {
+        const c = String(v || "").trim().toUpperCase().replace(/^TABLE\s*/i, "").replace(/\s+/g, "");
+        return /^\d+$/.test(c) ? `T-${c}` : (/^T\d+$/.test(c) ? `T-${c.slice(1)}` : c);
+      };
+      const tNum = String(payload?.tableNumber || "").trim();
+      const tbl = db.tables.find((t: any) =>
+        (payload?.tableId && t.id === payload.tableId) ||
+        (tNum && (t.tableNumber.toLowerCase() === tNum.toLowerCase() || normTok(t.tableNumber) === normTok(tNum)))
+      );
+      if (!tbl) {
+        return { success: false, message: `Table '${tNum || payload?.tableId || ""}' not found.` };
+      }
+      message = `Opening Table ${tbl.tableNumber} in Sales POS.`;
+      resultData = { action: "OPEN_TABLE_POS", table: tbl, targetTab: "sales" };
+      return { success: true, message, data: resultData };
+    }
+    else if (act.includes("SEED_TABLES") || act.includes("TABLES_SEED")) {
+      if (!Array.isArray(db.tables)) db.tables = [];
+      const presets: RestaurantTable[] = [
+        { id: "tbl_1", tableNumber: "T-1", section: "AC Dining", capacity: 4, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_2", tableNumber: "T-2", section: "AC Dining", capacity: 6, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_3", tableNumber: "T-3", section: "Main Hall", capacity: 4, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_4", tableNumber: "T-4", section: "Main Hall", capacity: 2, status: "available", currentOrderTotal: 0 },
+        { id: "tbl_5", tableNumber: "T-5", section: "Family Section", capacity: 8, status: "reserved", currentOrderTotal: 0 },
+        { id: "tbl_6", tableNumber: "T-6", section: "Garden / Terrace", capacity: 4, status: "available", currentOrderTotal: 0 }
+      ];
+      let added = 0;
+      for (const p of presets) {
+        if (!db.tables.some((t: any) => t.id === p.id || t.tableNumber.toLowerCase() === p.tableNumber.toLowerCase())) {
+          db.tables.push(p);
+          added++;
+        }
+      }
+      message = added > 0
+        ? `Created ${added} sample restaurant tables.`
+        : `Sample restaurant tables already exist (${db.tables.length} tables active).`;
+      resultData = { tables: db.tables, added };
+      modified = added > 0;
+      if (!modified) {
+        return { success: true, message, data: resultData };
+      }
+    }
+    else if (act.includes("ADD_TABLE") || act.includes("CREATE_TABLE") || act.includes("TABLE_CREATE")) {
+      if (!Array.isArray(db.tables)) db.tables = [];
+      const rawNum = String(payload?.tableNumber || `T-${db.tables.length + 1}`).trim();
+      const dup = db.tables.find((t: any) => t.tableNumber.toLowerCase() === rawNum.toLowerCase());
+      if (dup) {
+        return { success: false, message: `Table '${rawNum}' already exists (${dup.section}, ${dup.capacity} seats).` };
+      }
+      const newTable: RestaurantTable = {
+        id: `tbl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        tableNumber: rawNum,
+        section: String(payload?.section || "Main Dining").trim() || "Main Dining",
+        capacity: Math.max(1, Number(payload?.capacity) || 4),
+        status: payload?.status === "reserved" ? "reserved" : "available",
+        currentOrderTotal: 0
+      };
+      db.tables.push(newTable);
+      message = `Table '${newTable.tableNumber}' (${newTable.capacity} seats, ${newTable.section}) created successfully.`;
+      resultData = newTable;
+      modified = true;
+    }
+    else if (
+      act.includes("UPDATE_TABLE_STATUS") || act.includes("TABLE_UPDATE") ||
+      act.includes("MARK_TABLE_CLEANED") || act.includes("CLEAN_TABLE") ||
+      act.includes("RESERVE_TABLE") || act.includes("FREE_TABLE") ||
+      (intent === "TABLE_UPDATE")
+    ) {
+      if (!Array.isArray(db.tables)) db.tables = [];
+      const normTok = (v: string) => {
+        const c = String(v || "").trim().toUpperCase().replace(/^TABLE\s*/i, "").replace(/\s+/g, "");
+        return /^\d+$/.test(c) ? `T-${c}` : (/^T\d+$/.test(c) ? `T-${c.slice(1)}` : c);
+      };
+      const tNum = String(payload?.tableNumber || "").trim();
+      const tbl = db.tables.find((t: any) =>
+        (payload?.tableId && t.id === payload.tableId) ||
+        (tNum && (t.tableNumber.toLowerCase() === tNum.toLowerCase() || normTok(t.tableNumber) === normTok(tNum)))
+      );
+      if (!tbl) {
+        return { success: false, message: `Table '${tNum || payload?.tableId || ""}' not found.` };
+      }
+      if (payload?.section) tbl.section = String(payload.section).trim();
+      if (payload?.capacity && Number(payload.capacity) > 0) tbl.capacity = Number(payload.capacity);
+      if (payload?.newTableNumber) tbl.tableNumber = String(payload.newTableNumber).trim();
+
+      let targetStatus = payload?.status;
+      if (!targetStatus) {
+        if (act.includes("RESERVE")) targetStatus = "reserved";
+        else if (act.includes("CLEAN") || act.includes("FREE")) targetStatus = "available";
+      }
+      if (targetStatus && ["available", "occupied", "reserved", "cleaning"].includes(targetStatus)) {
+        tbl.status = targetStatus;
+        if (targetStatus === "available" || targetStatus === "cleaning") {
+          tbl.currentOrderId = undefined;
+          tbl.currentOrderInvoiceNumber = undefined;
+          tbl.currentOrderDraft = undefined;
+          tbl.currentOrderTotal = 0;
+          tbl.runningItemsSummary = undefined;
+          tbl.currentOrderItems = [];
+          tbl.currentOrderExtraCharges = [];
+          tbl.currentOrderNotes = "";
+          tbl.currentOrderUpdatedAt = undefined;
+        }
+      }
+      message = `Table '${tbl.tableNumber}' updated to '${tbl.status}'.`;
+      resultData = tbl;
+      modified = true;
+    }
+    else if (act.includes("DELETE_TABLE") || act.includes("TABLE_DELETE") || intent === "TABLE_DELETE") {
+      if (!Array.isArray(db.tables)) db.tables = [];
+      const normTok = (v: string) => {
+        const c = String(v || "").trim().toUpperCase().replace(/^TABLE\s*/i, "").replace(/\s+/g, "");
+        return /^\d+$/.test(c) ? `T-${c}` : (/^T\d+$/.test(c) ? `T-${c.slice(1)}` : c);
+      };
+      const tNum = String(payload?.tableNumber || "").trim();
+      const idx = db.tables.findIndex((t: any) =>
+        (payload?.tableId && t.id === payload.tableId) ||
+        (tNum && (t.tableNumber.toLowerCase() === tNum.toLowerCase() || normTok(t.tableNumber) === normTok(tNum)))
+      );
+      if (idx === -1) {
+        return { success: false, message: `Table '${tNum || payload?.tableId || ""}' not found.` };
+      }
+      const removed = db.tables[idx];
+      if (removed.status === "occupied" && (removed.currentOrderItems?.length || 0) > 0 && !payload?.force) {
+        return { success: false, message: `Table '${removed.tableNumber}' currently has an active running bill (₹${removed.currentOrderTotal || 0}). Please settle or clear it first.` };
+      }
+      db.tables.splice(idx, 1);
+      message = `Table '${removed.tableNumber}' removed from floor layout.`;
+      resultData = removed;
+      modified = true;
+    }
+    else if (act.includes("SAVE_TABLE_ORDER") || act.includes("ADD_TO_TABLE") || act.includes("TAKE_TABLE_ORDER")) {
+      if (!Array.isArray(db.tables)) db.tables = [];
+      if (!Array.isArray(db.items)) db.items = [];
+      const normTok = (v: string) => {
+        const c = String(v || "").trim().toUpperCase().replace(/^TABLE\s*/i, "").replace(/\s+/g, "");
+        return /^\d+$/.test(c) ? `T-${c}` : (/^T\d+$/.test(c) ? `T-${c.slice(1)}` : c);
+      };
+      const tNum = String(payload?.tableNumber || "").trim();
+      const tbl = db.tables.find((t: any) =>
+        (payload?.tableId && t.id === payload.tableId) ||
+        (tNum && (t.tableNumber.toLowerCase() === tNum.toLowerCase() || normTok(t.tableNumber) === normTok(tNum)))
+      );
+      if (!tbl) {
+        return { success: false, message: `Table '${tNum || payload?.tableId || ""}' not found.` };
+      }
+
+      const incomingLines = Array.isArray(payload?.items) ? payload.items : [];
+      if (incomingLines.length === 0) {
+        return { success: false, message: `Please specify at least one dish/item to add to Table ${tbl.tableNumber}.` };
+      }
+
+      const isNonGstDraft = payload?.billingMode === "non_gst" || db.business?.defaultBillingMode === "non_gst";
+      const existingLines = Array.isArray(tbl.currentOrderItems) ? [...tbl.currentOrderItems] : [];
+
+      for (const reqLine of incomingLines) {
+        const reqName = String(reqLine?.itemName || reqLine?.name || reqLine?.title || "").trim();
+        if (!reqName) continue;
+        const qty = parseIndianQuantity(reqLine?.quantity);
+        const catalogItem = db.items.find((it: any) =>
+          (reqLine?.itemId && it.id === reqLine.itemId) ||
+          it.name.toLowerCase() === reqName.toLowerCase() ||
+          (it.shortCode && it.shortCode.toLowerCase() === reqName.toLowerCase()) ||
+          (reqName.length > 3 && it.name.toLowerCase().includes(reqName.toLowerCase()))
+        );
+        const portion = reqLine?.portionLabel === "Half" ? "Half" as const : (reqLine?.portionLabel === "Full" ? "Full" as const : undefined);
+        const resolvedPrice = Number(reqLine?.price) > 0
+          ? Number(reqLine.price)
+          : (portion === "Half" && Number(catalogItem?.halfPrice || 0) > 0
+              ? Number(catalogItem?.halfPrice)
+              : Number(catalogItem?.salePrice || 0));
+        const gstRate = isNonGstDraft ? 0 : Number(reqLine?.gstRate ?? catalogItem?.gstRate ?? 0);
+        const itemId = catalogItem?.id || reqLine?.itemId || `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const itemName = catalogItem?.name || reqName;
+        const unit = reqLine?.unit || catalogItem?.unit || "PLATE";
+
+        const existingMatch = existingLines.find((el: any) =>
+          el.itemId === itemId && (el.portionLabel || "") === (portion || "")
+        );
+        if (existingMatch) {
+          existingMatch.quantity = Number(existingMatch.quantity || 0) + qty;
+        } else {
+          existingLines.push({
+            itemId,
+            itemName,
+            hsn: catalogItem?.hsn || "9963",
+            unit,
+            quantity: qty,
+            customPrice: resolvedPrice,
+            discount: 0,
+            discountType: "percent" as const,
+            gstRate,
+            ...(portion ? { portionLabel: portion } : {})
+          });
+        }
+      }
+
+      const lineTotalsSum = existingLines.reduce((sum: number, l: any) => {
+        const lineBase = Number(l.quantity || 0) * Number(l.customPrice || 0);
+        const lineTax = (lineBase * Number(l.gstRate || 0)) / 100;
+        return sum + lineBase + lineTax;
+      }, 0);
+      const chargesSum = (tbl.currentOrderExtraCharges || []).reduce((s: number, c: any) => s + Number(c.amount || 0), 0);
+      const newTotal = Math.round((lineTotalsSum + chargesSum) * 100) / 100;
+
+      const invNum = tbl.currentOrderInvoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const custName = String(payload?.customerName || tbl.currentOrderDraft?.partyName || "Walk-in Customer").trim() || "Walk-in Customer";
+
+      tbl.status = "occupied";
+      tbl.currentOrderId = tbl.currentOrderId || `ord_${tbl.id}_${Date.now()}`;
+      tbl.currentOrderInvoiceNumber = invNum;
+      tbl.currentOrderItems = existingLines;
+      tbl.currentOrderTotal = newTotal;
+      tbl.runningItemsSummary = existingLines.map((l: any) => `${l.quantity}x ${l.itemName || l.itemId}${l.portionLabel ? ` (${l.portionLabel})` : ""}`).join(", ");
+      tbl.currentOrderNotes = String(payload?.notes || tbl.currentOrderNotes || "");
+      tbl.currentOrderUpdatedAt = new Date().toISOString();
+      tbl.currentOrderDraft = {
+        ...(tbl.currentOrderDraft || {}),
+        invoiceNumber: invNum,
+        invoiceDate: tbl.currentOrderDraft?.invoiceDate || new Date().toISOString().split("T")[0],
+        selectedPartyId: tbl.currentOrderDraft?.selectedPartyId || "walkin_customer",
+        partyName: custName,
+        partySearchText: custName,
+        billingMode: isNonGstDraft ? "non_gst" : "gst",
+        transactionType: "sale",
+        orderType: payload?.orderType || tbl.currentOrderDraft?.orderType || "dine_in",
+        notes: tbl.currentOrderNotes
+      };
+
+      message = `Saved order on Table ${tbl.tableNumber} (${invNum}): ${tbl.runningItemsSummary} — Total ₹${newTotal}.`;
+      resultData = { table: tbl, tables: db.tables };
+      modified = true;
+    }
+    else if (act.includes("SETTLE_TABLE_BILL") || act.includes("CHECKOUT_TABLE")) {
+      if (!Array.isArray(db.tables)) db.tables = [];
+      if (!Array.isArray(db.invoices)) db.invoices = [];
+      const normTok = (v: string) => {
+        const c = String(v || "").trim().toUpperCase().replace(/^TABLE\s*/i, "").replace(/\s+/g, "");
+        return /^\d+$/.test(c) ? `T-${c}` : (/^T\d+$/.test(c) ? `T-${c.slice(1)}` : c);
+      };
+      const tNum = String(payload?.tableNumber || "").trim();
+      const tbl = db.tables.find((t: any) =>
+        (payload?.tableId && t.id === payload.tableId) ||
+        (tNum && (t.tableNumber.toLowerCase() === tNum.toLowerCase() || normTok(t.tableNumber) === normTok(tNum)))
+      );
+      if (!tbl) {
+        return { success: false, message: `Table '${tNum || payload?.tableId || ""}' not found.` };
+      }
+      const runningLines = Array.isArray(tbl.currentOrderItems) ? tbl.currentOrderItems : [];
+      if (runningLines.length === 0) {
+        return { success: false, message: `Table ${tbl.tableNumber} has no running order items to settle.` };
+      }
+
+      const isNonGstBill = Boolean(payload?.isNonGst || tbl.currentOrderDraft?.billingMode === "non_gst" || db.business?.defaultBillingMode === "non_gst");
+      const invoiceItems = runningLines.map((l: any) => {
+        const qty = Number(l.quantity || 1);
+        const unitPrice = Number(l.customPrice || 0);
+        const gstRate = isNonGstBill ? 0 : Number(l.gstRate || 0);
+        const amountBeforeTax = qty * unitPrice;
+        const taxAmount = (amountBeforeTax * gstRate) / 100;
+        const halfTax = taxAmount / 2;
+
+        // Deduct stock ONLY for tracked packaged products
+        const catalogItem = (db.items || []).find((it: any) => it.id === l.itemId || (l.itemName && it.name.toLowerCase() === l.itemName.toLowerCase()));
+        if (catalogItem && catalogItem.trackStock !== false) {
+          catalogItem.stockQuantity = Math.max(0, (catalogItem.stockQuantity || 0) - qty);
+        }
+
+        return {
+          itemId: l.itemId || catalogItem?.id || "",
+          itemName: l.itemName || catalogItem?.name || "Item",
+          hsn: l.hsn || catalogItem?.hsn || "9963",
+          quantity: qty,
+          unit: l.unit || catalogItem?.unit || "PLATE",
+          price: unitPrice,
+          discount: 0,
+          gstRate,
+          amountBeforeTax,
+          taxAmount,
+          cgst: halfTax,
+          sgst: halfTax,
+          igst: 0,
+          totalAmount: amountBeforeTax + taxAmount,
+          ...(l.portionLabel ? { portionLabel: l.portionLabel } : {})
+        };
+      });
+
+      const subtotal = Math.round(invoiceItems.reduce((s: number, it: any) => s + it.amountBeforeTax, 0) * 100) / 100;
+      const taxAmount = Math.round(invoiceItems.reduce((s: number, it: any) => s + it.taxAmount, 0) * 100) / 100;
+      const extraCharges = Array.isArray(tbl.currentOrderExtraCharges) ? tbl.currentOrderExtraCharges : [];
+      const chargesTotal = extraCharges.reduce((s: number, c: any) => s + Number(c.amount || 0), 0);
+      const totalAmount = Math.round((subtotal + taxAmount + chargesTotal) * 100) / 100;
+      const rawPay = String(payload?.paymentMode || payload?.paymentType || tbl.currentOrderDraft?.paymentType || "cash").toLowerCase();
+      const paymentType = (rawPay === "bank" || rawPay === "unpaid") ? rawPay as "bank" | "unpaid" : "cash";
+      const partyId = tbl.currentOrderDraft?.selectedPartyId || "walkin_customer";
+      const partyName = String(payload?.customerName || tbl.currentOrderDraft?.partyName || "Walk-in Customer").trim() || "Walk-in Customer";
+
+      const invoice: any = {
+        id: "inv_" + Date.now(),
+        invoiceNumber: tbl.currentOrderInvoiceNumber || ("INV-" + Date.now().toString().slice(-6)),
+        date: new Date().toISOString().split("T")[0],
+        partyId,
+        partyName,
+        partyGstin: tbl.currentOrderDraft?.partyGstin || "",
+        type: "sale",
+        items: invoiceItems,
+        subtotal,
+        taxAmount,
+        cgstTotal: Math.round((taxAmount / 2) * 100) / 100,
+        sgstTotal: Math.round((taxAmount / 2) * 100) / 100,
+        igstTotal: 0,
+        extraCharges,
+        totalAmount,
+        paymentType,
+        paidAmount: paymentType === "unpaid" ? 0 : totalAmount,
+        remainingAmount: paymentType === "unpaid" ? totalAmount : 0,
+        isNonGst: isNonGstBill,
+        billingMode: isNonGstBill ? "non_gst" : "gst",
+        tableId: tbl.id,
+        tableNumber: tbl.tableNumber,
+        orderType: tbl.currentOrderDraft?.orderType || "dine_in",
+        notes: tbl.currentOrderNotes || `Settled from Table ${tbl.tableNumber} via Digital Munimji`
+      };
+
+      if (partyId && partyId !== "walkin_customer" && paymentType === "unpaid" && db.parties) {
+        const party = db.parties.find((p: any) => p.id === partyId);
+        if (party) party.currentBalance = (party.currentBalance || 0) + totalAmount;
+      }
+
+      db.invoices.push(invoice as Invoice);
+
+      // Clear running order & transition table to 'cleaning'
+      tbl.status = "cleaning";
+      tbl.currentOrderId = undefined;
+      tbl.currentOrderInvoiceNumber = undefined;
+      tbl.currentOrderDraft = undefined;
+      tbl.currentOrderTotal = 0;
+      tbl.runningItemsSummary = undefined;
+      tbl.currentOrderItems = [];
+      tbl.currentOrderExtraCharges = [];
+      tbl.currentOrderNotes = "";
+      tbl.currentOrderUpdatedAt = undefined;
+
+      message = `Settled Table ${tbl.tableNumber} bill ${invoice.invoiceNumber} (₹${totalAmount}, ${paymentType.toUpperCase()}) and marked table as Needs Cleaning.`;
+      resultData = { invoice, table: tbl };
+      modified = true;
     }
     else if (
       act.includes("SALES_BILL") || act.includes("CREATE_SALES_INVOICE") || act.includes("CREATE_INVOICE") ||
@@ -4528,9 +4952,16 @@ function executeMunimjiUniversalCrud(
       if (!invoice.id) invoice.id = "inv_" + Date.now();
       if (!invoice.invoiceNumber) invoice.invoiceNumber = "INV-" + Date.now().toString().slice(-6);
       if (!invoice.date) invoice.date = new Date().toISOString().split("T")[0];
-      if (!invoice.partyId) invoice.partyId = "walkin_customer";
-      if (!invoice.partyName) invoice.partyName = "Cash Customer";
-      invoice.type = "sales";
+      if (!invoice.partyName) invoice.partyName = invoice.customerName || "Cash Customer";
+      if (!invoice.partyId) {
+        const matchedParty = (db.parties || []).find((p: any) =>
+          p.name && invoice.partyName && p.name.toLowerCase() === String(invoice.partyName).toLowerCase()
+        );
+        invoice.partyId = matchedParty ? matchedParty.id : "walkin_customer";
+        if (matchedParty && !invoice.partyGstin) invoice.partyGstin = matchedParty.gstin || "";
+      }
+      if (!invoice.partyGstin) invoice.partyGstin = "";
+      invoice.type = "sale";
 
       const isNonGstBill = Boolean(
         invoice.isNonGst ||
@@ -4542,70 +4973,131 @@ function executeMunimjiUniversalCrud(
       invoice.isNonGst = isNonGstBill;
       invoice.billingMode = isNonGstBill ? "non_gst" : "gst";
 
-      // Deduct stock and dynamically auto-add any missing items to inventory catalog with exact name
-      if (invoice.items && db.items) {
+      const isRestaurant = db.business?.businessType === "restaurant";
+
+      // Deduct stock (only for trackStock !== false) and normalize line GST/totals
+      if (Array.isArray(invoice.items) && db.items) {
         for (const line of invoice.items) {
           line.quantity = parseIndianQuantity(line.quantity);
           const lineName = (line.itemName || line.name || line.title || line.productName || "").trim();
           line.itemName = lineName;
           line.name = lineName;
 
-          if (isNonGstBill) {
-            line.gstRate = 0;
-            line.taxAmount = 0;
-            line.cgst = 0;
-            line.sgst = 0;
-            line.igst = 0;
-            line.amountBeforeTax = Number(line.price || 0) * Number(line.quantity || 1);
-            line.totalAmount = line.amountBeforeTax;
-          }
-
-          const prod = db.items.find((it: any) => 
-            (line.itemId && it.id === line.itemId) || 
+          const prod = db.items.find((it: any) =>
+            (line.itemId && it.id === line.itemId) ||
             (lineName && it.name.toLowerCase() === lineName.toLowerCase()) ||
+            (lineName && it.shortCode && it.shortCode.toLowerCase() === lineName.toLowerCase()) ||
             (lineName.length > 3 && it.name.toLowerCase().includes(lineName.toLowerCase()))
           );
 
           if (prod) {
-            prod.stockQuantity = Math.max(0, (prod.stockQuantity || 0) - line.quantity);
+            if (prod.trackStock !== false) {
+              prod.stockQuantity = Math.max(0, (prod.stockQuantity || 0) - line.quantity);
+            }
             line.itemId = prod.id;
             line.itemName = prod.name;
             line.name = prod.name;
+            line.hsn = line.hsn || prod.hsn || "9999";
+            line.unit = line.unit || prod.unit || "PCS";
+            if (!line.price || Number(line.price) <= 0) {
+              line.price = line.portionLabel === "Half" && Number(prod.halfPrice || 0) > 0
+                ? Number(prod.halfPrice)
+                : Number(prod.salePrice || 0);
+            }
+            if (line.gstRate === undefined) line.gstRate = prod.gstRate || 0;
           } else if (lineName) {
-            // Dynamic Out-of-Catalog Item Auto-Addition with exact name
             const newId = "item_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-            const unitType = line.unit || (lineName.toLowerCase().includes("oil") || lineName.toLowerCase().includes("milk") ? "LTR" : "PCS");
+            const unitType = line.unit || (isRestaurant ? "PLATE" : (lineName.toLowerCase().includes("oil") || lineName.toLowerCase().includes("milk") ? "LTR" : "PCS"));
             const salePrice = Number(line.price || 100);
-            const newProd = {
+            const newProd: any = {
               id: newId,
               name: lineName,
               hsn: isNonGstBill ? "" : (line.hsn || "9999"),
               purchasePrice: Math.round(salePrice * 0.85),
               salePrice,
               mrp: salePrice,
-              stockQuantity: Math.max(0, 100 - line.quantity),
+              stockQuantity: isRestaurant ? 0 : Math.max(0, 100 - line.quantity),
               minStockAlert: 5,
               gstRate: isNonGstBill ? 0 : (line.gstRate || 0),
-              unit: unitType
+              unit: unitType,
+              ...(isRestaurant ? { dietaryType: "veg", isAvailable: true, trackStock: false } : {})
             };
             db.items.push(newProd);
             line.itemId = newId;
+            line.hsn = newProd.hsn;
+            line.unit = unitType;
+          }
+
+          line.price = Number(line.price || 0);
+          line.amountBeforeTax = Math.round(line.price * line.quantity * 100) / 100;
+          if (isNonGstBill) {
+            line.gstRate = 0;
+            line.taxAmount = 0;
+            line.cgst = 0;
+            line.sgst = 0;
+            line.igst = 0;
+            line.totalAmount = line.amountBeforeTax;
+          } else {
+            line.gstRate = Number(line.gstRate || 0);
+            line.taxAmount = Math.round(((line.amountBeforeTax * line.gstRate) / 100) * 100) / 100;
+            line.cgst = Math.round((line.taxAmount / 2) * 100) / 100;
+            line.sgst = Math.round((line.taxAmount / 2) * 100) / 100;
+            line.igst = 0;
+            line.totalAmount = Math.round((line.amountBeforeTax + line.taxAmount) * 100) / 100;
           }
         }
+      } else {
+        invoice.items = [];
       }
 
-      if (isNonGstBill) {
-        invoice.taxAmount = 0;
-        invoice.cgstTotal = 0;
-        invoice.sgstTotal = 0;
-        invoice.igstTotal = 0;
-      }
+      const calcSubtotal = Math.round((invoice.items || []).reduce((s: number, l: any) => s + Number(l.amountBeforeTax || 0), 0) * 100) / 100;
+      const calcTax = isNonGstBill ? 0 : Math.round((invoice.items || []).reduce((s: number, l: any) => s + Number(l.taxAmount || 0), 0) * 100) / 100;
+      const calcTotal = Math.round((calcSubtotal + calcTax) * 100) / 100;
+
+      invoice.subtotal = Number(invoice.subtotal || calcSubtotal);
+      invoice.taxAmount = isNonGstBill ? 0 : Number(invoice.taxAmount ?? calcTax);
+      invoice.cgstTotal = isNonGstBill ? 0 : Math.round((invoice.taxAmount / 2) * 100) / 100;
+      invoice.sgstTotal = isNonGstBill ? 0 : Math.round((invoice.taxAmount / 2) * 100) / 100;
+      invoice.igstTotal = 0;
+      invoice.totalAmount = Number(invoice.totalAmount || calcTotal) || calcTotal;
+
+      const rawPay = String(invoice.paymentType || invoice.paymentMode || "cash").toLowerCase();
+      invoice.paymentType = (rawPay === "bank" || rawPay === "unpaid") ? rawPay : "cash";
+      invoice.paidAmount = invoice.paidAmount !== undefined
+        ? Number(invoice.paidAmount)
+        : (invoice.paymentType === "unpaid" ? 0 : invoice.totalAmount);
+      invoice.remainingAmount = invoice.remainingAmount !== undefined
+        ? Number(invoice.remainingAmount)
+        : Math.max(0, Math.round((invoice.totalAmount - invoice.paidAmount) * 100) / 100);
+      if (!invoice.notes) invoice.notes = "Generated by Digital Munimji";
 
       // Update customer credit balance if unpaid
       if (invoice.partyId && invoice.partyId !== "walkin_customer" && db.parties) {
         const party = db.parties.find((p: any) => p.id === invoice.partyId);
-        if (party && invoice.paymentType === "unpaid") {
+        if (party && (invoice.paymentType === "unpaid" || invoice.remainingAmount > 0)) {
           party.currentBalance = (party.currentBalance || 0) + (invoice.remainingAmount || invoice.totalAmount || 0);
+        }
+      }
+
+      // If linked to a restaurant table, mark that table as cleaning & clear running order
+      if ((invoice.tableId || invoice.tableNumber) && Array.isArray(db.tables)) {
+        const linkedTable = db.tables.find((t: any) =>
+          (invoice.tableId && t.id === invoice.tableId) ||
+          (invoice.tableNumber && t.tableNumber.toLowerCase() === String(invoice.tableNumber).toLowerCase())
+        );
+        if (linkedTable) {
+          invoice.tableId = linkedTable.id;
+          invoice.tableNumber = linkedTable.tableNumber;
+          linkedTable.status = "cleaning";
+          linkedTable.currentOrderId = undefined;
+          linkedTable.currentOrderInvoiceNumber = undefined;
+          linkedTable.currentOrderDraft = undefined;
+          linkedTable.currentOrderTotal = 0;
+          linkedTable.runningItemsSummary = undefined;
+          linkedTable.currentOrderItems = [];
+          linkedTable.currentOrderExtraCharges = [];
+          linkedTable.currentOrderNotes = "";
+          linkedTable.currentOrderUpdatedAt = undefined;
         }
       }
 
@@ -4672,6 +5164,9 @@ function executeMunimjiUniversalCrud(
         freeItemName: payload?.freeItemName || undefined,
         discountPercent: Number(payload?.discountPercent || payload?.discount || 0) || undefined,
         discountAmount: Number(payload?.discountAmount || 0) || undefined,
+        cashbackPercent: Number(payload?.cashbackPercent || 0) || undefined,
+        cashbackAmount: Number(payload?.cashbackAmount || 0) || undefined,
+        maxCashbackAmount: Number(payload?.maxCashbackAmount || 0) || undefined,
         minBillAmount: Number(payload?.minBillAmount || 0) || undefined,
         minItemQty: Number(payload?.minItemQty || 0) || undefined,
         startDate: payload?.startDate || new Date().toISOString().split("T")[0],
@@ -4709,8 +5204,11 @@ function executeMunimjiUniversalCrud(
         if (textToSearch.includes("eway") || textToSearch.includes("e-way") || textToSearch.includes("einvoice") || textToSearch.includes("e-invoice")) {
           targetTab = textToSearch.includes("challan") ? "challans" : "sales";
         }
+        else if (textToSearch.includes("table") || textToSearch.includes("टेबल") || textToSearch.includes("dining")) targetTab = "tables";
+        else if (textToSearch.includes("offer") || textToSearch.includes("scheme") || textToSearch.includes("cashback") || textToSearch.includes("ऑफर")) targetTab = "offers";
+        else if (textToSearch.includes("godown") || textToSearch.includes("warehouse") || textToSearch.includes("गोडाऊन")) targetTab = "godowns";
         else if (textToSearch.includes("report") || textToSearch.includes("gstr") || textToSearch.includes("daybook")) targetTab = "reports";
-        else if (textToSearch.includes("item") || textToSearch.includes("inventory") || textToSearch.includes("stock") || textToSearch.includes("product")) targetTab = "items";
+        else if (textToSearch.includes("item") || textToSearch.includes("inventory") || textToSearch.includes("stock") || textToSearch.includes("product") || textToSearch.includes("menu")) targetTab = "items";
         else if (textToSearch.includes("party") || textToSearch.includes("customer") || textToSearch.includes("supplier") || textToSearch.includes("khata")) targetTab = "parties";
         else if (textToSearch.includes("sale") || textToSearch.includes("pos") || textToSearch.includes("bill") || textToSearch.includes("invoice")) targetTab = "sales";
         else if (textToSearch.includes("purchase") || textToSearch.includes("procurement")) targetTab = "purchases";
@@ -4725,7 +5223,10 @@ function executeMunimjiUniversalCrud(
 
       const TAB_NAMES: Record<string, string> = {
         dashboard: "Dashboard",
-        items: "Items & Inventory",
+        items: db.business?.businessType === "restaurant" ? "Menu Items" : "Items & Inventory",
+        tables: "Restaurant Tables",
+        offers: "Offers & Schemes",
+        godowns: "Godowns & Transfers",
         parties: "Customers & Suppliers",
         quotations: "Quotations / Estimates",
         sales: "Sales Billing (POS)",

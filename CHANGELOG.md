@@ -1,5 +1,38 @@
 # CHANGELOG.md — Important Development History
 
+## [1.1.24] - 2026-11-28
+- **Milestone**: Digital Munimji Training for Restaurant Tables, Menu Catalog, Sales Billing & Pre-Production Documentation Sync.
+- **Summary of Changes**:
+  - Trained Digital Munimji (`src/server/munimjiPool.ts`, `server.ts`, `src/services/munimjiClient.ts`) across both Gemini AI and offline Marathi/Hindi/English fallback heuristics to create/seed/list/clean/reserve/delete restaurant tables (`ADD_TABLE`, `SEED_TABLES`, `TABLE_LIST`, `UPDATE_TABLE_STATUS`, `DELETE_TABLE`), add running dishes (`SAVE_TABLE_ORDER`), open tables in POS (`OPEN_TABLE_POS`), settle running table bills (`SETTLE_TABLE_BILL`), toggle Sold Out / Available dishes (`MENU_AVAILABILITY`), handle Half/Full portion pricing, GST vs Non-GST modes, cashback offers, loyalty balances, godowns, and EOD dispatch.
+  - Fixed pre-existing invoice persistence bug in `executeMunimjiUniversalCrud()` (`server.ts`) where Munimji-created bills wrote `type: "sales"` instead of `"sale"` and deducted stock on non-tracked dishes (`trackStock === false`); now calculates GST/Non-GST totals accurately, updates Khata balances, respects `trackStock !== false`, transitions settled dining tables to `cleaning`, and preserves `tableId`, `tableNumber`, `orderType`, and `originalInvoiceNumber` inside `normalizeDatabaseState()`.
+  - Interactive `"table_list"` and `"offer_card"` UI cards plus Restaurant quick-suggestion chips added in `src/components/MunimjiDrawer.tsx`; guarded drawer auto-close so query cards stay open and updated `fetchState()` (`src/App.tsx`) with `hasLoadedDbRef` so background DB refreshes never unmount active drawers or views.
+  - Synchronized `PROJECT_CONTEXT.md`, `docs/PROJECT_CONTEXT.md`, `CURRENT_TASK.md`, `CHANGELOG.md`, and `TESTING.md` with all ChatGPT (PR #2 & PR #3) and AI Studio (`v1.1.15`–`v1.1.24`) changes.
+- **Verification**: `npm run lint`, `npm run build`, `npm run test:release-channel`, `node scripts/test-restaurant-table-persistence.cjs`, and `node scripts/test-munimji-restaurant.cjs` all passed.
+
+## [1.1.23] - 2026-11-27
+- **Milestone**: Occupied Table Cart Recovery Across All Schemas & POS Layout Refinement (`2fd294e`).
+- **Summary of Changes**:
+  - Updated `InvoicingView.tsx`, `server.ts`, `src/App.tsx`, and `scripts/test-restaurant-table-persistence.cjs` to recover running carts from legacy `runningItemsSummary`, alternate line schemas (`{name,qty,rate}`, `{title,count,price}`), deleted catalog items, and total-only occupied tables without showing an empty cart.
+  - Kept **Save to Table** and **Print KOT** controls visible above the fold and allowed seamless 1-click switching between saved occupied tables when there are no unsaved edits.
+
+## [1.1.22 / Beta CI Fixes] - 2026-11-27
+- **Milestone**: Empty-Cart Table Prevention, Running Tables Quick-Load Pills & Print KOT Table Sync (`34b4fa6`).
+- **Summary of Changes**:
+  - Added **Running Tables** quick-load pill bar inside `InvoicingView.tsx` so occupied tables can be opened in 1 click directly from Sales POS.
+  - Updated `KOTPrintModal.tsx` and `InvoicingView.tsx` to auto-save table orders when printing KOT and prevent clearing carts when table orders contain items.
+
+## [1.1.21] - 2026-11-27
+- **Milestone**: Post-Save POS Cart Preservation & Table Persistence Hardening (`c43b89a`, `d4f73b8`).
+- **Summary of Changes**:
+  - Fixed immediate post-Save-to-Table cart wipe caused by re-hydration triggering on the same active table save response (`tableSessionSignature` guard).
+  - Added `scripts/test-restaurant-table-persistence.cjs` Playwright end-to-end suite verifying save retention, multi-table isolation, HTTP 500 error recovery, and Kirana retail non-regression.
+
+## [Pre-Production PR #2 & PR #3 (ChatGPT)] - 2026-11-26 to 2026-11-27
+- **Milestone**: Beta Release Channel Isolation, Automated Electron Smoke Gate & Running Bill Integrity (`e38214d`..`46bb393`).
+- **Summary of Changes**:
+  - Configured `.github/workflows/pre-production.yml` with `scripts/electron-smoke-test.cjs` Playwright desktop gating, `scripts/set-preproduction-version.cjs`, `scripts/ensure-latest-yml.cjs`, and rolling `beta-latest` GitHub Prerelease publishing using isolated `BillingOnHand-Beta` userData (`release-channel.cjs`).
+  - Introduced `RestaurantTableOrderDraft` (`src/types.ts`), draft metadata restoration, guest name & transaction subtype preservation, checkout customer snapshot fallback, clear persistence error surfacing, read-after-write snapshot verification, and server-side guards (`46bb393`) preventing stale/empty updates from erasing active running orders.
+
 ## [1.1.20] - 2026-11-26
 - **Milestone**: Restaurant & Cafe Dedicated Menu Items UI (Option A on Shared `items` Table).
 - **Summary of Changes**:
