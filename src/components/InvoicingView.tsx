@@ -1380,9 +1380,16 @@ export default function InvoicingView({
       return;
     }
 
-    // Determine party details
-    let resolvedPartyName = activeParty?.name || partySearchText.trim() || "Walk-in Customer (Cash Sale)";
-    let resolvedPartyGstin = activeParty?.gstin || "";
+    // Determine party details. If the customer master record is temporarily
+    // unavailable, the restaurant table's saved customer snapshot is the fallback.
+    const savedTableDraft = isRestaurantMode ? selectedTableForPOS?.currentOrderDraft : undefined;
+    const isSameSavedParty = Boolean(
+      savedTableDraft &&
+      savedTableDraft.selectedPartyId === selectedPartyId &&
+      savedTableDraft.partySearchText === partySearchText
+    );
+    let resolvedPartyName = activeParty?.name || (isSameSavedParty ? savedTableDraft?.partyName : undefined) || partySearchText.trim() || "Walk-in Customer (Cash Sale)";
+    let resolvedPartyGstin = activeParty?.gstin || (isSameSavedParty ? savedTableDraft?.partyGstin : undefined) || "";
     let resolvedPartyId = effectivePartyId;
 
     if (effectivePartyId === "walkin_customer") {
@@ -1395,7 +1402,7 @@ export default function InvoicingView({
         // replaced by the generic Cash Customer record.
         resolvedPartyId = "walkin_customer";
         resolvedPartyName = partySearchText.trim();
-        resolvedPartyGstin = "";
+        resolvedPartyGstin = isSameSavedParty ? (savedTableDraft?.partyGstin || "") : "";
       } else if (existingCash) {
         resolvedPartyId = existingCash.id;
         resolvedPartyName = existingCash.name;
