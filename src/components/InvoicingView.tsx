@@ -70,6 +70,7 @@ interface InvoicingViewProps {
   tables?: RestaurantTable[];
   selectedTableForPOS?: RestaurantTable | null;
   tablePOSOpenKey?: number;
+  onSelectTableForPOS?: (table: RestaurantTable | null) => void;
   onClearTableForPOS?: () => void;
   onSaveTable?: (table: RestaurantTable) => Promise<void>;
 }
@@ -144,6 +145,7 @@ export default function InvoicingView({
   tables = [],
   selectedTableForPOS = null,
   tablePOSOpenKey = 0,
+  onSelectTableForPOS,
   onClearTableForPOS,
   onSaveTable
 }: InvoicingViewProps) {
@@ -257,13 +259,13 @@ export default function InvoicingView({
   useEffect(() => {
     // A saved restaurant table draft owns its billing mode. Do not replace it
     // with the store default while restoring an unsettled table bill.
-    if (!invoiceToEdit && type === "sale" && !(isRestaurantMode && selectedTableForPOS)) {
+    if (!invoiceToEdit && type === "sale" && !(isRestaurantMode && (selectedTableForPOS || selectedTableId))) {
       if (business?.defaultBillingMode === 'non_gst' || business?.defaultGstSlab === 0) {
         setBillingMode('non_gst');
         setInvoiceLines(prev => prev.map(line => ({ ...line, gstRate: 0 })));
       }
     }
-  }, [business?.defaultBillingMode, business?.defaultGstSlab, invoiceToEdit, type, isRestaurantMode, selectedTableForPOS]);
+  }, [business?.defaultBillingMode, business?.defaultGstSlab, invoiceToEdit, type, isRestaurantMode, selectedTableForPOS, selectedTableId]);
 
   // Quick-Pick Catalog UI state
   const [showCatalog, setShowCatalog] = useState(true);
@@ -501,11 +503,107 @@ export default function InvoicingView({
     return "₹" + (val || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  // Sync / pre-populate form on editing or reset.
-  // When a restaurant table is being checked out, its persisted cart is the
-  // source of truth; do not let the generic new-sale reset clear that cart.
+  const restoreTableOrderToPOS = (table: RestaurantTable) => {
+    setSelectedTableId(table.id);
+    setOrderType(table.currentOrderDraft?.orderType || 'dine_in');
+
+    const savedDraft = table.currentOrderDraft;
+    // Keep the original bill number and entered invoice/customer details for
+    // the entire lifetime of this unsettled table order.
+    const tableBillNumber = savedDraft?.invoiceNumber || table.currentOrderInvoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    setInvoiceNumber(tableBillNumber);
+    setInvoiceDate(savedDraft?.invoiceDate || new Date().toISOString().split("T")[0]);
+    setTxSubtype(savedDraft?.transactionType || "sale");
+    setPartySearchText(savedDraft?.partySearchText || savedDraft?.partyName || "Walk-in Customer (Cash Sale)");
+    setSelectedPartyId(savedDraft?.selectedPartyId || "walkin_customer");
+    setPaymentType(savedDraft?.paymentType || "cash");
+    setPaidAmt(Number(savedDraft?.paidAmount) || 0);
+    setCashTendered(Number(savedDraft?.cashTendered) || Number(savedDraft?.paidAmount) || 0);
+    setCustomPaidAmount(Boolean(savedDraft?.customPaidAmount));
+    setBillingMode(savedDraft?.billingMode || (business?.defaultBillingMode === "non_gst" || business?.defaultGstSlab === 0 ? "non_gst" : "gst"));
+    setOriginalInvoiceNumber(savedDraft?.originalInvoiceNumber || "");
+    setSourceChallanId(savedDraft?.sourceChallanId);
+    setSourceChallanNumber(savedDraft?.sourceChallanNumber);
+    setSourceQuotationId(savedDraft?.sourceQuotationId);
+    setSourceQuotationNumber(savedDraft?.sourceQuotationNumber);
+    const savedOrderLines = Array.isArray(table.currentOrderItems)
+      ? table.currentOrderItems
+      : [];
+    // Older persisted snapshots may contain rows that survived normalization
+    // but are not usable POS lines (for example, missing names/IDs or zero qty).
+    // Do not let a non-empty but invalid snapshot suppress summary recovery.
+    const restorableOrderLines = savedOrderLines
+      .filter(line => {
+        const quantity = Number(line?.quantity);
+        const catalogItem = items.find(item => item.id === line?.itemId);
+        // Preserve a saved positive-quantity line even if its menu item
+        // was later removed/renamed in the catalog. The bill snapshot, not
+        // the current catalog lookup, is authoritative for an open table.
+        return Number.isFinite(quantity) && quantity > 0 &&
+          Boolean(line?.itemId || line?.itemName?.trim() || catalogItem?.name);
+      })
+      .map(line => {
+        const catalogItem = items.find(item => item.id === line.itemId);
+        return {
+          ...line,
+          itemName: line.itemName?.trim() || catalogItem?.name || "Unavailable Menu Item",
+          hsn: line.hsn || catalogItem?.hsn || "9999",
+          unit: line.unit || catalogItem?.unit || "PCS",
+          quantity: Number(line.quantity),
+          customPrice: Number.isFinite(Number(line.customPrice)) ? Number(line.customPrice) : (catalogItem?.salePrice || 0),
+          discount: Number.isFinite(Number(line.discount)) ? Number(line.discount) : 0,
+          gstRate: Number.isFinite(Number(line.gstRate)) ? Number(line.gstRate) : (catalogItem?.gstRate || 0)
+        };
+      });
+    if (restorableOrderLines.length > 0) {
+      setInvoiceLines(restorableOrderLines);
+    } else if (table.runningItemsSummary?.trim() && !table.runningItemsSummary.trim().startsWith("Bill Settled")) {
+      // Backward compatibility: older Beta versions stored only a summary
+      // such as "2x Tea, 1x Coffee", not the full cart snapshot.
+      const legacyLines = table.runningItemsSummary
+        .split(/,\s*(?=\d+(?:\.\d+)?\s*x\s*)/i)
+        .map(part => {
+          const match = part.trim().match(/^(\d+(?:\.\d+)?)\s*x\s*(.+)$/i);
+          if (!match) return null;
+          const quantity = Number(match[1]);
+          const itemName = match[2].trim();
+          const catalogItem = items.find(item => item.name.trim().toLowerCase() === itemName.toLowerCase());
+          return {
+            itemId: catalogItem?.id || "",
+            itemName: catalogItem?.name || itemName,
+            hsn: catalogItem?.hsn || "9999",
+            unit: catalogItem?.unit || "PCS",
+            quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
+            customPrice: catalogItem?.salePrice || 0,
+            discount: 0,
+            discountType: "percent" as const,
+            gstRate: catalogItem?.gstRate || 0
+          };
+        })
+        .filter((line): line is NonNullable<typeof line> => Boolean(line));
+      setInvoiceLines(legacyLines);
+      if (legacyLines.length > 0) {
+        setQuickNotification("Older table order recovered from its item summary. Please verify prices and discounts before checkout.");
+        setTimeout(() => setQuickNotification(""), 7000);
+      }
+    } else {
+      setInvoiceLines([]);
+    }
+    const restoredExtraCharges = (table.currentOrderExtraCharges || []).map(charge => ({ ...charge }));
+    setExtraCharges(restoredExtraCharges);
+    setShowExtraChargesSection(restoredExtraCharges.length > 0);
+    const restoredNotes = table.currentOrderNotes ?? savedDraft?.notes ?? "";
+    setNotes(restoredNotes);
+    setShowNotes(Boolean(restoredNotes.trim()));
+    setErrorText("");
+  };
+
+  // Sync / pre-populate form on editing or mode switch ONLY.
+  // Never depend on `parties` or `relevantParties` here: background database
+  // refreshes (for example, fetchState right after Save to Table) produce new
+  // array references and would otherwise wipe the active POS cart immediately!
   useEffect(() => {
-    if (isRestaurantMode && selectedTableForPOS && !invoiceToEdit && !isReturnMode) {
+    if (isRestaurantMode && (selectedTableForPOS || selectedTableId) && !invoiceToEdit && !isReturnMode) {
       return;
     }
     if (invoiceToEdit) {
@@ -605,7 +703,7 @@ export default function InvoicingView({
         if (cashParty) {
           setSelectedPartyId(cashParty.id);
           setPartySearchText(cashParty.name);
-        } else if (relevantParties.length > 0) {
+        } else if (relevantParties.length > 0 && !isRestaurantMode) {
           setSelectedPartyId(relevantParties[0].id);
           setPartySearchText(relevantParties[0].name);
         } else {
@@ -624,7 +722,27 @@ export default function InvoicingView({
         setInvoiceDate(new Date().toISOString().split("T")[0]);
       }
     }
-  }, [type, invoiceToEdit, isReturnMode, parties, relevantParties, isRestaurantMode, selectedTableForPOS]);
+  }, [type, invoiceToEdit, isReturnMode]);
+
+  // Fill in default customer if parties arrive after mount without resetting cart
+  useEffect(() => {
+    if (type !== "sale" || invoiceToEdit || isReturnMode || selectedTableForPOS || selectedTableId) {
+      return;
+    }
+    if (!selectedPartyId && relevantParties.length > 0) {
+      const cashParty = relevantParties.find(p => p.name.toLowerCase().includes("cash") || p.name.toLowerCase().includes("walk-in"));
+      if (cashParty) {
+        setSelectedPartyId(cashParty.id);
+        setPartySearchText(cashParty.name);
+      } else if (!isRestaurantMode) {
+        setSelectedPartyId(relevantParties[0].id);
+        setPartySearchText(relevantParties[0].name);
+      } else {
+        setSelectedPartyId("walkin_customer");
+        setPartySearchText("Walk-in Customer (Cash Sale)");
+      }
+    }
+  }, [relevantParties, type, invoiceToEdit, isReturnMode, selectedTableForPOS, selectedTableId, selectedPartyId, isRestaurantMode]);
 
   // Restore the selected table's own persisted running order. Each table owns
   // a complete cart snapshot, so switching tables never mixes their items.
@@ -650,96 +768,7 @@ export default function InvoicingView({
     const restoreKey = [selectedTableForPOS.id, tablePOSOpenKey].join("::");
     if (loadedTableIdRef.current === restoreKey) return;
     loadedTableIdRef.current = restoreKey;
-    setSelectedTableId(selectedTableForPOS.id);
-
-    const savedDraft = selectedTableForPOS.currentOrderDraft;
-    // Keep the original bill number and entered invoice/customer details for
-    // the entire lifetime of this unsettled table order.
-    const tableBillNumber = savedDraft?.invoiceNumber || selectedTableForPOS.currentOrderInvoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
-    setInvoiceNumber(tableBillNumber);
-    setInvoiceDate(savedDraft?.invoiceDate || new Date().toISOString().split("T")[0]);
-    setOrderType(savedDraft?.orderType || 'dine_in');
-    setTxSubtype(savedDraft?.transactionType || "sale");
-    setPartySearchText(savedDraft?.partySearchText || savedDraft?.partyName || "Walk-in Customer (Cash Sale)");
-    setSelectedPartyId(savedDraft?.selectedPartyId || "walkin_customer");
-    setPaymentType(savedDraft?.paymentType || "cash");
-    setPaidAmt(Number(savedDraft?.paidAmount) || 0);
-    setCashTendered(Number(savedDraft?.cashTendered) || Number(savedDraft?.paidAmount) || 0);
-    setCustomPaidAmount(Boolean(savedDraft?.customPaidAmount));
-    setBillingMode(savedDraft?.billingMode || (business?.defaultBillingMode === "non_gst" || business?.defaultGstSlab === 0 ? "non_gst" : "gst"));
-    setOriginalInvoiceNumber(savedDraft?.originalInvoiceNumber || "");
-    setSourceChallanId(savedDraft?.sourceChallanId);
-    setSourceChallanNumber(savedDraft?.sourceChallanNumber);
-    setSourceQuotationId(savedDraft?.sourceQuotationId);
-    setSourceQuotationNumber(savedDraft?.sourceQuotationNumber);
-    const savedOrderLines = Array.isArray(selectedTableForPOS.currentOrderItems)
-      ? selectedTableForPOS.currentOrderItems
-      : [];
-    // Older persisted snapshots may contain rows that survived normalization
-    // but are not usable POS lines (for example, missing names/IDs or zero qty).
-    // Do not let a non-empty but invalid snapshot suppress summary recovery.
-    const restorableOrderLines = savedOrderLines
-      .filter(line => {
-        const quantity = Number(line?.quantity);
-        const catalogItem = items.find(item => item.id === line?.itemId);
-        // Preserve a saved positive-quantity line even if its menu item
-        // was later removed/renamed in the catalog. The bill snapshot, not
-        // the current catalog lookup, is authoritative for an open table.
-        return Number.isFinite(quantity) && quantity > 0 &&
-          Boolean(line?.itemId || line?.itemName?.trim() || catalogItem?.name);
-      })
-      .map(line => {
-        const catalogItem = items.find(item => item.id === line.itemId);
-        return {
-          ...line,
-          itemName: line.itemName?.trim() || catalogItem?.name || "Unavailable Menu Item",
-          hsn: line.hsn || catalogItem?.hsn || "9999",
-          unit: line.unit || catalogItem?.unit || "PCS",
-          quantity: Number(line.quantity),
-          customPrice: Number.isFinite(Number(line.customPrice)) ? Number(line.customPrice) : (catalogItem?.salePrice || 0),
-          discount: Number.isFinite(Number(line.discount)) ? Number(line.discount) : 0,
-          gstRate: Number.isFinite(Number(line.gstRate)) ? Number(line.gstRate) : (catalogItem?.gstRate || 0)
-        };
-      });
-    if (restorableOrderLines.length > 0) {
-      setInvoiceLines(restorableOrderLines);
-    } else if (selectedTableForPOS.runningItemsSummary?.trim()) {
-      // Backward compatibility: older Beta versions stored only a summary
-      // such as "2x Tea, 1x Coffee", not the full cart snapshot.
-      const legacyLines = selectedTableForPOS.runningItemsSummary
-        .split(/,\s*(?=\d+(?:\.\d+)?\s*x\s*)/i)
-        .map(part => {
-          const match = part.trim().match(/^(\d+(?:\.\d+)?)\s*x\s*(.+)$/i);
-          if (!match) return null;
-          const quantity = Number(match[1]);
-          const itemName = match[2].trim();
-          const catalogItem = items.find(item => item.name.trim().toLowerCase() === itemName.toLowerCase());
-          return {
-            itemId: catalogItem?.id || "",
-            itemName: catalogItem?.name || itemName,
-            hsn: catalogItem?.hsn || "9999",
-            unit: catalogItem?.unit || "PCS",
-            quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1,
-            customPrice: catalogItem?.salePrice || 0,
-            discount: 0,
-            discountType: "percent" as const,
-            gstRate: catalogItem?.gstRate || 0
-          };
-        })
-        .filter((line): line is NonNullable<typeof line> => Boolean(line));
-      setInvoiceLines(legacyLines);
-      if (legacyLines.length > 0) {
-        setQuickNotification("Older table order recovered from its item summary. Please verify prices and discounts before checkout.");
-        setTimeout(() => setQuickNotification(""), 7000);
-      }
-    } else {
-      setInvoiceLines([]);
-    }
-    const restoredExtraCharges = (selectedTableForPOS.currentOrderExtraCharges || []).map(charge => ({ ...charge }));
-    setExtraCharges(restoredExtraCharges);
-    if (restoredExtraCharges.length > 0) setShowExtraChargesSection(true);
-    setNotes(selectedTableForPOS.currentOrderNotes ?? savedDraft?.notes ?? "");
-    setErrorText("");
+    restoreTableOrderToPOS(selectedTableForPOS);
   }, [selectedTableForPOS, isRestaurantMode, items, tablePOSOpenKey, business?.defaultBillingMode, business?.defaultGstSlab]);
 
   // Subtype toggle handler
@@ -942,7 +971,7 @@ export default function InvoicingView({
       totalUnits,
       lines: formattedLines
     };
-  }, [invoiceLines, items, activeParty, business, extraCharges, txSubtype]);
+  }, [invoiceLines, items, activeParty, business, extraCharges, txSubtype, billingMode]);
 
   // Monitor total changes to auto-update payment inputs
   useEffect(() => {
@@ -1137,6 +1166,9 @@ export default function InvoicingView({
       } else {
         const newRow: InvoiceLine = {
           itemId: item.id,
+          itemName: item.name,
+          hsn: item.hsn,
+          unit: item.unit,
           quantity: qty,
           customPrice: effectivePrice,
           discount: 0,
@@ -1459,7 +1491,7 @@ export default function InvoicingView({
 
       // If dining table was attached, mark table as Needs Cleaning after settlement
       if (isRestaurantMode && selectedTableId && onSaveTable) {
-        const tbl = tables.find(t => t.id === selectedTableId);
+        const tbl = tables.find(t => t.id === selectedTableId) || (selectedTableForPOS?.id === selectedTableId ? selectedTableForPOS : undefined);
         if (tbl) {
           await onSaveTable({
             ...tbl,
@@ -1535,26 +1567,53 @@ export default function InvoicingView({
       setErrorText("Please select a dining table to attach this running kitchen order.");
       return;
     }
-    if (invoiceLines.length === 0) {
+    const linesToPersist = invoiceLines.filter(
+      line => Number(line.quantity) > 0 && Boolean(line.itemId || line.itemName?.trim())
+    );
+    if (linesToPersist.length === 0) {
       setErrorText("Please add items to save order to table.");
       return;
     }
-    const tbl = tables.find(t => t.id === selectedTableId);
+    const tbl = tables.find(t => t.id === selectedTableId) || (selectedTableForPOS?.id === selectedTableId ? selectedTableForPOS : undefined);
     if (!tbl || !onSaveTable) return;
-    const summary = invoiceLines.map(l => {
-      const it = items.find(i => i.id === l.itemId);
-      return `${l.quantity}x ${it?.name || l.itemName || 'Item'}`;
+    setErrorText("");
+    const snapshotLines = linesToPersist.map(line => {
+      const catalogItem = items.find(i => i.id === line.itemId);
+      return {
+        ...line,
+        itemName: line.itemName?.trim() || catalogItem?.name || undefined,
+        hsn: line.hsn || catalogItem?.hsn || undefined,
+        unit: line.unit || catalogItem?.unit || undefined
+      };
+    });
+    const summary = snapshotLines.map(l => {
+      return `${l.quantity}x ${l.itemName || 'Item'}`;
     }).join(", ");
+    const stableOrderId =
+      tbl.currentOrderId ||
+      (selectedTableForPOS?.id === selectedTableId ? selectedTableForPOS.currentOrderId : undefined) ||
+      `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const stableInvoiceNumber =
+      invoiceNumber ||
+      tbl.currentOrderInvoiceNumber ||
+      (selectedTableForPOS?.id === selectedTableId ? selectedTableForPOS.currentOrderInvoiceNumber : undefined) ||
+      `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    if (!invoiceNumber && stableInvoiceNumber) {
+      setInvoiceNumber(stableInvoiceNumber);
+    }
+    // Keep restore guard synchronized BEFORE calling onSaveTable so updating
+    // selectedTableForPOS with the persisted snapshot never overwrites the live cart.
+    loadedTableIdRef.current = [tbl.id, tablePOSOpenKey].join("::");
     // Save the complete current cart as this table's source of truth.
     // Re-saving updates the snapshot; it never appends duplicate quantities.
     try {
       await onSaveTable({
       ...tbl,
       status: "occupied",
-      currentOrderId: tbl.currentOrderId || `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      currentOrderInvoiceNumber: invoiceNumber || tbl.currentOrderInvoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+      currentOrderId: stableOrderId,
+      currentOrderInvoiceNumber: stableInvoiceNumber,
       currentOrderDraft: {
-        invoiceNumber: invoiceNumber || tbl.currentOrderInvoiceNumber || undefined,
+        invoiceNumber: stableInvoiceNumber,
         invoiceDate,
         selectedPartyId,
         partySearchText,
@@ -1578,7 +1637,7 @@ export default function InvoicingView({
       } satisfies RestaurantTableOrderDraft,
       currentOrderTotal: computedInvoiceDetails.grandTotal,
       runningItemsSummary: summary,
-      currentOrderItems: invoiceLines.map(line => ({ ...line })),
+      currentOrderItems: snapshotLines,
       currentOrderExtraCharges: extraCharges.filter(c => c.title.trim() && c.amount > 0).map(c => ({ ...c })),
       currentOrderNotes: notes,
       currentOrderUpdatedAt: new Date().toISOString()
@@ -1593,7 +1652,7 @@ export default function InvoicingView({
   };
 
   // Safe checks if catalog registries are blank
-  if (items.length === 0 || relevantParties.length === 0) {
+  if (items.length === 0 || (relevantParties.length === 0 && !(isRestaurantMode && type === "sale"))) {
     return (
       <div id="invoice-setup-warning" className="bg-white rounded-xl border border-dashed border-slate-200 p-8 text-center max-w-lg mx-auto shadow-sm my-12">
         <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
@@ -1828,7 +1887,7 @@ export default function InvoicingView({
         <div className="lg:col-span-8 space-y-4">
           
           {/* Restaurant Dining & Table Selector Bar */}
-          {(business?.businessType === 'restaurant' || tables.length > 0) && (
+          {isRestaurantMode && type === "sale" && (
             <div className="bg-amber-50/80 border border-amber-200/90 rounded-2xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex items-center gap-1.5 font-bold text-amber-950">
@@ -1882,14 +1941,63 @@ export default function InvoicingView({
                 <div className="flex items-center gap-2">
                   <label className="font-bold text-amber-950">Table:</label>
                   <select
+                    id="pos-table-select"
                     value={selectedTableId}
                     onChange={(e) => {
                       const val = e.target.value;
-                      setSelectedTableId(val);
+                      if (!val) {
+                        setSelectedTableId("");
+                        if (onSelectTableForPOS) onSelectTableForPOS(null);
+                        return;
+                      }
                       const found = tables.find(t => t.id === val);
                       if (found) {
-                        setPartySearchText(`Table ${found.tableNumber} (Dine-In)`);
-                        setSelectedPartyId("walkin_customer");
+                        const hasRunningOrder = Boolean(
+                          found.status === "occupied" ||
+                          (found.currentOrderItems && found.currentOrderItems.some(line => Number(line.quantity) > 0)) ||
+                          found.currentOrderDraft ||
+                          found.currentOrderInvoiceNumber
+                        );
+                        const hasCartContent = invoiceLines.some(
+                          line => Number(line.quantity) > 0 && Boolean(line.itemId || line.itemName?.trim())
+                        );
+                        const prevTable = selectedTableId ? tables.find(t => t.id === selectedTableId) : undefined;
+                        const switchingFromOccupiedTable = Boolean(
+                          prevTable &&
+                          prevTable.id !== found.id &&
+                          (prevTable.status === "occupied" || Boolean(prevTable.currentOrderId) || Boolean(prevTable.currentOrderInvoiceNumber))
+                        );
+                        if (hasRunningOrder && !hasCartContent) {
+                          loadedTableIdRef.current = [found.id, tablePOSOpenKey].join("::");
+                          restoreTableOrderToPOS(found);
+                          if (onSelectTableForPOS) onSelectTableForPOS(found);
+                        } else if (hasRunningOrder && hasCartContent && selectedTableId !== found.id) {
+                          setErrorText(`Table ${found.tableNumber} already has an active running bill. Clear the current cart or open ${found.tableNumber} from Restaurant Tables so its saved items are not overwritten.`);
+                        } else {
+                          setErrorText("");
+                          setSelectedTableId(val);
+                          loadedTableIdRef.current = [found.id, tablePOSOpenKey].join("::");
+                          if (onSelectTableForPOS) onSelectTableForPOS(found);
+                          if (switchingFromOccupiedTable) {
+                            setInvoiceLines([]);
+                            setExtraCharges([]);
+                            setShowExtraChargesSection(false);
+                            setNotes("");
+                            setShowNotes(false);
+                            const randomSuffix = Math.floor(100 + Math.random() * 900);
+                            setInvoiceNumber(`INV-${new Date().getFullYear()}-${randomSuffix}`);
+                            setPartySearchText(`Table ${found.tableNumber} (Dine-In)`);
+                            setSelectedPartyId("walkin_customer");
+                          } else {
+                            const isGenericCustomer =
+                              !partySearchText.trim() ||
+                              /^(walk[\s-]?in|cash customer|table\s)/i.test(partySearchText.trim());
+                            if (isGenericCustomer) {
+                              setPartySearchText(`Table ${found.tableNumber} (Dine-In)`);
+                              setSelectedPartyId("walkin_customer");
+                            }
+                          }
+                        }
                       }
                     }}
                     className="bg-white border border-amber-300 rounded-xl px-3 py-1.5 font-bold text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
@@ -1954,11 +2062,18 @@ export default function InvoicingView({
                     placeholder={txSubtype.includes("sale") ? "Search customer (F4)..." : "Search or Select Supplier (F4)..."}
                     value={partySearchText}
                     onChange={(e) => {
-                      setPartySearchText(e.target.value);
+                      const nextVal = e.target.value;
+                      setPartySearchText(nextVal);
                       setIsPartySearchOpen(true);
                       setPartyHighlightedIndex(0);
-                      const matched = relevantParties.find(p => p.name === e.target.value);
-                      if (matched) setSelectedPartyId(matched.id);
+                      const matched = relevantParties.find(p => p.name === nextVal);
+                      if (matched) {
+                        setSelectedPartyId(matched.id);
+                      } else if (type === "sale") {
+                        setSelectedPartyId(nextVal.trim() ? "walkin_customer" : "");
+                      } else {
+                        setSelectedPartyId("");
+                      }
                     }}
                     onFocus={() => setIsPartySearchOpen(true)}
                     onBlur={() => {
@@ -2718,7 +2833,11 @@ export default function InvoicingView({
             <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2.5 text-xs flex justify-between items-center">
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Customer</p>
-                <p className="font-bold text-slate-800 truncate max-w-[170px]">{activeParty?.name || "Walk-in Customer"}</p>
+                <p className="font-bold text-slate-800 truncate max-w-[170px]">
+                  {selectedPartyId === "walkin_customer" && partySearchText.trim()
+                    ? partySearchText.trim()
+                    : (activeParty?.name || partySearchText.trim() || "Walk-in Customer")}
+                </p>
               </div>
               <div className="text-right font-mono">
                 <p className="text-[10px] font-bold text-slate-400 uppercase">Khata Balance</p>
@@ -3101,7 +3220,7 @@ export default function InvoicingView({
               </div>
 
               {/* Restaurant Quick KOT & Running Order Action Buttons */}
-              {(business?.businessType === 'restaurant' || selectedTableId) && (
+              {isRestaurantMode && type === "sale" && (
                 <div className="grid grid-cols-2 gap-2 pt-1">
                   <button
                     type="button"

@@ -202,7 +202,7 @@ export default function App() {
     if (!isRetry) setIsLoading(true);
     setLoadError(null);
     try {
-      const res = await fetch("/api/db");
+      const res = await fetch("/api/db", { cache: "no-store" });
       if (!res.ok) throw new Error(`Server status ${res.status}: Failed to read database`);
       const data: DatabaseState = await res.json();
       if (!data || typeof data !== "object") {
@@ -400,6 +400,9 @@ export default function App() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       throw new Error(data.error || "Failed to delete restaurant table.");
+    }
+    if (activeTableForPOS?.id === tableId) {
+      setActiveTableForPOS(null);
     }
     await fetchState(true);
   };
@@ -1019,6 +1022,9 @@ export default function App() {
           setActiveTab(tab);
           setInvoiceToEdit(null);
           setIsReturnMode(false);
+          if (tab !== "sales") {
+            setActiveTableForPOS(null);
+          }
         }}
         business={dbState.business}
         lowStockCount={lowStockCount}
@@ -1190,8 +1196,9 @@ export default function App() {
               parties={dbState.parties}
               business={dbState.business}
               tables={dbState.tables || []}
-              selectedTableForPOS={activeTableForPOS}
+              selectedTableForPOS={activeTableForPOS ? (dbState.tables?.find(t => t.id === activeTableForPOS.id) || activeTableForPOS) : null}
               tablePOSOpenKey={tablePOSOpenKey}
+              onSelectTableForPOS={(t) => setActiveTableForPOS(t)}
               onClearTableForPOS={() => setActiveTableForPOS(null)}
               onSaveTable={handleSaveTable}
               invoiceToEdit={invoiceToEdit?.type.includes("sale") ? invoiceToEdit : null}
@@ -1211,6 +1218,9 @@ export default function App() {
                 setActiveTab(tab);
                 setInvoiceToEdit(null);
                 setIsReturnMode(false);
+                if (tab !== "sales") {
+                  setActiveTableForPOS(null);
+                }
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               permissions={session?.permissions?.sales}
@@ -1270,7 +1280,7 @@ export default function App() {
                 // Sales screen always receives the latest saved order snapshot.
                 let tableToOpen = t;
                 try {
-                  const latestResponse = await fetch("/api/db");
+                  const latestResponse = await fetch("/api/db", { cache: "no-store" });
                   if (latestResponse.ok) {
                     const latestDb: DatabaseState = await latestResponse.json();
                     if (latestDb && Array.isArray(latestDb.tables)) {
