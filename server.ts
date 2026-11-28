@@ -669,6 +669,7 @@ export function normalizeDatabaseState(raw: any): DatabaseState {
         capacity: Number(tbl?.capacity) || 4,
         status: (["available", "occupied", "reserved", "cleaning"].includes(tbl?.status) ? tbl.status : "available") as RestaurantTable["status"],
         currentOrderId: tbl?.currentOrderId ? String(tbl.currentOrderId) : undefined,
+        currentOrderInvoiceNumber: tbl?.currentOrderInvoiceNumber ? String(tbl.currentOrderInvoiceNumber) : undefined,
         currentOrderTotal: Number(tbl?.currentOrderTotal) || 0,
         runningItemsSummary: tbl?.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
         // Preserve the complete active restaurant cart through every database
@@ -2330,6 +2331,7 @@ app.post("/api/tables", (req, res) => {
       capacity: Math.max(1, Number(tbl?.capacity) || 4),
       status: (["available", "occupied", "reserved", "cleaning"].includes(tbl?.status) ? tbl.status : "available") as RestaurantTable["status"],
       currentOrderId: tbl?.currentOrderId ? String(tbl.currentOrderId) : undefined,
+      currentOrderInvoiceNumber: tbl?.currentOrderInvoiceNumber ? String(tbl.currentOrderInvoiceNumber) : undefined,
       currentOrderTotal: Number(tbl?.currentOrderTotal) || 0,
       runningItemsSummary: tbl?.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
       currentOrderItems: Array.isArray(tbl?.currentOrderItems) ? tbl.currentOrderItems : [],
@@ -2362,6 +2364,7 @@ app.post("/api/tables/item", (req, res) => {
       capacity: Math.max(1, Number(tbl.capacity) || 4),
       status: (["available", "occupied", "reserved", "cleaning"].includes(tbl.status) ? tbl.status : "available") as RestaurantTable["status"],
       currentOrderId: tbl.currentOrderId ? String(tbl.currentOrderId) : undefined,
+      currentOrderInvoiceNumber: tbl.currentOrderInvoiceNumber ? String(tbl.currentOrderInvoiceNumber) : undefined,
       currentOrderTotal: Number(tbl.currentOrderTotal) || 0,
       runningItemsSummary: tbl.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
       currentOrderItems: Array.isArray(tbl.currentOrderItems) ? tbl.currentOrderItems : [],
