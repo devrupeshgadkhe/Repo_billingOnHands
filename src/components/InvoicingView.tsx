@@ -1540,6 +1540,7 @@ export default function InvoicingView({
         partySearchText,
         partyName: activeParty?.name || partySearchText || "",
         partyGstin: activeParty?.gstin || "",
+        notes,
         paymentType,
         paidAmount: paidAmt,
         cashTendered,
