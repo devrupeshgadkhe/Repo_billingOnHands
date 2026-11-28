@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { Item, Party, Invoice, InvoiceItem, BusinessProfile } from "../types.js";
+import { Item, Party, Invoice, InvoiceItem, BusinessProfile, RestaurantTableOrderDraft } from "../types.js";
 import {
   Plus,
   Minus,
@@ -69,6 +69,7 @@ interface InvoicingViewProps {
   permissions?: any;
   tables?: RestaurantTable[];
   selectedTableForPOS?: RestaurantTable | null;
+  tablePOSOpenKey?: number;
   onClearTableForPOS?: () => void;
   onSaveTable?: (table: RestaurantTable) => Promise<void>;
 }
@@ -142,6 +143,7 @@ export default function InvoicingView({
   permissions,
   tables = [],
   selectedTableForPOS = null,
+  tablePOSOpenKey = 0,
   onClearTableForPOS,
   onSaveTable
 }: InvoicingViewProps) {
@@ -637,16 +639,37 @@ export default function InvoicingView({
     // table as restored until catalog data is ready; otherwise the effect's
     // items dependency reruns but the table-ID guard skips the actual restore.
     if (items.length === 0) return;
-    if (loadedTableIdRef.current === selectedTableForPOS.id) return;
-    loadedTableIdRef.current = selectedTableForPOS.id;
+    // Include an explicit open-session key: reopening the same table must
+    // restore it again even when its ID and saved timestamp have not changed.
+    const restoreKey = [
+      selectedTableForPOS.id,
+      selectedTableForPOS.currentOrderId || "",
+      selectedTableForPOS.currentOrderUpdatedAt || "",
+      tablePOSOpenKey
+    ].join("::");
+    if (loadedTableIdRef.current === restoreKey) return;
+    loadedTableIdRef.current = restoreKey;
     setSelectedTableId(selectedTableForPOS.id);
-    // Keep one invoice number for the lifetime of this running table order.
-    // Older running orders without a stored number receive one now and persist it on the next Save to Table.
-    const tableBillNumber = selectedTableForPOS.currentOrderInvoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+
+    const savedDraft = selectedTableForPOS.currentOrderDraft;
+    // Keep the original bill number and entered invoice/customer details for
+    // the entire lifetime of this unsettled table order.
+    const tableBillNumber = savedDraft?.invoiceNumber || selectedTableForPOS.currentOrderInvoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
     setInvoiceNumber(tableBillNumber);
-    setOrderType('dine_in');
-    setPartySearchText(`Table ${selectedTableForPOS.tableNumber} (Dine-In)`);
-    setSelectedPartyId("walkin_customer");
+    setInvoiceDate(savedDraft?.invoiceDate || new Date().toISOString().split("T")[0]);
+    setOrderType(savedDraft?.orderType || 'dine_in');
+    setPartySearchText(savedDraft?.partySearchText || savedDraft?.partyName || `Table ${selectedTableForPOS.tableNumber} (Dine-In)`);
+    setSelectedPartyId(savedDraft?.selectedPartyId || "walkin_customer");
+    setPaymentType(savedDraft?.paymentType || "cash");
+    setPaidAmt(Number(savedDraft?.paidAmount) || 0);
+    setCashTendered(Number(savedDraft?.cashTendered) || Number(savedDraft?.paidAmount) || 0);
+    setCustomPaidAmount(Boolean(savedDraft?.customPaidAmount));
+    setBillingMode(savedDraft?.billingMode || (business?.defaultBillingMode === "non_gst" || business?.defaultGstSlab === 0 ? "non_gst" : "gst"));
+    setOriginalInvoiceNumber(savedDraft?.originalInvoiceNumber || "");
+    setSourceChallanId(savedDraft?.sourceChallanId);
+    setSourceChallanNumber(savedDraft?.sourceChallanNumber);
+    setSourceQuotationId(savedDraft?.sourceQuotationId);
+    setSourceQuotationNumber(savedDraft?.sourceQuotationNumber);
     const savedOrderLines = Array.isArray(selectedTableForPOS.currentOrderItems)
       ? selectedTableForPOS.currentOrderItems
       : [];
@@ -708,9 +731,9 @@ export default function InvoicingView({
       setInvoiceLines([]);
     }
     setExtraCharges((selectedTableForPOS.currentOrderExtraCharges || []).map(charge => ({ ...charge })));
-    setNotes(selectedTableForPOS.currentOrderNotes || "");
+    setNotes(selectedTableForPOS.currentOrderNotes ?? "");
     setErrorText("");
-  }, [selectedTableForPOS, isRestaurantMode, items]);
+  }, [selectedTableForPOS, isRestaurantMode, items, tablePOSOpenKey, business?.defaultBillingMode, business?.defaultGstSlab]);
 
   // Subtype toggle handler
   const handleToggleSubtype = (newSub: 'sale' | 'purchase' | 'sale_return' | 'purchase_return') => {
@@ -1419,11 +1442,14 @@ export default function InvoicingView({
             ...tbl,
             status: "cleaning",
             currentOrderId: undefined,
+            currentOrderInvoiceNumber: undefined,
+            currentOrderDraft: undefined,
             currentOrderTotal: 0,
             runningItemsSummary: "Bill Settled - Ready for Cleaning",
             currentOrderItems: [],
             currentOrderExtraCharges: [],
-            currentOrderNotes: ""
+            currentOrderNotes: "",
+            currentOrderUpdatedAt: undefined
           });
         }
         setSelectedTableId("");
@@ -1502,7 +1528,26 @@ export default function InvoicingView({
       ...tbl,
       status: "occupied",
       currentOrderId: tbl.currentOrderId || `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      currentOrderInvoiceNumber: tbl.currentOrderInvoiceNumber || invoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+      currentOrderInvoiceNumber: invoiceNumber || tbl.currentOrderInvoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+      currentOrderDraft: {
+        invoiceNumber: invoiceNumber || tbl.currentOrderInvoiceNumber || undefined,
+        invoiceDate,
+        selectedPartyId,
+        partySearchText,
+        partyName: activeParty?.name || partySearchText || "",
+        partyGstin: activeParty?.gstin || "",
+        paymentType,
+        paidAmount: paidAmt,
+        cashTendered,
+        customPaidAmount,
+        billingMode,
+        originalInvoiceNumber,
+        sourceChallanId,
+        sourceChallanNumber,
+        sourceQuotationId,
+        sourceQuotationNumber,
+        orderType
+      } satisfies RestaurantTableOrderDraft,
       currentOrderTotal: computedInvoiceDetails.grandTotal,
       runningItemsSummary: summary,
       currentOrderItems: invoiceLines.map(line => ({ ...line })),
