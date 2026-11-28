@@ -640,6 +640,10 @@ export default function InvoicingView({
     if (loadedTableIdRef.current === selectedTableForPOS.id) return;
     loadedTableIdRef.current = selectedTableForPOS.id;
     setSelectedTableId(selectedTableForPOS.id);
+    // Keep one invoice number for the lifetime of this running table order.
+    // Older running orders without a stored number receive one now and persist it on the next Save to Table.
+    const tableBillNumber = selectedTableForPOS.currentOrderInvoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+    setInvoiceNumber(tableBillNumber);
     setOrderType('dine_in');
     setPartySearchText(`Table ${selectedTableForPOS.tableNumber} (Dine-In)`);
     setSelectedPartyId("walkin_customer");
@@ -1498,6 +1502,7 @@ export default function InvoicingView({
       ...tbl,
       status: "occupied",
       currentOrderId: tbl.currentOrderId || `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      currentOrderInvoiceNumber: tbl.currentOrderInvoiceNumber || invoiceNumber || `INV-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
       currentOrderTotal: computedInvoiceDetails.grandTotal,
       runningItemsSummary: summary,
       currentOrderItems: invoiceLines.map(line => ({ ...line })),
