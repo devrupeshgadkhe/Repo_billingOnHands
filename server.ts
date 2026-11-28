@@ -2373,8 +2373,26 @@ app.post("/api/tables/item", (req, res) => {
         : undefined,
       currentOrderTotal: Number(tbl.currentOrderTotal) || 0,
       runningItemsSummary: tbl.runningItemsSummary ? String(tbl.runningItemsSummary) : undefined,
-      currentOrderItems: Array.isArray(tbl.currentOrderItems) ? tbl.currentOrderItems : [],
-      currentOrderExtraCharges: Array.isArray(tbl.currentOrderExtraCharges) ? tbl.currentOrderExtraCharges : [],
+      currentOrderItems: Array.isArray(tbl.currentOrderItems)
+        ? tbl.currentOrderItems.map((line: any) => ({
+            itemId: String(line?.itemId || ""),
+            itemName: line?.itemName ? String(line.itemName) : undefined,
+            hsn: line?.hsn ? String(line.hsn) : undefined,
+            unit: line?.unit ? String(line.unit) : undefined,
+            quantity: Math.max(0, Number(line?.quantity) || 0),
+            customPrice: Number(line?.customPrice) || 0,
+            discount: Number(line?.discount) || 0,
+            discountType: line?.discountType === "amount" ? "amount" as const : "percent" as const,
+            gstRate: Math.max(0, Number(line?.gstRate) || 0),
+            portionLabel: line?.portionLabel === "Half" ? "Half" as const : line?.portionLabel === "Full" ? "Full" as const : undefined
+          }))
+        : [],
+      currentOrderExtraCharges: Array.isArray(tbl.currentOrderExtraCharges)
+        ? tbl.currentOrderExtraCharges.map((charge: any) => ({
+            title: String(charge?.title || ""),
+            amount: Math.max(0, Number(charge?.amount) || 0)
+          }))
+        : [],
       currentOrderNotes: tbl.currentOrderNotes ? String(tbl.currentOrderNotes) : "",
       currentOrderUpdatedAt: tbl.currentOrderUpdatedAt ? String(tbl.currentOrderUpdatedAt) : undefined
     };
