@@ -1541,7 +1541,8 @@ export default function InvoicingView({
     }).join(", ");
     // Save the complete current cart as this table's source of truth.
     // Re-saving updates the snapshot; it never appends duplicate quantities.
-    await onSaveTable({
+    try {
+      await onSaveTable({
       ...tbl,
       status: "occupied",
       currentOrderId: tbl.currentOrderId || `ord_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -1575,7 +1576,11 @@ export default function InvoicingView({
       currentOrderExtraCharges: extraCharges.filter(c => c.title.trim() && c.amount > 0).map(c => ({ ...c })),
       currentOrderNotes: notes,
       currentOrderUpdatedAt: new Date().toISOString()
-    });
+      });
+    } catch (err: any) {
+      setErrorText(err?.message || "Failed to save the complete restaurant running bill. Please retry.");
+      return;
+    }
     playPOSSound('success');
     setQuickNotification(`Table ${tbl.tableNumber} is now marked Occupied with ₹${computedInvoiceDetails.grandTotal.toFixed(2)} running kitchen order!`);
     setTimeout(() => setQuickNotification(""), 3500);
