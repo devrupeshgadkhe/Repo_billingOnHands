@@ -73,7 +73,13 @@ export default function TablesView({
   };
 
   const handleMarkCleaned = async (t: RestaurantTable) => {
-    const hasUnsettledItems = (t.currentOrderItems?.length || 0) > 0 || Boolean(t.runningItemsSummary?.trim());
+    const hasUnsettledItems = Boolean(
+      (t.currentOrderItems?.length || 0) > 0 ||
+      t.currentOrderDraft ||
+      t.currentOrderInvoiceNumber ||
+      t.currentOrderId ||
+      (t.runningItemsSummary?.trim() && !t.runningItemsSummary.trim().startsWith("Bill Settled"))
+    );
     if (hasUnsettledItems) {
       const confirmed = await showConfirm({
         title: "Clear Running Table Order?",
@@ -134,8 +140,10 @@ export default function TablesView({
       (status === "available" || status === "cleaning") &&
       (
         (editingTable.currentOrderItems?.length || 0) > 0 ||
-        Boolean(editingTable.runningItemsSummary?.trim()) ||
+        Boolean(editingTable.currentOrderDraft) ||
+        Boolean(editingTable.currentOrderInvoiceNumber) ||
         Boolean(editingTable.currentOrderId) ||
+        Boolean(editingTable.runningItemsSummary?.trim() && !editingTable.runningItemsSummary.trim().startsWith("Bill Settled")) ||
         Number(editingTable.currentOrderTotal || 0) > 0
       )
     );
@@ -389,7 +397,13 @@ export default function TablesView({
                   <button
                     type="button"
                     onClick={async () => {
-                      const hasUnsettledItems = (t.currentOrderItems?.length || 0) > 0 || Boolean(t.runningItemsSummary?.trim());
+                      const hasUnsettledItems = Boolean(
+                        (t.currentOrderItems?.length || 0) > 0 ||
+                        t.currentOrderDraft ||
+                        t.currentOrderInvoiceNumber ||
+                        t.currentOrderId ||
+                        (t.runningItemsSummary?.trim() && !t.runningItemsSummary.trim().startsWith("Bill Settled"))
+                      );
                       if (hasUnsettledItems) {
                         const confirmed = await showConfirm({
                           title: "Delete Table With Running Order?",
