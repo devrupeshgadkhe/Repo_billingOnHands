@@ -660,6 +660,7 @@ export default function InvoicingView({
     setInvoiceNumber(tableBillNumber);
     setInvoiceDate(savedDraft?.invoiceDate || new Date().toISOString().split("T")[0]);
     setOrderType(savedDraft?.orderType || 'dine_in');
+    setTxSubtype(savedDraft?.transactionType || "sale");
     setPartySearchText(savedDraft?.partySearchText || savedDraft?.partyName || "Walk-in Customer (Cash Sale)");
     setSelectedPartyId(savedDraft?.selectedPartyId || "walkin_customer");
     setPaymentType(savedDraft?.paymentType || "cash");
@@ -1560,6 +1561,7 @@ export default function InvoicingView({
         cashTendered,
         customPaidAmount,
         billingMode,
+        transactionType: txSubtype,
         originalInvoiceNumber,
         sourceChallanId,
         sourceChallanNumber,
