@@ -641,14 +641,13 @@ export default function InvoicingView({
     // table as restored until catalog data is ready; otherwise the effect's
     // items dependency reruns but the table-ID guard skips the actual restore.
     if (items.length === 0) return;
-    // Include an explicit open-session key: reopening the same table must
-    // restore it again even when its ID and saved timestamp have not changed.
-    const restoreKey = [
-      selectedTableForPOS.id,
-      selectedTableForPOS.currentOrderId || "",
-      selectedTableForPOS.currentOrderUpdatedAt || "",
-      tablePOSOpenKey
-    ].join("::");
+    // Restore once per explicit table-open session, not whenever the table
+    // object changes after Save to Table. App refreshes the server-verified
+    // table snapshot after every save; including currentOrderUpdatedAt here
+    // caused this effect to run again and replace the live POS cart with that
+    // refreshed snapshot (which could be stale/empty during the same session).
+    // Reopening the same table increments tablePOSOpenKey and restores it.
+    const restoreKey = [selectedTableForPOS.id, tablePOSOpenKey].join("::");
     if (loadedTableIdRef.current === restoreKey) return;
     loadedTableIdRef.current = restoreKey;
     setSelectedTableId(selectedTableForPOS.id);
